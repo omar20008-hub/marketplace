@@ -312,7 +312,15 @@ badge on the page it leads to.
 - **Seeded artifacts have no bytes.** They describe runs from before this
   instance existed, so opening one returns a clear 404 rather than a fake file.
   Files produced by a run you start are real and open normally.
-- **"Try with sample data" is not wired.** It has no contract behind it yet.
+- **Three controls the design draws are not rendered.** "Try with sample data"
+  on a product page, and attach and dictate in the composer. None has a
+  contract behind it: nothing says what the sample data would be, and a trial
+  run would execute the creator's real workflow — which for a product that
+  writes means real messages sent on someone's behalf. No product declares a
+  file input, so an attachment has nothing to become either. A control that
+  does nothing when clicked is worse than one that is not there, so each
+  arrives with its feature rather than ahead of it. An end-to-end test fails if
+  one reappears without one.
 - **OAuth connections cannot be completed.** No consent flow exists — the mock
   refuses those types exactly as Install Template does, rather than pretending.
 - **Storage destinations other than the platform are hidden, not disabled.** The

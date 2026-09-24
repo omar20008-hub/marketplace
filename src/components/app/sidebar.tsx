@@ -57,6 +57,8 @@ export function Sidebar({
   counts: SidebarCounts;
 }) {
   const [open, setOpen] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [query, setQuery] = useState("");
   const pathname = usePathname();
 
   const nav = [
@@ -88,10 +90,25 @@ export function Sidebar({
   const isActive = (href: string, exact?: boolean) =>
     exact ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
 
-  const groups = threads.reduce<Record<string, SidebarThread[]>>((acc, thread) => {
+  /**
+   * Search filters the list already on screen rather than asking the server.
+   * Every thread the sidebar can show is in this prop, so a round trip would
+   * add latency and find nothing extra.
+   */
+  const needle = query.trim().toLowerCase();
+  const found = needle
+    ? threads.filter((thread) => thread.title.toLowerCase().includes(needle))
+    : threads;
+
+  const groups = found.reduce<Record<string, SidebarThread[]>>((acc, thread) => {
     (acc[thread.group] ??= []).push(thread);
     return acc;
   }, {});
+
+  function closeSearch() {
+    setSearching(false);
+    setQuery("");
+  }
 
   const panel = (
     <div className="flex h-full w-[260px] flex-none flex-col border-r border-selected bg-sidebar">
@@ -105,8 +122,13 @@ export function Sidebar({
         <div className="flex gap-0.5 text-ink-2">
           <button
             type="button"
-            aria-label="Search"
-            className="flex size-[34px] items-center justify-center rounded-[8px] hover:bg-selected"
+            aria-label={searching ? "Close search" : "Search tasks"}
+            aria-expanded={searching}
+            onClick={() => (searching ? closeSearch() : setSearching(true))}
+            className={clsx(
+              "flex size-[34px] items-center justify-center rounded-[8px] hover:bg-selected",
+              searching && "bg-selected text-ink",
+            )}
           >
             <Search {...iconProps} />
           </button>
@@ -123,6 +145,23 @@ export function Sidebar({
           </span>
         </div>
       </div>
+
+      {searching ? (
+        <div className="px-2 pb-1">
+          <input
+            autoFocus
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") closeSearch();
+            }}
+            placeholder="Search tasks…"
+            aria-label="Search tasks"
+            className="h-9 w-full rounded-row border border-line bg-canvas px-2.5 text-sm placeholder:text-ink-3 focus:outline-2 focus:outline-offset-[-1px] focus:outline-link"
+          />
+        </div>
+      ) : null}
 
       <nav className="flex flex-col gap-px px-2 pb-1">
         {nav.map((item) => (
@@ -143,6 +182,12 @@ export function Sidebar({
       </nav>
 
       <div className="flex-1 overflow-y-auto px-2 pt-4">
+        {needle && found.length === 0 ? (
+          <p className="px-2.5 py-2 text-sm text-ink-3">
+            No task matches “{query.trim()}”.
+          </p>
+        ) : null}
+
         {Object.entries(groups).map(([group, items]) => (
           <div key={group}>
             <div className="px-2.5 pt-2.5 pb-1.5 text-xs text-ink-3">{group}</div>

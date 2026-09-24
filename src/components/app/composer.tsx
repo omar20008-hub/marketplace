@@ -4,7 +4,7 @@ import clsx from "clsx";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { ArrowUp, CalendarClock, Grid2x2, Mic, Plus, Sparkles } from "lucide-react";
+import { ArrowUp, CalendarClock, Grid2x2, Sparkles } from "lucide-react";
 import { startTask } from "@/server/run-actions";
 
 function SendButton({ disabled }: { disabled: boolean }) {
@@ -65,14 +65,15 @@ export function Composer({
           />
 
           <div className="mt-3.5 flex items-center justify-between gap-2">
+            {/*
+              The design also draws an attach button and a dictate button here.
+              Neither is rendered: no product declares a file input, so there is
+              nothing for an attachment to become, and dictation has no contract
+              behind it either. A control that does nothing when clicked is
+              worse than one that is not there, so they arrive with the feature
+              rather than ahead of it.
+            */}
             <div className="-ml-2 flex items-center gap-1.5">
-              <button
-                type="button"
-                aria-label="Attach"
-                className="flex size-9 items-center justify-center rounded-full text-ink-2 hover:bg-fill"
-              >
-                <Plus size={18} strokeWidth={1.8} />
-              </button>
               <button
                 type="button"
                 onClick={() => setPicking((open) => !open)}
@@ -97,16 +98,7 @@ export function Composer({
                 Schedule
               </Link>
             </div>
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                aria-label="Dictate"
-                className="flex size-9 items-center justify-center rounded-full text-ink-2 hover:bg-fill"
-              >
-                <Mic size={18} strokeWidth={1.8} />
-              </button>
-              <SendButton disabled={!text.trim()} />
-            </div>
+            <SendButton disabled={!text.trim()} />
           </div>
         </div>
       </form>

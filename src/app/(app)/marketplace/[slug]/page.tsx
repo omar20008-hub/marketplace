@@ -308,9 +308,15 @@ export default async function ProductPage({
               </ButtonLink>
             )}
 
-            <ButtonLink href={`/marketplace/${product.slug}`} tone="secondary">
-              Try with sample data
-            </ButtonLink>
+            {/*
+              The design also draws a "Try with sample data" button here. It is
+              not rendered, because there is no contract behind it: nothing says
+              what the sample data would be, and a trial run would execute the
+              creator's real workflow — which for a product that writes means
+              real messages sent on the user's behalf. The Inputs and Outputs
+              sections above already answer what a trial is usually asked for,
+              which is what this product will want and what it hands back.
+            */}
             <FootNote>
               Adding pins you to v{product.version}. You choose when to upgrade.
             </FootNote>
