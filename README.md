@@ -473,13 +473,17 @@ Dockerfile that has quietly stopped matching the repository.
   need no credentials and two take an API key — those eight work end to end. The
   other four need Google Sheets or Microsoft Teams, and stop at "Connect", with
   the mock refusing exactly as Install Template would.
-- **The image has never been built.** The Dockerfile and the CI workflow are
-  written but unrun: there is no Docker daemon on the machine they were written
-  on. What *was* verified is the thing the image ships — `.next/standalone`
-  started with `node server.js`, serving `/login` and its stylesheet, redirecting
-  `/marketplace` to sign-in, and answering `/api/health` with 200, then 503 with
-  Postgres stopped, then 200 again once it came back, without a restart. The
-  first `docker build` may still need a nudge.
+- **The image has never been run by a container runtime.** It builds — CI does
+  `docker build` on every push, and that is what finally caught three faults the
+  machine it was written on could not: a Prisma client that is generated rather
+  than committed and so was absent from the build context, a `Missing
+  AUTH_SECRET` behind it, and a `public/` the Dockerfile copied but the
+  repository never had. What has been exercised is the layout the image ships,
+  assembled by hand from exactly the paths it copies and started with `node
+  server.js`: it serves `/login` and its stylesheet, redirects `/marketplace` to
+  sign-in, and answers `/api/health` with 200, then 503 with Postgres stopped,
+  then 200 again once it came back, without a restart. `docker run` itself, and
+  the `HEALTHCHECK` as Docker schedules it, are still first-time events.
 - **Error boundaries show a generic message.** `error.tsx` and
   `global-error.tsx` keep a failed render from becoming a blank page, but
   neither reports anywhere: the digest is on screen for someone to quote, and
