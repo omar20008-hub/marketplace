@@ -129,6 +129,14 @@ Playwright starts the app itself and reuses one that is already running. It
 needs a browser: `npx playwright install chromium`, or set
 `PLAYWRIGHT_CHROMIUM_PATH` if the machine already has one.
 
+`npm run start` is a production boot, so it is subject to the startup guard on
+secrets; `playwright.config.ts` generates the two endpoint tokens per run to get
+past it. It deliberately leaves `SECRETS_KEY` alone, because the seeded
+credentials were sealed with the one in `.env` and a different key would make
+them undecryptable. If the whole suite fails with "Internal Server Error" on
+every screen, a server started with the example tokens is still listening —
+`reuseExistingServer` will keep it; stop it and run again.
+
 The eleven screens have no component tests. Next's own guide recommends
 end-to-end testing for async Server Components, which is what `e2e/` is.
 

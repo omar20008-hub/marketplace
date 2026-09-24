@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { defineConfig, devices } from "@playwright/test";
 
 /**
@@ -22,6 +23,25 @@ import { defineConfig, devices } from "@playwright/test";
 
 /** Playwright's own default, unless a container already has a browser. */
 const executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH;
+
+/**
+ * `npm run start` is a production boot, and lib/env.ts refuses to come up in
+ * production on the tokens .env.example ships with — so the server the browser
+ * drives has to be given real ones or it answers 500 to everything.
+ *
+ * Generated per run rather than written down. Nothing in `e2e/` calls the
+ * endpoints these protect; they exist here only to get past the guard, and a
+ * value that lives for one run cannot be copied into a deployment by mistake.
+ *
+ * AUTH_SECRET and SECRETS_KEY are deliberately not overridden. The seeded
+ * connected-account credentials were sealed with the SECRETS_KEY in .env, and a
+ * different one would make them undecryptable — which is the guard's whole
+ * point, seen from the other side.
+ */
+const realEnoughTokens = {
+  SCHEDULE_TOKEN: randomBytes(24).toString("base64url"),
+  N8N_SYNC_TOKEN: randomBytes(24).toString("base64url"),
+};
 
 export default defineConfig({
   testDir: "./e2e",
@@ -50,5 +70,6 @@ export default defineConfig({
         url: "http://localhost:3000/login",
         reuseExistingServer: true,
         timeout: 120_000,
+        env: realEnoughTokens,
       },
 });
