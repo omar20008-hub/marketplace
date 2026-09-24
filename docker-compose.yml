@@ -1,0 +1,22 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: builder-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: builder
+      POSTGRES_PASSWORD: builder
+      POSTGRES_DB: builder
+    # 5433 on the host, because a Postgres is often already on 5432.
+    ports:
+      - "5433:5432"
+    volumes:
+      - builder-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U builder -d builder"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  builder-db-data:

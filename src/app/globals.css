@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+/*
+ * Builder design system v1 — transcribed from the design canvas (frame 1a).
+ * Black is the only action colour. Blue marks upgrades and links.
+ * Green, amber and red are reserved for readiness and run status.
+ */
+@theme {
+  /* Neutrals */
+  --color-ink: #0d0d0d;
+  --color-ink-2: #5d5d5d;
+  --color-ink-3: #8f8f8f;
+  --color-line: #e3e3e3;
+  --color-selected: #ececec;
+  --color-fill: #f4f4f4;
+  --color-sidebar: #f9f9f9;
+  --color-canvas: #ffffff;
+
+  /* Signal — link / upgrade */
+  --color-link: #1f7aec;
+  --color-link-strong: #155fc0;
+  --color-link-ink: #1f6fd6;
+  --color-link-tint: #eef4fe;
+
+  /* Signal — ready */
+  --color-ready: #1f9d5a;
+  --color-ready-ink: #137a45;
+  --color-ready-tint: #e7f6ed;
+
+  /* Signal — needs setup */
+  --color-warn: #d98a0b;
+  --color-warn-ink: #9a5b00;
+  --color-warn-tint: #fdf1dc;
+
+  /* Signal — blocked */
+  --color-danger: #d6453b;
+  --color-danger-ink: #c0342b;
+  --color-danger-tint: #fdeceb;
+  --color-danger-line: #f2c9c5;
+  --color-danger-wash: #fff7f6;
+
+  /* Radii — 10 row, 16 card, 24 modal, 28 composer, pill */
+  --radius-row: 10px;
+  --radius-card: 16px;
+  --radius-modal: 24px;
+  --radius-composer: 28px;
+
+  --font-sans: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+/*
+ * These belong in @layer base. Tailwind v4 puts utilities in a cascade layer,
+ * and unlayered rules beat layered ones whatever their specificity — an
+ * unlayered `a { color }` would paint every link blue and silently defeat the
+ * text-ink utility on it.
+ */
+@layer base {
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    /* The canvas never scrolls sideways, even at phone width. */
+    overflow-x: hidden;
+  }
+
+  a {
+    color: var(--color-link);
+    text-decoration: none;
+  }
+
+  a:hover {
+    color: var(--color-link-strong);
+  }
+
+  ::selection {
+    background: var(--color-selected);
+  }
+
+  /* Scrollbars stay quiet so the neutrals keep their weight. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line) transparent;
+  }
+}

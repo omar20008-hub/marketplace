@@ -1,0 +1,516 @@
+// Builder — platform database.
+//
+// Division of ownership (from the engineering handover reference):
+//   n8n  owns execution and operational data (the mp_* Data Tables).
+//   this owns everything that is displayed, or entered by a human.
+//
+// Product / Installation / Run below MIRROR mp_templates / mp_installations /
+// mp_runs. The mirror exists because the marketplace has to search, filter,
+// sort, rate and categorise, none of which the n8n Data Table API can do per
+// request. It is refreshed by POST /api/n8n/sync (called by MP · Publish Sync)
+// and by an on-demand pull.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+// Prisma 7 takes the connection URL from prisma.config.ts (for migrations) and
+// from the driver adapter in src/lib/db.ts (at runtime), never from here.
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------- identity
+
+enum Role {
+  USER
+  CREATOR
+  ADMIN
+}
+
+model User {
+  id           String @id @default(cuid())
+  email        String @unique
+  name         String
+  passwordHash String
+  roles        Role[] @default([USER])
+  orgName      String?
+  initials     String
+  avatarTint   String @default("#dfe7f5")
+  avatarInk    String @default("#1f4f9a")
+
+  planId   String
+  plan     Plan      @relation(fields: [planId], references: [id])
+  renewsAt DateTime?
+  credits  Int       @default(0)
+
+  // Creator-facing identity, shown on product cards.
+  creatorName     String?
+  creatorVerified Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  products      Product[]
+  installations Installation[]
+  accounts      ConnectedAccount[]
+  runs          Run[]
+  threads       Thread[]
+  reviews       Review[]
+  submissions   Submission[]
+  schedules     Schedule[]
+  auditLogs     AuditLog[]
+}
+
+// Plans, credits and quotas live only here. No workflow enforces them.
+model Plan {
+  id             String @id
+  name           String
+  monthlyRuns    Int
+  storageBytes   BigInt
+  monthlyCredits Int
+  priceMonthly   Int    @default(0)
+  users          User[]
+}
+
+// ---------------------------------------------------------------- catalogue
+
+enum ProductKind {
+  AGENT
+  WORKFLOW
+}
+
+enum ActionType {
+  READ
+  WRITE
+}
+
+// The first seven mirror mp_templates.status one for one. RESTRICTED and
+// SUSPENDED are platform-only states the design shows but that enum has no
+// room for.
+enum ProductStatus {
+  DRAFT
+  IN_REVIEW
+  PUBLISHED
+  BLOCKED_DURABILITY
+  WITHDRAWN
+  DELETED
+  SECURITY_HOLD
+  RESTRICTED
+  SUSPENDED
+}
+
+model Product {
+  id   String @id @default(cuid())
+  slug String @unique
+
+  // Keys into n8n. Null until MP · Upload & Provision has accepted the file.
+  templateId    String? @unique
+  n8nWorkflowId String?
+
+  creatorId String
+  creator   User   @relation(fields: [creatorId], references: [id])
+
+  title        String
+  summary      String // one line, shown on the card
+  description  String // "What it does"
+  needsFromYou String // "What it needs from you"
+  kind         ProductKind
+  category     String
+  actionType   ActionType    @default(READ)
+  status       ProductStatus @default(DRAFT)
+
+  // Runs on a specific model rather than the plan's included one, so a run
+  // spends credits. With none left, the product reads as "Plan limit".
+  usesCredits Boolean @default(false)
+
+  version              String   @default("1.0")
+  contentHash          String?
+  nodeCount            Int      @default(0)
+  inputSchema          Json     @default("[]")
+  outputs              Json     @default("[]")
+  requiredCredentials  String[] @default([])
+  externalHosts        String[] @default([])
+  flaggedNodes         String[] @default([])
+  credentialDurability String   @default("durable")
+
+  // Marketplace signals. Ratings are platform-owned, health is derived from runs.
+  ratingAvg   Float   @default(0)
+  ratingCount Int     @default(0)
+  runsLast30d Int     @default(0)
+  healthPct   Float   @default(100)
+  featured    Boolean @default(false)
+  trending    Boolean @default(false)
+
+  securityCheckedAt DateTime?
+  platformApproved  Boolean   @default(false)
+  restrictionNote   String?
+  rejectionReason   String?
+
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  versions      ProductVersion[]
+  requirements  Requirement[]
+  reviews       Review[]
+  installations Installation[]
+  runs          Run[]
+  submissions   Submission[]
+
+  @@index([status, category])
+}
+
+model ProductVersion {
+  id            String    @id @default(cuid())
+  productId     String
+  product       Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  version       String
+  current       Boolean   @default(false)
+  deprecated    Boolean   @default(false)
+  n8nWorkflowId String?
+  publishedAt   DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@unique([productId, version])
+}
+
+enum ProvidedBy {
+  PLATFORM // the platform supplies it, the user does nothing
+  PLATFORM_OR_OWN // platform connection, the user may switch to their own account
+  USER // the user must connect their own account
+}
+
+enum RequirementKind {
+  MODEL
+  CONNECTION
+  STORAGE
+}
+
+// One row per line of the product page's "What it needs" table.
+model Requirement {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  kind           RequirementKind
+  label          String
+  note           String? // "— publish posts"
+  credentialType String? // maps to mp_credential_types.credentialType
+  providedBy     ProvidedBy
+  sortOrder      Int             @default(0)
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  rating    Int
+  body      String
+  createdAt DateTime @default(now())
+
+  @@unique([productId, userId])
+}
+
+// ------------------------------------------------------- connected accounts
+
+enum AccountScope {
+  OWN // the user's own account
+  PLATFORM // a shared platform connection, no action needed
+}
+
+enum AccountStatus {
+  ACTIVE
+  EXPIRED
+  PENDING
+}
+
+// A reusable connection. The design lets one account serve many products, while
+// n8n creates a credential per installation, so InstallationCredential below
+// records which n8n credential each installation got from this account.
+model ConnectedAccount {
+  id             String        @id @default(cuid())
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credentialType String // e.g. facebookGraphApi
+  displayName    String // "Instagram Business"
+  initials       String
+  accountRef     String? // "nora@acme.co", "acme.slack.com"
+  scope          AccountScope  @default(OWN)
+  status         AccountStatus @default(ACTIVE)
+  reusable       Boolean       @default(true) // "Every product that asks" vs "This product only"
+
+  // Secret material never reaches the browser and is never returned by an API.
+  secretJson String?
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  links InstallationCredential[]
+
+  @@unique([userId, credentialType, accountRef])
+}
+
+// ---------------------------------------------------------- installations
+
+enum InstallationStatus {
+  PARTIAL // created here, not yet installed in n8n, a connection is missing
+  ACTIVE
+  DISABLED
+  UNINSTALLED
+}
+
+model Installation {
+  id             String  @id @default(cuid())
+  installationId String? @unique // inst_xxxxx, from MP · Install Template
+  userId         String
+  user           User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product @relation(fields: [productId], references: [id])
+
+  pinnedVersion      String
+  instanceWorkflowId String?
+  storageBackend     String             @default("platform")
+  status             InstallationStatus @default(PARTIAL)
+  failureCount       Int                @default(0)
+  favourite          Boolean            @default(false)
+  attentionNote      String?
+
+  installedAt DateTime  @default(now())
+  lastRunAt   DateTime?
+
+  credentials InstallationCredential[]
+  runs        Run[]
+  schedules   Schedule[]
+
+  @@unique([userId, productId])
+}
+
+model InstallationCredential {
+  id              String            @id @default(cuid())
+  installationId  String
+  installation    Installation      @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  accountId       String?
+  account         ConnectedAccount? @relation(fields: [accountId], references: [id])
+  credentialType  String
+  n8nCredentialId String?
+
+  @@unique([installationId, credentialType])
+}
+
+model StorageAdapter {
+  backend           String  @id // platform | drive | s3
+  displayName       String
+  adapterWorkflowId String?
+  credentialType    String?
+  supportsPresign   Boolean @default(false)
+  active            Boolean @default(false)
+}
+
+// ------------------------------------------------------------------- runs
+
+enum RunResult {
+  RUNNING
+  SUCCESS
+  PARTIAL
+  ERROR
+  DENIED
+  INCOMPLETE
+  BLOCKED
+  STOPPED
+}
+
+model Run {
+  id             String       @id @default(cuid())
+  runId          String       @unique // short handle shown in the UI: 8f2c
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  installationId String
+  installation   Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product      @relation(fields: [productId], references: [id])
+  productVersion String
+
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  durationMs Int?
+  result     RunResult @default(RUNNING)
+  errorType  String?
+  message    String?
+
+  // Cost is platform-side. mp_runs has no cost column.
+  costCredits Int     @default(0)
+  charged     Boolean @default(true)
+  chargeNote  String? // "not charged"
+
+  threadId String?
+  thread   Thread? @relation(fields: [threadId], references: [id], onDelete: SetNull)
+
+  steps     RunStep[]
+  artifacts Artifact[]
+
+  @@index([userId, startedAt])
+}
+
+enum StepStatus {
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+  SKIPPED
+}
+
+// The dispatcher returns one result with no progress. These rows are synthesised
+// by the platform from the template's declared steps so the thread can show
+// "step 3 of 4". In live mode they collapse to a single step.
+model RunStep {
+  id         String     @id @default(cuid())
+  runId      String
+  run        Run        @relation(fields: [runId], references: [id], onDelete: Cascade)
+  idx        Int
+  label      String
+  status     StepStatus @default(QUEUED)
+  durationMs Int?
+
+  @@unique([runId, idx])
+}
+
+model Artifact {
+  id          String   @id @default(cuid())
+  runId       String
+  run         Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
+  name        String
+  path        String
+  mimeType    String
+  sizeBytes   Int
+  backend     String   @default("platform")
+  objectRef   String
+  deliveredTo String[] @default([])
+  keepDays    Int      @default(90)
+  createdAt   DateTime @default(now())
+}
+
+// ------------------------------------------------------------ conversation
+
+model Thread {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages Message[]
+  runs     Run[]
+
+  @@index([userId, updatedAt])
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+}
+
+model Message {
+  id        String      @id @default(cuid())
+  threadId  String
+  thread    Thread      @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  role      MessageRole
+  body      String
+  runId     String?
+  createdAt DateTime    @default(now())
+}
+
+model Schedule {
+  id             String       @id @default(cuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  installationId String
+  installation   Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  label          String
+  cron           String
+  enabled        Boolean      @default(true)
+  nextRunAt      DateTime?
+  lastStatus     String?
+}
+
+// ------------------------------------------------- creator studio and review
+
+enum SubmissionState {
+  VALIDATING
+  VALIDATION_FAILED
+  UNDER_REVIEW
+  CHANGES_REQUESTED
+  APPROVED
+  REJECTED
+}
+
+enum CheckState {
+  PASSED
+  PARTIAL
+  FAILED
+  HUMAN_REVIEW
+  FIXED
+}
+
+// Upload & Provision returns a flat accept or reject. The six categories below
+// are the platform's presentation of that reply, filled from the strings it
+// returns.
+model Submission {
+  id              String          @id @default(cuid())
+  productId       String
+  product         Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  creatorId       String
+  creator         User            @relation(fields: [creatorId], references: [id])
+  version         String
+  state           SubmissionState @default(VALIDATING)
+  submittedAt     DateTime        @default(now())
+  checkDurationMs Int?
+
+  parsing       CheckState @default(PASSED)
+  secrets       CheckState @default(PASSED)
+  compatibility CheckState @default(PASSED)
+  security      CheckState @default(PASSED)
+  quality       CheckState @default(PASSED)
+  policy        CheckState @default(PASSED)
+
+  secretsRemoved Int       @default(0)
+  decidedById    String?
+  decidedAt      DateTime?
+  decisionReason String?
+
+  issues SubmissionIssue[]
+}
+
+enum IssueSeverity {
+  BLOCKER
+  HUMAN_REVIEW
+  FIXED
+  QUALITY
+  POLICY
+}
+
+model SubmissionIssue {
+  id           String        @id @default(cuid())
+  submissionId String
+  submission   Submission    @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  severity     IssueSeverity
+  title        String
+  detail       String
+  step         String?
+  needsAnswer  Boolean       @default(false)
+  answer       String?
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String
+  actor     User     @relation(fields: [actorId], references: [id])
+  action    String
+  subject   String
+  reason    String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
