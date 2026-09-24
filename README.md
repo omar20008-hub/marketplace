@@ -70,10 +70,24 @@ What it covers, and why those:
   reply is refused with an error naming the Form Trigger. Those tests are the
   contract that converting the three workflows has to satisfy, so switching to
   `N8N_DRIVER=live` is a configuration change rather than a debugging session.
-- **`executeRun()` and `activate()`**, against real Postgres — that every
-  refusal happens before the dispatcher is called and costs the user nothing,
-  and that an incomplete credential set records a `PARTIAL` installation
-  instead of calling Install Template.
+- **Sessions and passwords** — that a forged, unsigned, re-keyed or expired
+  cookie is refused, and that `requireRole` sends a signed-in user without the
+  role home rather than to the sign-in page. `readSession()` is the single
+  place a user id enters the system, so every ownership check downstream is
+  only as good as it refusing what it should.
+- **Every server action**, against real Postgres — each one re-checks ownership
+  against the session rather than trusting an id in the form, because an action
+  is reachable by direct POST whether or not the button that calls it is on
+  screen. So each has a test that points it at another user's row and expects
+  nothing to happen.
+- **`executeRun()` and `activate()`** — that every refusal happens before the
+  dispatcher is called and costs the user nothing, and that an incomplete
+  credential set records a `PARTIAL` installation instead of calling Install
+  Template.
+- **Review decisions** — that a blocker cannot be waved through with a good
+  enough reason, that a rejection leaves a live version live rather than
+  pulling it out from under the people running it, and that no decision lands
+  without an audit entry.
 - **`lib/cron.ts`** — the day-of-month/day-of-week OR rule, steps, month and
   year rollover, and 29 February. A wrong answer here is invisible: the
   schedule simply fires at a time nobody asked for, a week later.
@@ -81,10 +95,30 @@ What it covers, and why those:
   than once per miss, that two concurrent ticks fire a due schedule exactly
   once, and that a row with no next time is scheduled rather than fired.
 
-The eleven screens are not unit-tested. Next's own guide recommends end-to-end
-testing for async Server Components, and every bug found in this codebase so
-far surfaced by driving the built app in a browser rather than by rendering a
-component in isolation.
+### End to end
+
+```bash
+npm run build
+npm run test:e2e
+```
+
+Every bug found in this codebase so far surfaced by driving the built app in a
+browser, not by a unit test — a download link that fetched the file on hover, a
+wizard that dropped the inputs it had just collected, a schedule form that saved
+a different cadence than the one on screen. Each was about how the browser and
+the framework behave together rather than about what a function returns, so
+`e2e/` keeps that coverage instead of leaving it to whoever remembers to click.
+
+Two of those specs are regression guards, and both were checked by putting the
+bug back and watching them fail. The suite signs in, writes and deletes rows,
+and expects the seeded catalogue, so point it at a development database.
+
+Playwright starts the app itself and reuses one that is already running. It
+needs a browser: `npx playwright install chromium`, or set
+`PLAYWRIGHT_CHROMIUM_PATH` if the machine already has one.
+
+The eleven screens have no component tests. Next's own guide recommends
+end-to-end testing for async Server Components, which is what `e2e/` is.
 
 ## The n8n boundary
 
@@ -263,7 +297,8 @@ scripts/scheduler.ts     the development heartbeat
 src/components/ds/       the design system: tokens in globals.css, parts here
 src/server/*-actions.ts  every write, server-side
 src/app/(app)/           the eleven screens
-tests/                   the suite, and the script that makes its database
+tests/                   the unit suite, and the script that makes its database
+e2e/                     the browser suite: the screens, and two regressions
 ```
 
 `readinessFor()` is the reason a badge on a card can never disagree with the

@@ -13,6 +13,12 @@
 # testing
 /coverage
 
+# playwright's own output: traces and screenshots from a failed e2e run
+/test-results/
+/playwright-report/
+/blob-report/
+/.playwright/
+
 # next.js
 /.next/
 /out/
