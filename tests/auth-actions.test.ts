@@ -34,6 +34,7 @@ const { prisma } = await import("@/lib/db");
 const { hashPassword } = await import("@/lib/auth");
 const { readSession } = await import("@/lib/session");
 const { login, logout } = await import("@/server/auth-actions");
+const { resetAll } = await import("@/lib/rate-limit");
 
 const PLAN_ID = "test-plan-auth-actions";
 const COOKIE = "builder_session";
@@ -73,7 +74,7 @@ function form(values: Record<string, string>) {
 }
 
 /** Runs login and reports either the redirect or the message it refused with. */
-async function attempt(values: Record<string, string>) {
+async function attempt_(values: Record<string, string>) {
   try {
     const state = await login({}, form(values));
     return { to: null as string | null, error: state.error };
@@ -85,6 +86,7 @@ async function attempt(values: Record<string, string>) {
 
 beforeEach(async () => {
   jar.store.clear();
+  resetAll();
   await wipe();
 });
 
@@ -97,7 +99,7 @@ describe("login", () => {
   it("signs a user in and starts a session", async () => {
     const user = await makeUser("nora@acme.co");
 
-    const result = await attempt({ email: "nora@acme.co", password: "builder" });
+    const result = await attempt_({ email: "nora@acme.co", password: "builder" });
 
     expect(result.to).toBe("/");
     await expect(readSession()).resolves.toEqual({ userId: user.id });
@@ -106,7 +108,7 @@ describe("login", () => {
   it("ignores case and surrounding space in the address", async () => {
     const user = await makeUser("nora@acme.co");
 
-    const result = await attempt({ email: "  NORA@Acme.CO  ", password: "builder" });
+    const result = await attempt_({ email: "  NORA@Acme.CO  ", password: "builder" });
 
     expect(result.to).toBe("/");
     await expect(readSession()).resolves.toEqual({ userId: user.id });
@@ -114,7 +116,7 @@ describe("login", () => {
 
   it("does not ignore case in the password", async () => {
     await makeUser("nora@acme.co");
-    const result = await attempt({ email: "nora@acme.co", password: "Builder" });
+    const result = await attempt_({ email: "nora@acme.co", password: "Builder" });
 
     expect(result.to).toBeNull();
     expect(jar.store.get(COOKIE)).toBeUndefined();
@@ -124,11 +126,11 @@ describe("login", () => {
     // Otherwise the form is a way to find out who has an account here.
     await makeUser("nora@acme.co");
 
-    const wrongPassword = await attempt({
+    const wrongPassword = await attempt_({
       email: "nora@acme.co",
       password: "not-it",
     });
-    const noSuchUser = await attempt({
+    const noSuchUser = await attempt_({
       email: "nobody@example.test",
       password: "not-it",
     });
@@ -139,7 +141,7 @@ describe("login", () => {
 
   it("starts no session when it refuses", async () => {
     await makeUser("nora@acme.co");
-    await attempt({ email: "nora@acme.co", password: "not-it" });
+    await attempt_({ email: "nora@acme.co", password: "not-it" });
 
     expect(jar.store.get(COOKIE)).toBeUndefined();
     await expect(readSession()).resolves.toBeNull();
@@ -150,7 +152,7 @@ describe("login", () => {
     [{ email: "nora@acme.co", password: "" }],
     [{}],
   ])("asks for both fields when one is missing: %o", async (values) => {
-    const result = await attempt(values as Record<string, string>);
+    const result = await attempt_(values as Record<string, string>);
     expect(result.error).toBe("Enter an email and a password.");
   });
 
@@ -177,7 +179,7 @@ describe("login", () => {
       },
     });
 
-    const result = await attempt({ email: "empty@example.test", password: "" });
+    const result = await attempt_({ email: "empty@example.test", password: "" });
     expect(result.to).toBeNull();
     expect(jar.store.get(COOKIE)).toBeUndefined();
   });
@@ -186,7 +188,7 @@ describe("login", () => {
 describe("logout", () => {
   it("clears the session and sends them to sign-in", async () => {
     const user = await makeUser("nora@acme.co");
-    await attempt({ email: "nora@acme.co", password: "builder" });
+    await attempt_({ email: "nora@acme.co", password: "builder" });
     await expect(readSession()).resolves.toEqual({ userId: user.id });
 
     let destination: string | null = null;
@@ -199,5 +201,66 @@ describe("logout", () => {
 
     expect(destination).toBe("/login");
     await expect(readSession()).resolves.toBeNull();
+  });
+});
+
+describe("too many attempts", () => {
+  it("stops answering after ten wrong passwords for one address", async () => {
+    // Without this the form is a password list away from any account, and the
+    // only trace is a row of failures nobody reads.
+    await makeUser("nora@acme.co");
+
+    for (let i = 0; i < 10; i++) {
+      const attempt = await attempt_({ email: "nora@acme.co", password: `no-${i}` });
+      expect(attempt.error).toBe("That email and password do not match.");
+    }
+
+    const blocked = await attempt_({ email: "nora@acme.co", password: "no-11" });
+    expect(blocked.error).toMatch(/Too many sign-in attempts/);
+    expect(blocked.error).toMatch(/15 minutes/);
+  });
+
+  it("refuses the right password too once the limit is hit", async () => {
+    // The limit counts attempts, not failures — otherwise it is trivially
+    // bypassed by getting one right in the middle.
+    await makeUser("nora@acme.co");
+    for (let i = 0; i < 10; i++) {
+      await attempt_({ email: "nora@acme.co", password: `no-${i}` });
+    }
+
+    const blocked = await attempt_({ email: "nora@acme.co", password: "builder" });
+    expect(blocked.to).toBeNull();
+    expect(blocked.error).toMatch(/Too many sign-in attempts/);
+    expect(jar.store.get(COOKIE)).toBeUndefined();
+  });
+
+  it("counts each address on its own", async () => {
+    await makeUser("nora@acme.co");
+    await makeUser("rami@studio.co");
+
+    for (let i = 0; i < 11; i++) {
+      await attempt_({ email: "nora@acme.co", password: `no-${i}` });
+    }
+
+    // A locked-out address must not lock out everyone else.
+    const other = await attempt_({ email: "rami@studio.co", password: "builder" });
+    expect(other.to).toBe("/");
+  });
+
+  it("forgets the count once someone signs in", async () => {
+    await makeUser("nora@acme.co");
+    for (let i = 0; i < 3; i++) {
+      await attempt_({ email: "nora@acme.co", password: "wrong" });
+    }
+
+    expect((await attempt_({ email: "nora@acme.co", password: "builder" })).to).toBe("/");
+
+    // A couple of typos followed by the real password must not leave someone
+    // one attempt away from a lockout.
+    jar.store.clear();
+    for (let i = 0; i < 10; i++) {
+      const again = await attempt_({ email: "nora@acme.co", password: "wrong" });
+      expect(again.error).toBe("That email and password do not match.");
+    }
   });
 });

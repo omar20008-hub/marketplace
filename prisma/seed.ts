@@ -13,6 +13,56 @@ import { nextRun } from "../src/lib/cron";
  * A real number that can be wrong is worth more than a decorative one.
  */
 
+/**
+ * This script DELETES EVERY ROW in nineteen tables before it writes, and the
+ * accounts it creates have a password printed in this file. Both are right for
+ * a development database and catastrophic anywhere else, and `npm run setup`
+ * calls it — so one wrong command in the wrong shell is all it takes.
+ *
+ * Two things stop that. A production build refuses outright, and a database
+ * that is not on this machine refuses unless it is named explicitly. Neither
+ * check is clever; each is aimed at the accident rather than at someone
+ * determined, which is what actually happens.
+ */
+function refuseToWipeSomethingReal() {
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    throw new Error("Missing DATABASE_URL. Copy .env.example to .env first.");
+  }
+
+  const override = process.env.SEED_ANYWAY === "yes";
+
+  if (process.env.NODE_ENV === "production" && !override) {
+    throw new Error(
+      "Refusing to seed with NODE_ENV=production. This deletes every row in " +
+        "nineteen tables and creates demo accounts whose password is in this " +
+        "file. If you truly mean it, run again with SEED_ANYWAY=yes.",
+    );
+  }
+
+  let host = "";
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    throw new Error("DATABASE_URL is not a URL this script can read.");
+  }
+
+  const isLocal = ["localhost", "127.0.0.1", "::1", "postgres", "db"].includes(host);
+  if (!isLocal && !override) {
+    throw new Error(
+      `Refusing to seed "${host}", which is not this machine. Seeding deletes ` +
+        "every row in nineteen tables. If that is what you want, run again " +
+        "with SEED_ANYWAY=yes.",
+    );
+  }
+
+  if (override) {
+    console.warn("SEED_ANYWAY=yes — clearing and reseeding without the guard.");
+  }
+}
+
+refuseToWipeSomethingReal();
+
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 

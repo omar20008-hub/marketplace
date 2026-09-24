@@ -94,6 +94,18 @@ What it covers, and why those:
 - **The tick**, against real Postgres — that a missed window fires once rather
   than once per miss, that two concurrent ticks fire a due schedule exactly
   once, and that a row with no next time is scheduled rather than fired.
+- **The startup guard on secrets** — that a production boot on the example
+  `AUTH_SECRET` fails outright. Nothing downstream can catch this one: a session
+  signed with a published secret verifies perfectly, so the failure is silent,
+  total, and visible only to whoever read the repository. The same tests pin the
+  exemption for `next build`, which runs as production but bakes none of these
+  values into its output, and pin that the exemption is the build alone — the
+  boot after it refuses again.
+- **The sign-in limiter** — the attempt that is still allowed and the one that
+  is not, that the right password is refused too once the limit is hit (a limit
+  on failures is bypassed by getting one right in the middle), that one address
+  being locked out does not lock out anyone else, and that signing in
+  successfully forgets the count.
 
 ### End to end
 
@@ -331,3 +343,19 @@ badge on the page it leads to.
   to change them is to delete the schedule and make it again.
 - **Nothing retries a failed firing.** It is recorded and the schedule waits for
   its next window, rather than backing off and trying again.
+- **The sign-in limiter counts in one process.** Its windows live in memory, so
+  they are lost on restart and not shared between instances — behind two servers
+  an attacker gets two budgets. What it buys today is that the cheap attack from
+  one machine stops being cheap; moving the three calls in `lib/rate-limit.ts` to
+  Redis or Postgres is the whole of the upgrade.
+- **It counts per address, not per address and IP.** The platform sits behind a
+  proxy it does not control, and a forwarded-for header is a claim rather than a
+  fact — trusting it would let an attacker reset their own budget on every
+  request. The trade that leaves is real: someone who knows an address can keep
+  its owner out of the form for fifteen minutes. Nothing is deleted and nothing
+  is charged, which is why it is the lesser harm, not why it is harmless.
+- **Error boundaries show a generic message.** `error.tsx` and
+  `global-error.tsx` keep a failed render from becoming a blank page, but
+  neither reports anywhere: the digest is on screen for someone to quote, and
+  that is all. Wiring them to whatever collects errors in production is still
+  outstanding.
