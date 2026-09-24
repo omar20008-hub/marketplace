@@ -42,6 +42,15 @@ export const env = {
     uploadWebhookUrl: process.env.N8N_UPLOAD_WEBHOOK_URL ?? "",
     installWebhookUrl: process.env.N8N_INSTALL_WEBHOOK_URL ?? "",
     uninstallWebhookUrl: process.env.N8N_UNINSTALL_WEBHOOK_URL ?? "",
+    /**
+     * Dispatcher and Storage each gained a Webhook Trigger beside the Execute
+     * Workflow Trigger the Orchestrator calls them through, so the platform
+     * reaches them the same way it reaches everything else. The workflow ids
+     * below are what the Orchestrator still needs, and what the REST reads use.
+     */
+    dispatchWebhookUrl: process.env.N8N_DISPATCH_WEBHOOK_URL ?? "",
+    storageWebhookUrl: process.env.N8N_STORAGE_WEBHOOK_URL ?? "",
+
     dispatcherWorkflowId: process.env.N8N_DISPATCHER_WORKFLOW_ID ?? "",
     storageWorkflowId: process.env.N8N_STORAGE_WORKFLOW_ID ?? "",
     orchestratorChatUrl: process.env.N8N_ORCHESTRATOR_CHAT_URL ?? "",

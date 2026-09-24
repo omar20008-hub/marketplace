@@ -13,6 +13,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const BASE = "https://n8n.example.test/api/v1";
 const UPLOAD = "https://n8n.example.test/webhook/upload";
+const DISPATCH = "https://n8n.example.test/webhook/dispatch";
+const STORAGE = "https://n8n.example.test/webhook/storage";
 
 /**
  * env is built once at import, so each test imports the driver fresh after
@@ -25,6 +27,8 @@ async function loadDriver(overrides: Record<string, string> = {}) {
   vi.stubEnv("N8N_API_KEY", "test-api-key");
   vi.stubEnv("N8N_WEBHOOK_TOKEN", "test-webhook-token");
   vi.stubEnv("N8N_UPLOAD_WEBHOOK_URL", UPLOAD);
+  vi.stubEnv("N8N_DISPATCH_WEBHOOK_URL", DISPATCH);
+  vi.stubEnv("N8N_STORAGE_WEBHOOK_URL", STORAGE);
   vi.stubEnv("N8N_DISPATCHER_WORKFLOW_ID", "disp1");
   for (const [key, value] of Object.entries(overrides)) vi.stubEnv(key, value);
 
@@ -170,8 +174,8 @@ describe("postWebhook", () => {
   });
 });
 
-describe("runWorkflow — the Execute Workflow Trigger path", () => {
-  it("calls the run endpoint with the API key", async () => {
+describe("dispatch and storage go over a webhook too", () => {
+  it("posts a dispatch to its webhook and parses the result contract", async () => {
     fetchMock.mockResolvedValue(
       reply(JSON.stringify({ result: "success", toolOutput: "{}" })),
     );
@@ -184,37 +188,68 @@ describe("runWorkflow — the Execute Workflow Trigger path", () => {
     });
 
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe(`${BASE}/workflows/disp1/run`);
-    expect(init.headers["X-N8N-API-KEY"]).toBe("test-api-key");
+    expect(url).toBe(DISPATCH);
+    expect(init.method).toBe("POST");
+    expect(init.headers["x-platform-token"]).toBe("test-webhook-token");
+    expect(JSON.parse(init.body)).toMatchObject({ userId: "u1" });
     expect(out).toEqual({ result: "success", toolOutput: "{}" });
   });
 
-  it("never sends the API key to a webhook URL", async () => {
+  it("posts storage to its webhook", async () => {
     fetchMock.mockResolvedValue(
-      reply(JSON.stringify({ ok: false, errorText: "no" })),
+      reply(JSON.stringify({ ok: true, deleted: 1 })),
     );
     const driver = await loadDriver();
-    await driver.upload(uploadInput);
 
-    expect(fetchMock.mock.calls[0][1].headers).not.toHaveProperty("X-N8N-API-KEY");
+    await driver.storage({ installationId: "i1", operation: "delete", path: "a.txt" });
+
+    expect(fetchMock.mock.calls[0][0]).toBe(STORAGE);
   });
 
-  it("requires a base URL and an API key", async () => {
-    const driver = await loadDriver({ N8N_API_KEY: "" });
+  it("never sends the API key anywhere a webhook is called", async () => {
+    // The key controls every workflow and credential on the instance, so no
+    // user-facing path may carry it. Since dispatch and storage moved to
+    // webhooks, that is now every path a user can take.
+    fetchMock.mockResolvedValue(
+      reply(JSON.stringify({ result: "denied", reason: "no" })),
+    );
+    const driver = await loadDriver();
+
+    await driver.dispatch({ userId: "u1", installationId: "i1", args: {} });
+    await driver.upload(uploadInput).catch(() => undefined);
+
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(init.headers).not.toHaveProperty("X-N8N-API-KEY");
+    }
+  });
+
+  it("refuses an unconfigured dispatch URL rather than calling nothing", async () => {
+    const driver = await loadDriver({ N8N_DISPATCH_WEBHOOK_URL: "" });
 
     await expect(
       driver.dispatch({ userId: "u1", installationId: "i1", args: {} }),
-    ).rejects.toThrow(/N8N_BASE_URL and N8N_API_KEY/);
+    ).rejects.toThrow(/Webhook URL is not configured/);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("reports a failed run by status", async () => {
+  it("reports a failed dispatch by status", async () => {
     fetchMock.mockResolvedValue(reply("boom", { status: 500 }));
     const driver = await loadDriver();
 
     await expect(
       driver.dispatch({ userId: "u1", installationId: "i1", args: {} }),
-    ).rejects.toThrow(/n8n run replied 500/);
+    ).rejects.toThrow(/n8n replied 500/);
+  });
+
+  it("refuses an HTML reply from the dispatcher as well", async () => {
+    fetchMock.mockResolvedValue(
+      reply("<html>ok</html>", { contentType: "text/html" }),
+    );
+    const driver = await loadDriver();
+
+    await expect(
+      driver.dispatch({ userId: "u1", installationId: "i1", args: {} }),
+    ).rejects.toThrow(/Webhook Trigger/);
   });
 });
 

@@ -21,18 +21,24 @@ import {
 /**
  * The real instance.
  *
- * Two open decisions from the handover shape this file, and both are marked
- * where they bite:
+ * Both of the handover's open decisions about this file are now settled, and
+ * the instance was changed rather than the contracts:
  *
- *  1. Upload, Install and Uninstall still use a Form Trigger, which answers with
- *     an HTML page rather than JSON. postWebhook() therefore refuses a text/html
- *     reply loudly instead of half-parsing it — switch those three to a Webhook
- *     Trigger and the same code starts working unchanged.
+ *  1. Upload, Install and Uninstall were on a Form Trigger, which answers with
+ *     an HTML page rather than JSON. They are Webhook Triggers now, and this
+ *     code did not change — postWebhook() still refuses a text/html reply
+ *     loudly, which is what would catch a workflow being switched back.
  *
- *  2. Dispatcher and Storage API use an Execute Workflow Trigger and have no URL
- *     at all, so they go through the REST run endpoint below. If a parallel
- *     Webhook Trigger is added to each, replace runWorkflow() with postWebhook()
- *     and nothing else changes.
+ *  2. Dispatcher and Storage API were reachable only as sub-workflows, so they
+ *     went through a REST run endpoint with the API key. Each has a parallel
+ *     Webhook Trigger now, beside the Execute Workflow Trigger the Orchestrator
+ *     still uses, so both go over a webhook like everything else.
+ *
+ * What that second change bought is worth naming: the API key is no longer on
+ * any path a user can take. It is read only by the two REST helpers below,
+ * which degrade quietly, so an instance can be driven with a token scoped to
+ * these five workflows rather than a key that controls every workflow and
+ * credential on it.
  */
 
 class N8nError extends Error {
@@ -82,38 +88,6 @@ async function postWebhook<T>(url: string, body: unknown): Promise<T> {
   }
 }
 
-/**
- * POST /workflows/{id}/run — the only way to reach a workflow whose trigger is
- * Execute Workflow. Uses the API key, so it must stay server-side.
- */
-async function runWorkflow<T>(
-  workflowId: string,
-  inputData: unknown,
-): Promise<T> {
-  if (!env.n8n.baseUrl || !env.n8n.apiKey) {
-    throw new N8nError("N8N_BASE_URL and N8N_API_KEY are required for live mode");
-  }
-
-  const response = await fetch(
-    `${env.n8n.baseUrl}/workflows/${workflowId}/run`,
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "X-N8N-API-KEY": env.n8n.apiKey,
-      },
-      body: JSON.stringify({ workflowData: null, runData: {}, inputData }),
-      cache: "no-store",
-    },
-  );
-
-  const text = await response.text();
-  if (!response.ok) {
-    throw new N8nError(`n8n run replied ${response.status}`, text.slice(0, 500));
-  }
-  return JSON.parse(text) as T;
-}
-
 async function restGet<T>(path: string): Promise<T> {
   const response = await fetch(`${env.n8n.baseUrl}${path}`, {
     headers: { "X-N8N-API-KEY": env.n8n.apiKey },
@@ -142,13 +116,24 @@ export const liveDriver: N8nDriver = {
     return postWebhook<UninstallOutput>(env.n8n.uninstallWebhookUrl, input);
   },
 
+  /**
+   * Both of these now go over a webhook, which is what the second open decision
+   * anticipated: "If a parallel Webhook Trigger is added to each, replace
+   * runWorkflow() with postWebhook() and nothing else changes." That trigger was
+   * added, so this is that change.
+   *
+   * It also takes the API key off the critical path. Nothing a user does needs
+   * it any more — only the two REST reads below, which degrade quietly — so an
+   * instance can be driven with a token scoped to these five workflows instead
+   * of a key that controls every workflow and credential on it.
+   */
   async dispatch(input: DispatchInput) {
-    const raw = await runWorkflow<unknown>(env.n8n.dispatcherWorkflowId, input);
+    const raw = await postWebhook<unknown>(env.n8n.dispatchWebhookUrl, input);
     return DispatchOutput.parse(raw);
   },
 
   async storage(input: StorageInput): Promise<StorageOutput> {
-    return runWorkflow<StorageOutput>(env.n8n.storageWorkflowId, input);
+    return postWebhook<StorageOutput>(env.n8n.storageWebhookUrl, input);
   },
 
   async chat(input: ChatInput): Promise<ChatOutput> {
