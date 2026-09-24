@@ -324,6 +324,53 @@ e2e/                     the browser suite: the screens, and two regressions
 `readinessFor()` is the reason a badge on a card can never disagree with the
 badge on the page it leads to.
 
+## Deploying
+
+```bash
+docker build -t builder .
+docker run --rm -p 3000:3000 --env-file .env.production builder
+```
+
+Three stages, so the image that ships carries no compiler, no Prisma CLI, no
+test runner and no source — `output: "standalone"` traces what each route
+actually imports, which is 89 MB against the gigabyte in `node_modules`. It runs
+as a non-root user and reports its own health.
+
+Nothing is baked in. Every secret arrives as an environment variable at run
+time, and `lib/env.ts` refuses to start on a missing one or on a value from
+`.env.example`. A build argument would be worse than useless: it is recorded in
+the image's own history, where anyone who can pull the image can read it back.
+
+One sharp edge is worth knowing about, because it is invisible: `next build`
+copies the project's `.env` into `.next/standalone`, and the generated
+`server.js` loads it. A `.env` in the build context is therefore carried into
+the final image and overrides the environment the container is given. That is
+why `.dockerignore` excludes it — a load-bearing line, not housekeeping — and
+why the runner stage deletes those files again. The same applies to deploying
+`.next/standalone` by any other means: check what is in it first.
+
+**Migrations are not run by the container**, deliberately. Two instances
+starting at once would race, and a rollback would leave the schema ahead of the
+code. `npx prisma migrate deploy` belongs in the release step that precedes the
+new containers.
+
+**`/api/health`** runs `SELECT 1` and answers 503 if it cannot. A bare 200 from
+the web process would say only that Node is running, which is the one thing that
+is almost never the problem. It deliberately does not check n8n: n8n being down
+stops runs and the readiness badges say so, but it does not stop this instance
+serving the catalogue or someone's history, and restarting would not fix it —
+failing the probe on it would turn one outage into a restart loop on top of an
+outage.
+
+**Something must call `/api/schedules/tick`** once a minute, with
+`SCHEDULE_TOKEN` in an `x-schedule-token` header. Nothing schedules itself: see
+[Schedules](#schedules).
+
+`.github/workflows/ci.yml` runs lint, typecheck, the unit suite against a real
+Postgres service container, the build, and the twelve browser specs on every
+push, and builds the image in a job of its own — which is what catches a
+Dockerfile that has quietly stopped matching the repository.
+
 ## Honest gaps
 
 - **Seeded counts are real, not decorative.** The design mock says "168 results"
@@ -362,6 +409,13 @@ badge on the page it leads to.
   request. The trade that leaves is real: someone who knows an address can keep
   its owner out of the form for fifteen minutes. Nothing is deleted and nothing
   is charged, which is why it is the lesser harm, not why it is harmless.
+- **The image has never been built.** The Dockerfile and the CI workflow are
+  written but unrun: there is no Docker daemon on the machine they were written
+  on. What *was* verified is the thing the image ships — `.next/standalone`
+  started with `node server.js`, serving `/login` and its stylesheet, redirecting
+  `/marketplace` to sign-in, and answering `/api/health` with 200, then 503 with
+  Postgres stopped, then 200 again once it came back, without a restart. The
+  first `docker build` may still need a nudge.
 - **Error boundaries show a generic message.** `error.tsx` and
   `global-error.tsx` keep a failed render from becoming a blank page, but
   neither reports anywhere: the digest is on screen for someone to quote, and

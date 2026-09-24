@@ -1,0 +1,31 @@
+# What must never reach the build context.
+#
+# The .env line is not housekeeping. `next build` copies the project's .env into
+# .next/standalone, and the generated server.js loads it — so a .env in the
+# context does not merely sit in an intermediate layer, it is carried into the
+# final image and overrides the environment the container is given, with this
+# machine's AUTH_SECRET and SECRETS_KEY in it. The Dockerfile deletes those
+# files again in the runner stage, so it takes both of these going wrong.
+#
+# The rest is size: the context is sent to the daemon before anything runs, and
+# node_modules is most of a gigabyte the build discards immediately.
+
+.env
+.env.*
+!.env.example
+
+node_modules
+.next
+.git
+.github
+
+test-results
+playwright-report
+e2e
+
+npm-debug.log*
+yarn-error.log*
+.DS_Store
+Dockerfile
+.dockerignore
+README.md

@@ -1,0 +1,119 @@
+# Everything a reviewer would otherwise have to take on trust.
+#
+# The suite needs a real Postgres — the tests that exercise the server actions
+# run against one on purpose, because the rule each of them checks is ownership,
+# and an in-memory fake would only be checking the fake. So the job gets a
+# service container rather than a mock.
+#
+# One job, not four. Lint, typecheck, unit and end-to-end all need the same
+# install and the same generated Prisma client, and splitting them would spend
+# more time reinstalling than running. If the suite ever grows past a few
+# minutes, the end-to-end half is the piece worth separating.
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+# A second push to the same branch makes the first one's answer irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: builder
+          POSTGRES_PASSWORD: builder
+          POSTGRES_DB: builder
+        ports:
+          - 5433:5432
+        # Without the health check the steps below start before Postgres is
+        # listening, and the failure looks like a broken test rather than a
+        # race.
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://builder:builder@localhost:5433/builder?schema=public
+      # Fixed values, and safe to write down: this database is created and
+      # destroyed with the job. tests/setup.ts overrides the secrets anyway;
+      # these are here for the steps that run outside vitest.
+      AUTH_SECRET: ci-auth-secret-not-used-for-anything-real-0123456789
+      SECRETS_KEY: 00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff
+      N8N_DRIVER: mock
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # postinstall runs `prisma generate`, so the client exists after this.
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Migrate
+        run: npx prisma migrate deploy
+
+      - name: Create and migrate the test database
+        run: npm run test:db:setup
+
+      - name: Unit tests
+        run: npm test
+
+      # The end-to-end specs expect the seeded catalogue: they sign in as
+      # nora@acme.co and open products by name.
+      - name: Seed
+        run: npm run db:seed
+
+      - name: Build
+        run: npm run build
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-end tests
+        run: npm run test:e2e
+
+      # Only on failure, and only then: traces are large, and a green run has
+      # nothing in them anyone will open.
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7
+
+  # Separate job: it needs no database and no Node, so it starts immediately
+  # rather than waiting behind the suite.
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Built, not pushed. What this catches is a Dockerfile that stopped
+      # matching the repository — a renamed script, a file that moved out of the
+      # build context — which is exactly the failure that otherwise surfaces
+      # during a release.
+      - name: Build the production image
+        run: docker build -t builder:${{ github.sha }} .
