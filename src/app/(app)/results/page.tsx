@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import {
   Badge,
-  ButtonLink,
+  ButtonAnchor,
   Card,
   Divider,
   FootNote,
@@ -192,9 +192,14 @@ export default async function ResultsPage({
                         {item.productVersion} · {formatDay(file.createdAt)}
                       </div>
                     </div>
-                    <ButtonLink href={`/api/artifacts/${file.id}`} size="sm">
+                    <ButtonAnchor
+                      href={`/api/artifacts/${file.id}`}
+                      target="_blank"
+                      rel="noopener"
+                      size="sm"
+                    >
                       Open
-                    </ButtonLink>
+                    </ButtonAnchor>
                   </Card>
                 )),
               )}
@@ -258,17 +263,23 @@ export default async function ResultsPage({
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <ButtonLink href={`/api/artifacts/${artifact.id}`} size="sm">
+                    <ButtonAnchor
+                      href={`/api/artifacts/${artifact.id}`}
+                      target="_blank"
+                      rel="noopener"
+                      size="sm"
+                    >
                       Open
-                    </ButtonLink>
-                    <ButtonLink
+                    </ButtonAnchor>
+                    <ButtonAnchor
                       href={`/api/artifacts/${artifact.id}?download=1`}
+                      download={artifact.name}
                       tone="secondary"
                       size="sm"
                     >
                       <Download size={15} strokeWidth={1.8} />
                       Download
-                    </ButtonLink>
+                    </ButtonAnchor>
                     <button
                       type="button"
                       className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] text-ink-2 hover:text-danger-ink"

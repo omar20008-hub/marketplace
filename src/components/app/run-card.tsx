@@ -2,6 +2,7 @@ import { CircleAlert, Download, FileSpreadsheet } from "lucide-react";
 import {
   Badge,
   Button,
+  ButtonAnchor,
   ButtonLink,
   Card,
   Input,
@@ -244,17 +245,23 @@ export function RunCard({ run }: { run: RunCardData }) {
               </div>
             </div>
             <div className="flex gap-2">
-              <ButtonLink href={`/api/artifacts/${artifact.id}`} size="sm">
+              <ButtonAnchor
+                href={`/api/artifacts/${artifact.id}`}
+                target="_blank"
+                rel="noopener"
+                size="sm"
+              >
                 Open
-              </ButtonLink>
-              <ButtonLink
+              </ButtonAnchor>
+              <ButtonAnchor
                 href={`/api/artifacts/${artifact.id}?download=1`}
+                download={artifact.name}
                 tone="secondary"
                 size="sm"
               >
                 <Download size={15} strokeWidth={1.8} />
                 Download
-              </ButtonLink>
+              </ButtonAnchor>
             </div>
           </div>
           <div className="border-t border-dashed border-selected pt-2.5">

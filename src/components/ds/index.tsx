@@ -65,6 +65,23 @@ export function ButtonLink({
   return <Link className={buttonClass(tone, size, className)} {...rest} />;
 }
 
+/**
+ * The same pill, as a plain anchor.
+ *
+ * For a URL that answers with a file rather than a route: `next/link`
+ * prefetches on hover, so a Link to `/api/artifacts/…` would fetch the whole
+ * file just because the pointer passed over it, throw the bytes away — they are
+ * not an RSC payload — and fetch them again on the click.
+ */
+export function ButtonAnchor({
+  tone = "primary",
+  size = "md",
+  className,
+  ...rest
+}: ComponentProps<"a"> & { tone?: ButtonTone; size?: ButtonSize }) {
+  return <a className={buttonClass(tone, size, className)} {...rest} />;
+}
+
 // ------------------------------------------------------------------ badges
 
 export type BadgeTone =
