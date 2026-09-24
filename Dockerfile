@@ -30,12 +30,28 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# The Prisma client is generated code, and .gitignore keeps it out of the
+# repository — so it is not in the build context either, and lib/db.ts imports
+# it from src/generated. The deps stage did generate it, but into that stage's
+# own src/, and only node_modules is carried forward. Generating here, after the
+# source arrives, is the version that cannot be undone by the COPY above.
+RUN npx prisma generate
+
 # `next build` sets NODE_ENV=production itself and then imports every route to
 # collect page data. lib/env.ts exempts that phase, so the build needs no real
 # secrets — but it does need the variables to parse, and DATABASE_URL is read at
 # module scope. This value is never connected to: nothing in a build talks to a
 # database, and the running container is given its own.
+#
+# The build-phase exemption covers whether a secret is *strong*, not whether it
+# is *there*: lib/env.ts still refuses to construct without one, and a route
+# that imports it fails to collect its page data. So both are present here and
+# both are obvious placeholders. Neither reaches the output — verified by
+# grepping the built chunks for them — and the runner stage is given the real
+# ones as environment variables.
 ENV DATABASE_URL="postgresql://build:build@localhost:5432/build"
+ENV AUTH_SECRET="build-time-placeholder-never-used-to-sign-anything"
+ENV SECRETS_KEY="0000000000000000000000000000000000000000000000000000000000000000"
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
