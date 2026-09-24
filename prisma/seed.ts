@@ -2,6 +2,7 @@ import "dotenv/config";
 import bcrypt from "bcryptjs";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma";
+import { nextRun } from "../src/lib/cron";
 
 /**
  * Seeds the catalogue, workspace, runs, submissions and review queue that the
@@ -707,13 +708,52 @@ async function main() {
   }
 
   // ------------------------------------------------------------- schedules
+  // Every scheduled product declares at least one required input, and a firing
+  // has nobody to ask, so the values are stored on the schedule. Without them
+  // each of these would come back "needs input" the moment the tick reached it.
+  // nextRunAt is computed rather than left null so the schedules screen has a
+  // real next time to show before any tick has run.
+  const scheduleSpecs = [
+    {
+      slug: "weekly-sales-digest",
+      label: "Every Sunday 18:00 UTC",
+      cron: "0 18 * * 0",
+      args: { channel: "#sales" },
+      lastStatus: "Blocked · connection",
+    },
+    {
+      slug: "lead-enrichment",
+      label: "Every day 07:00 UTC",
+      cron: "0 7 * * *",
+      args: { sheetUrl: "https://docs.google.com/spreadsheets/d/seed-leads" },
+      lastStatus: "Succeeded",
+    },
+    {
+      slug: "invoice-chaser",
+      label: "Weekdays 11:30 UTC",
+      cron: "30 11 * * 1-5",
+      args: { olderThanDays: 30 },
+      lastStatus: "Failed",
+    },
+    {
+      slug: "inbox-triage-agent",
+      label: "Every hour",
+      cron: "0 * * * *",
+      args: { folder: "Inbox" },
+      lastStatus: "Succeeded",
+    },
+  ];
+
   await prisma.schedule.createMany({
-    data: [
-      { userId: nora.id, installationId: installations["weekly-sales-digest"].id, label: "Every Sunday 18:00", cron: "0 18 * * 0", lastStatus: "Blocked · connection" },
-      { userId: nora.id, installationId: installations["lead-enrichment"].id, label: "Daily 07:00", cron: "0 7 * * *", lastStatus: "Succeeded" },
-      { userId: nora.id, installationId: installations["invoice-chaser"].id, label: "Weekdays 11:30", cron: "30 11 * * 1-5", lastStatus: "Failed" },
-      { userId: nora.id, installationId: installations["inbox-triage-agent"].id, label: "Every hour", cron: "0 * * * *", lastStatus: "Succeeded" },
-    ],
+    data: scheduleSpecs.map((spec) => ({
+      userId: nora.id,
+      installationId: installations[spec.slug].id,
+      label: spec.label,
+      cron: spec.cron,
+      args: spec.args,
+      lastStatus: spec.lastStatus,
+      nextRunAt: nextRun(spec.cron),
+    })),
   });
 
   // ------------------------------------------------------------------ runs

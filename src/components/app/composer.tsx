@@ -1,6 +1,7 @@
 "use client";
 
 import clsx from "clsx";
+import Link from "next/link";
 import { useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { ArrowUp, CalendarClock, Grid2x2, Mic, Plus, Sparkles } from "lucide-react";
@@ -85,13 +86,16 @@ export function Composer({
                 <Grid2x2 size={15} strokeWidth={1.8} />
                 {pinnedTitle ?? "Pick a product"}
               </button>
-              <button
-                type="button"
+              {/* A schedule needs the product's inputs up front, which this
+                  box has nowhere to put, so it hands over to the screen that
+                  collects them rather than half-collecting them here. */}
+              <Link
+                href="/results?view=schedules"
                 className="flex h-[34px] items-center gap-1.5 rounded-full border border-line px-3 text-[13px] whitespace-nowrap text-ink-2 hover:bg-fill"
               >
                 <CalendarClock size={15} strokeWidth={1.8} />
                 Schedule
-              </button>
+              </Link>
             </div>
             <div className="flex items-center gap-1.5">
               <button

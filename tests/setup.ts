@@ -23,6 +23,8 @@ process.env.AUTH_SECRET = "test-auth-secret-not-used-for-anything-real";
 process.env.SECRETS_KEY =
   "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
 
+process.env.SCHEDULE_TOKEN = "test-schedule-token";
+
 process.env.N8N_DRIVER = "mock";
 process.env.N8N_WEBHOOK_TOKEN = "test-webhook-token";
 process.env.N8N_SYNC_TOKEN = "test-sync-token";

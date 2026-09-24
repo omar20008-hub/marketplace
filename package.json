@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
+    "scheduler": "tsx scripts/scheduler.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:db:setup": "tsx tests/create-test-db.ts",

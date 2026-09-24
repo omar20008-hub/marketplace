@@ -24,6 +24,15 @@ export const env = {
   /** Encrypts connected-account credentials at rest. See lib/secrets.ts. */
   secretsKey: required("SECRETS_KEY", process.env.SECRETS_KEY),
 
+  /**
+   * Authorises the scheduler heartbeat at POST /api/schedules/tick. Whatever
+   * calls it — a cron daemon, a platform cron, an n8n Schedule Trigger — sends
+   * this as x-schedule-token. Empty disables the endpoint outright rather than
+   * leaving it open, so a deployment that forgets to set it does not hand
+   * anyone the ability to spend other people's plan limits.
+   */
+  scheduleToken: process.env.SCHEDULE_TOKEN ?? "",
+
   n8n: {
     driver: (process.env.N8N_DRIVER === "live" ? "live" : "mock") as N8nDriver,
     baseUrl: process.env.N8N_BASE_URL ?? "",

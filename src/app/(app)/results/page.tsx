@@ -22,6 +22,8 @@ import {
   formatDuration,
   formatDay,
 } from "@/lib/readiness";
+import { fields as inputFields } from "@/server/run-engine";
+import { SchedulesPanel } from "@/components/app/schedules-panel";
 import type { RunResult } from "@/generated/prisma";
 
 export const metadata = { title: "Results · Builder" };
@@ -50,7 +52,7 @@ export default async function ResultsPage({
 
   const user = await requireUser();
 
-  const [runs, schedules, storage] = await Promise.all([
+  const [runs, schedules, schedulable, storage] = await Promise.all([
     prisma.run.findMany({
       where: {
         userId: user.id,
@@ -63,6 +65,12 @@ export default async function ResultsPage({
     prisma.schedule.findMany({
       where: { userId: user.id },
       include: { installation: { include: { product: true } } },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.installation.findMany({
+      where: { userId: user.id, status: { in: ["ACTIVE", "PARTIAL"] } },
+      include: { product: true },
+      orderBy: { installedAt: "asc" },
     }),
     prisma.artifact.aggregate({
       where: { run: { userId: user.id } },
@@ -212,30 +220,27 @@ export default async function ResultsPage({
           ) : null}
 
           {view === "schedules" ? (
-            <Table>
-              <thead>
-                <tr>
-                  <Th>Product</Th>
-                  <Th>When</Th>
-                  <Th>Last status</Th>
-                  <Th>State</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {schedules.map((schedule) => (
-                  <tr key={schedule.id}>
-                    <Td>{schedule.installation.product.title}</Td>
-                    <Td className="text-ink-2">{schedule.label}</Td>
-                    <Td className="text-ink-2">{schedule.lastStatus ?? "—"}</Td>
-                    <Td>
-                      <Badge tone={schedule.enabled ? "ready" : "neutral"}>
-                        {schedule.enabled ? "On" : "Paused"}
-                      </Badge>
-                    </Td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
+            <SchedulesPanel
+              schedules={schedules.map((schedule) => ({
+                id: schedule.id,
+                label: schedule.label,
+                enabled: schedule.enabled,
+                productTitle: schedule.installation.product.title,
+                lastStatus: schedule.lastStatus,
+                nextRunAt: schedule.nextRunAt ? formatDate(schedule.nextRunAt) : null,
+                lastRunAt: schedule.lastRunAt ? formatDate(schedule.lastRunAt) : null,
+              }))}
+              installations={schedulable.map((installation) => ({
+                id: installation.id,
+                productTitle: installation.product.title,
+                fields: inputFields(installation.product).map((field) => ({
+                  name: field.name,
+                  label: field.label,
+                  type: field.type,
+                  required: field.required !== false,
+                })),
+              }))}
+            />
           ) : null}
         </div>
 

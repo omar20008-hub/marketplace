@@ -56,7 +56,7 @@ keep in step. `TEST_DATABASE_URL` overrides it. The tests that exercise the
 server actions clear their tables between cases, which is the whole reason they
 are kept off the development database.
 
-What it covers, and why those four:
+What it covers, and why those:
 
 - **`readinessFor()`** — the one function every badge on every screen goes
   through. Each case is one of the distinctions it draws, and the precedence
@@ -74,6 +74,12 @@ What it covers, and why those four:
   refusal happens before the dispatcher is called and costs the user nothing,
   and that an incomplete credential set records a `PARTIAL` installation
   instead of calling Install Template.
+- **`lib/cron.ts`** — the day-of-month/day-of-week OR rule, steps, month and
+  year rollover, and 29 February. A wrong answer here is invisible: the
+  schedule simply fires at a time nobody asked for, a week later.
+- **The tick**, against real Postgres — that a missed window fires once rather
+  than once per miss, that two concurrent ticks fire a due schedule exactly
+  once, and that a row with no next time is scheduled rather than fired.
 
 The eleven screens are not unit-tested. Next's own guide recommends end-to-end
 testing for async Server Components, and every bug found in this codebase so
@@ -114,6 +120,58 @@ list shape `src/lib/n8n/live.ts`:
 and credential on it. It is read in `src/lib/env.ts`, which is `server-only`, so
 importing it from a Client Component is a build error rather than a leak.
 
+## Schedules
+
+A schedule is a row in `Schedule`: an installation, a five-field cron, and the
+inputs each firing runs with.
+
+**Why the inputs are stored.** Every product declares what it needs, and a
+firing at 07:00 has nobody to ask. So the schedule form collects whatever the
+product marks required, once, and `executeRun()` gets it on every firing.
+Without that, each run would come straight back as "needs input".
+
+**Times are UTC**, and the labels say so. There is no per-user time zone: that
+needs a column and a decision about what a daily 02:30 means on the night a zone
+skips 02:30 altogether, and neither is guessed at here.
+
+**Nothing in the app keeps time.** Next has no durable timer — an interval in
+the server dies with the process and fires twice behind a load balancer — so
+something outside calls the heartbeat, about once a minute:
+
+```bash
+curl -fsS -X POST https://example.com/api/schedules/tick \
+  -H "x-schedule-token: $SCHEDULE_TOKEN"
+```
+
+A cron daemon, a platform cron, a GitHub Action or an n8n Schedule Trigger all
+do equally well; the endpoint does not care which. It takes no session, because
+each schedule's owner is read from its own row — which is exactly why it takes
+`SCHEDULE_TOKEN`, and why an empty token disables it rather than leaving it
+open. In development, `npm run scheduler` polls it for you and prints what each
+tick did.
+
+Calling it more often than the schedules need is harmless: a schedule that is
+not due is not touched.
+
+**A missed window fires once, not once per miss.** The next due time is computed
+from now, not from the time that was missed, so a daily schedule after a week of
+downtime runs once and resumes. Catching up seven times would be a surprise; on
+an hourly schedule it would be a stampede.
+
+**Two ticks cannot double-fire one schedule.** Claiming a schedule is a
+compare-and-swap on `nextRunAt`, so of two overlapping ticks one takes it and
+the other moves on.
+
+**A firing is refused the same way a person would be refused.** The tick decides
+nothing itself: it hands every firing to `executeRun()`, the same path as the
+Run button, so a schedule meets the same readiness check, plan limit and
+argument validator, and a refused run costs nothing.
+
+`lib/cron.ts` reads a documented subset and throws on anything outside it,
+including the Quartz extensions (`L`, `W`, `#`, `?`) and six-field expressions.
+A schedule that cannot be read can never fire, so the tick disables it and puts
+the reason in `lastStatus` rather than failing quietly once a minute forever.
+
 ## Credentials at rest
 
 The connect screen promises the user that their keys live "in an encrypted vault
@@ -152,7 +210,9 @@ the n8n data tables. Each one is platform-side, and each one is marked in
   refuses over-quota runs here, before the dispatcher is called, so a blocked run
   costs nothing.
 - **Ratings and reviews.** No table exists for them.
-- **Schedules.** There is no per-user scheduling in the contracts.
+- **Schedules.** There is no per-user scheduling in the contracts, so the
+  cadence, the saved inputs and the record of each firing all live here. See
+  **Schedules** below.
 - **Versions.** `mp_templates.version` is always 1 and there is no version chain;
   `ProductVersion` supplies the "pinned to v4.1" behaviour the design promises.
 - **Agent vs Workflow, and categories.** `mp_templates` has `actionType` and
@@ -196,6 +256,10 @@ prisma/schema.prisma     the platform database, with the boundary annotated
 prisma/seed.ts           the catalogue, workspace, runs and review queue
 src/lib/n8n/             contracts, the driver interface, mock and live
 src/lib/readiness.ts     "does it work for me", computed in exactly one place
+src/lib/cron.ts          when a schedule next comes round
+src/server/run-engine.ts starting a run — not an action module, deliberately
+src/server/scheduler.ts  the tick: run whatever is due
+scripts/scheduler.ts     the development heartbeat
 src/components/ds/       the design system: tokens in globals.css, parts here
 src/server/*-actions.ts  every write, server-side
 src/app/(app)/           the eleven screens
@@ -218,3 +282,9 @@ badge on the page it leads to.
   refuses those types exactly as Install Template does, rather than pretending.
 - **Storage destinations other than the platform are hidden, not disabled.** The
   adapters are `pending` in `mp_storage_adapters`, so they are not offered.
+- **Schedules run in UTC only.** The labels say so rather than implying local
+  time, but someone outside UTC has to do the arithmetic themselves.
+- **A schedule's saved inputs are fixed once set.** There is no edit — the way
+  to change them is to delete the schedule and make it again.
+- **Nothing retries a failed firing.** It is recorded and the schedule waits for
+  its next window, rather than backing off and trying again.

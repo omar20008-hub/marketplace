@@ -422,6 +422,9 @@ model Message {
   createdAt DateTime    @default(now())
 }
 
+/// Per-user scheduling, which the workflow contracts have no answer for: there
+/// is no schedule table in n8n's side of the boundary, so the cadence, the
+/// saved inputs and the record of what happened all live here.
 model Schedule {
   id             String       @id @default(cuid())
   userId         String
@@ -429,10 +432,26 @@ model Schedule {
   installationId String
   installation   Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
   label          String
+  /// Five-field cron, read in UTC. See lib/cron.ts for the supported subset.
   cron           String
   enabled        Boolean      @default(true)
-  nextRunAt      DateTime?
-  lastStatus     String?
+
+  /// The values a scheduled run is started with. A run cannot stop to ask, so
+  /// whatever the product declares as required is collected once, here, when
+  /// the schedule is made — otherwise every firing would come back INCOMPLETE.
+  args Json @default("{}")
+
+  /// The next firing due, computed from `cron` whenever the schedule changes or
+  /// fires. Null means it has never been computed; the tick fills it in rather
+  /// than treating it as "overdue since the epoch" and firing at once.
+  nextRunAt  DateTime?
+  lastRunAt  DateTime?
+  lastStatus String?
+  lastRunId  String?
+
+  createdAt DateTime @default(now())
+
+  @@index([enabled, nextRunAt])
 }
 
 // ------------------------------------------------- creator studio and review
