@@ -43,6 +43,43 @@ Password for both: `builder`.
 If you already run Postgres and would rather use it, point `DATABASE_URL` at it
 and skip `db:up`.
 
+## Tests
+
+```bash
+npm run test:db:setup     # once: creates <your database>_test and migrates it
+npm test
+```
+
+The suite runs against the mock driver and a database of its own, derived from
+`DATABASE_URL` by appending `_test` so there is no second connection string to
+keep in step. `TEST_DATABASE_URL` overrides it. The tests that exercise the
+server actions clear their tables between cases, which is the whole reason they
+are kept off the development database.
+
+What it covers, and why those four:
+
+- **`readinessFor()`** — the one function every badge on every screen goes
+  through. Each case is one of the distinctions it draws, and the precedence
+  between them: suspended beats the plan limit, an expired account reads as
+  blocked once installed but as a setup step before that.
+- **The mock driver** — one test per rule the README claims it enforces. The
+  claim that a screen behaving correctly against the mock behaves correctly
+  against the instance is only worth something if the mock really does refuse
+  what the instance refuses.
+- **The live driver**, with `fetch` stubbed — above all, that a `text/html`
+  reply is refused with an error naming the Form Trigger. Those tests are the
+  contract that converting the three workflows has to satisfy, so switching to
+  `N8N_DRIVER=live` is a configuration change rather than a debugging session.
+- **`executeRun()` and `activate()`**, against real Postgres — that every
+  refusal happens before the dispatcher is called and costs the user nothing,
+  and that an incomplete credential set records a `PARTIAL` installation
+  instead of calling Install Template.
+
+The eleven screens are not unit-tested. Next's own guide recommends end-to-end
+testing for async Server Components, and every bug found in this codebase so
+far surfaced by driving the built app in a browser rather than by rendering a
+component in isolation.
+
 ## The n8n boundary
 
 `N8N_DRIVER` decides which implementation of the eight contracts is loaded.
@@ -162,6 +199,7 @@ src/lib/readiness.ts     "does it work for me", computed in exactly one place
 src/components/ds/       the design system: tokens in globals.css, parts here
 src/server/*-actions.ts  every write, server-side
 src/app/(app)/           the eleven screens
+tests/                   the suite, and the script that makes its database
 ```
 
 `readinessFor()` is the reason a badge on a card can never disagree with the
