@@ -338,6 +338,49 @@ badge on the page it leads to.
 
 ## Deploying
 
+The order matters, and step 3 is the one that is easy to miss: **there is no
+sign-up flow**, and `db:seed` refuses to run in production, so a fresh database
+comes up with nobody in it and no way in.
+
+1. **A database, then the schema.** Point `DATABASE_URL` at it and run
+   `npm run release` (`prisma migrate deploy`). This runs from a checkout
+   against the production database rather than from inside the container: two
+   instances starting at once would race, and a rollback would leave the schema
+   ahead of the code. It is also why the image carries no Prisma CLI.
+2. **The environment.** Copy `.env.production.example` into the host's settings.
+   Only `DATABASE_URL`, `AUTH_SECRET` and `SECRETS_KEY` are mandatory — the rest
+   default to empty, and empty is a safe answer for each of them. Back up
+   `SECRETS_KEY` somewhere separate first: losing it does not lock you out of
+   the platform, it makes every credential your users have connected
+   permanently unreadable.
+3. **The first account.**
+
+   ```bash
+   ADMIN_EMAIL=you@example.com ADMIN_NAME="Your Name" \
+   ADMIN_PASSWORD='...' npm run create-admin
+   ```
+
+   A one-off operator action rather than an endpoint that exists forever for the
+   sake of a single use. It creates a `Free` plan if none exists, makes the
+   account `USER` and `ADMIN`, reads the password from the environment so it
+   never reaches a shell history or a job log, and refuses an address that
+   already has an account — silently resetting a password from a deploy script
+   is how an account gets taken over by whoever can run jobs.
+4. **Deploy the image**, with `N8N_DRIVER=mock` for the first one. Everything
+   renders and runs complete against the in-process fake, so a wrong webhook URL
+   cannot be mistaken for a broken platform. Switch to `live` once one round
+   trip has been seen to work.
+5. **Point something at `/api/schedules/tick`** every minute, with
+   `SCHEDULE_TOKEN` in an `x-schedule-token` header. Until then no schedule ever
+   fires — see [Schedules](#schedules).
+
+A fresh deployment has no catalogue: the eighteen seeded products are
+development data, and `db:seed` will not write them to a production database.
+Products arrive through `/creator/upload`, which is the path they are meant to
+arrive by.
+
+### The image
+
 ```bash
 docker build -t builder .
 docker run --rm -p 3000:3000 --env-file .env.production builder
@@ -421,6 +464,15 @@ Dockerfile that has quietly stopped matching the repository.
   request. The trade that leaves is real: someone who knows an address can keep
   its owner out of the form for fifteen minutes. Nothing is deleted and nothing
   is charged, which is why it is the lesser harm, not why it is harmless.
+- **There is no sign-up flow.** Deliberately, for now: this is a marketplace
+  with a review queue, not a service anyone should be able to open an account on
+  before someone has decided who may. `scripts/create-admin.ts` makes the first
+  one; after that there is no way to add a second except to run it again.
+- **OAuth connections still cannot be completed**, which decides what a
+  deployment can actually do. Of the twelve published products in the seed, six
+  need no credentials and two take an API key — those eight work end to end. The
+  other four need Google Sheets or Microsoft Teams, and stop at "Connect", with
+  the mock refusing exactly as Install Template would.
 - **The image has never been built.** The Dockerfile and the CI workflow are
   written but unrun: there is no Docker daemon on the machine they were written
   on. What *was* verified is the thing the image ships — `.next/standalone`
