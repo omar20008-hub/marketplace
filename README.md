@@ -101,6 +101,18 @@ What it covers, and why those:
   exemption for `next build`, which runs as production but bakes none of these
   values into its output, and pin that the exemption is the build alone — the
   boot after it refuses again.
+- **The two inbound endpoints.** `/api/n8n/sync` writes to the catalogue with no
+  session in the request, so the token is the only thing in front of it, and it
+  is a *partial* update by design: the rule that a template the sync does not
+  mention is left alone is invisible in the code — it is the absence of a delete
+  — and is what stops a transient n8n outage reading as a mass delete.
+  `/api/artifacts/[id]` is the ownership rule every action has a test for,
+  reached by typing a URL instead; it answers 404 rather than 403 for someone
+  else's file, because 403 would confirm the id names a real one.
+- **Which driver is loaded.** Three lines, and the only place the decision is
+  made. Getting it wrong is silent in the worst direction: a deployment set to
+  `live` that quietly kept the mock would show green badges and plausible run
+  output while nothing reached n8n at all.
 - **The sign-in limiter** — the attempt that is still allowed and the one that
   is not, that the right password is refused too once the limit is hit (a limit
   on failures is bypassed by getting one right in the middle), that one address
