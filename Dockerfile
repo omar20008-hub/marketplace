@@ -71,6 +71,11 @@ RUN addgroup -g 1001 -S nodejs && adduser -u 1001 -S nextjs -G nodejs
 # standalone carries server.js and the traced subset of node_modules. static/
 # and public/ are not traced — they are served, not imported — so they are
 # copied in beside it, which is what makes server.js serve them.
+#
+# public/ is currently empty but for a .gitkeep, and exists so that this COPY
+# has something to find. Deleting the directory would break the build; deleting
+# this line instead would mean that the day someone drops a logo in there, it
+# silently does not ship.
 COPY --from=build --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=build --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=build --chown=nextjs:nodejs /app/public ./public
