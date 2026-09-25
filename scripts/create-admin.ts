@@ -4,6 +4,7 @@ import { PrismaClient } from "../src/generated/prisma";
 // From lib/password.ts rather than lib/auth.ts: the latter begins with
 // `import "server-only"`, which a script cannot load. Same function either way.
 import { hashPassword } from "../src/lib/password";
+import { initialsFor } from "../src/lib/initials";
 
 /**
  * Creates the first account on a fresh deployment.
@@ -51,15 +52,6 @@ if (password.length < MIN_PASSWORD_LENGTH) {
       "This is the only account on the deployment and it can review, suspend " +
       "and restrict every product on it.",
   );
-}
-
-/** From the name: "Nora Haddad" becomes NH, "Nora" becomes NO. */
-function initialsFor(fullName: string): string {
-  const parts = fullName.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) {
-    return (parts[0][0] + parts[1][0]).toUpperCase();
-  }
-  return parts[0].slice(0, 2).toUpperCase();
 }
 
 const FREE_PLAN = {

@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { requireRole } from "@/lib/auth";
+import { hashPassword, requireRole } from "@/lib/auth";
+import { initialsFor } from "@/lib/initials";
 
 /**
  * Review decisions.
@@ -188,6 +189,76 @@ export async function hold(formData: FormData) {
   await record(admin.id, "security hold", product.title, reason);
   revalidatePath("/admin");
   revalidatePath("/marketplace");
+}
+
+/** Matches scripts/create-admin.ts's own floor — and lib/env.ts's, for a secret. */
+const MIN_PASSWORD_LENGTH = 12;
+
+export type CreateUserState = { error?: string; createdEmail?: string };
+
+/**
+ * The web equivalent of scripts/create-admin.ts, for every account after the
+ * first. There is still no public sign-up — see that script's own comment on
+ * why — so short of a shell on the host, this is the only way a name becomes
+ * an account.
+ *
+ * New accounts start USER-only. Creator and Admin are granted afterward, from
+ * the same table this form sits above, rather than chosen here — one job.
+ *
+ * Unlike every other action in this file, wrong input here is common enough
+ * (a mistyped email, a password under the floor, an address already taken)
+ * that a silent no-op would just look broken. This one returns what to show,
+ * the same shape login() already does for the same reason.
+ */
+export async function createUser(
+  _prev: CreateUserState,
+  formData: FormData,
+): Promise<CreateUserState> {
+  const admin = await requireRole("ADMIN");
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const name = String(formData.get("name") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+  const planId = String(formData.get("planId") ?? "");
+
+  if (!email || !email.includes("@")) {
+    return { error: "Enter a valid email address." };
+  }
+  if (!name) {
+    return { error: "Enter a name." };
+  }
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return { error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.` };
+  }
+  if (!planId) {
+    return { error: "Choose a plan." };
+  }
+
+  const [existing, plan] = await Promise.all([
+    prisma.user.findUnique({ where: { email } }),
+    prisma.plan.findUnique({ where: { id: planId } }),
+  ]);
+  if (existing) {
+    return { error: `${email} already has an account.` };
+  }
+  if (!plan) {
+    return { error: "That plan no longer exists." };
+  }
+
+  const user = await prisma.user.create({
+    data: {
+      email,
+      name,
+      passwordHash: await hashPassword(password),
+      initials: initialsFor(name),
+      planId: plan.id,
+      roles: ["USER"],
+    },
+  });
+
+  await record(admin.id, "create user", user.email, "");
+  revalidatePath("/admin");
+
+  return { createdEmail: user.email };
 }
 
 /**

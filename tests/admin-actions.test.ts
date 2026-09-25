@@ -26,20 +26,28 @@ class Redirected extends Error {
  * requireRole is the real gate these actions use, so it is reproduced rather
  * than stubbed away: no session redirects to sign-in, a signed-in user without
  * the role goes home, and only the right role returns.
+ *
+ * hashPassword is the real implementation, from lib/password.ts rather than
+ * this mocked lib/auth.ts — createUser()'s test for a verifiable password
+ * would be checking nothing if this hashed with a fake instead.
  */
-vi.mock("@/lib/auth", () => ({
-  requireRole: async (role: string) => {
-    if (!viewer.current) throw new Redirected("/login");
-    if (!viewer.current.roles.includes(role)) throw new Redirected("/");
-    return viewer.current;
-  },
-}));
+vi.mock("@/lib/auth", async () => {
+  const { hashPassword } = await import("@/lib/password");
+  return {
+    hashPassword,
+    requireRole: async (role: string) => {
+      if (!viewer.current) throw new Redirected("/login");
+      if (!viewer.current.roles.includes(role)) throw new Redirected("/");
+      return viewer.current;
+    },
+  };
+});
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
 const { prisma } = await import("@/lib/db");
-const { approve, hold, reject, requestChanges, toggleRole } = await import(
-  "@/server/admin-actions"
-);
+const { approve, createUser, hold, reject, requestChanges, toggleRole } =
+  await import("@/server/admin-actions");
+const { verifyPassword } = await import("@/lib/password");
 
 const PLAN_ID = "test-plan-admin";
 
@@ -342,6 +350,147 @@ describe("hold", () => {
       action: "security hold",
       reason: "Reported exfiltration",
     });
+  });
+});
+
+describe("createUser", () => {
+  it("creates a USER-only account with a password sign-in can verify", async () => {
+    const { admin } = await seed();
+
+    const result = await createUser(
+      {},
+      form({
+        name: "Jordan Lee",
+        email: "Jordan@Example.test",
+        password: "correct horse battery",
+        planId: PLAN_ID,
+      }),
+    );
+
+    expect(result).toEqual({ createdEmail: "jordan@example.test" });
+    const user = await prisma.user.findUnique({
+      where: { email: "jordan@example.test" },
+    });
+    expect(user).toMatchObject({ name: "Jordan Lee", roles: ["USER"], initials: "JL" });
+    await expect(
+      verifyPassword("correct horse battery", user!.passwordHash),
+    ).resolves.toBe(true);
+    expect(await prisma.auditLog.findFirst()).toMatchObject({
+      actorId: admin.id,
+      action: "create user",
+      subject: "jordan@example.test",
+    });
+  });
+
+  it("refuses an invalid email", async () => {
+    await seed();
+
+    const result = await createUser(
+      {},
+      form({ name: "Jordan", email: "not-an-email", password: "x".repeat(12), planId: PLAN_ID }),
+    );
+
+    expect(result.error).toMatch(/valid email/);
+    expect(await prisma.user.count()).toBe(2); // admin + creator from seed()
+  });
+
+  it("refuses a missing name", async () => {
+    await seed();
+
+    const result = await createUser(
+      {},
+      form({ name: "  ", email: "jordan@example.test", password: "x".repeat(12), planId: PLAN_ID }),
+    );
+
+    expect(result.error).toMatch(/name/);
+  });
+
+  it("refuses a password under the floor", async () => {
+    await seed();
+
+    const result = await createUser(
+      {},
+      form({ name: "Jordan", email: "jordan@example.test", password: "short", planId: PLAN_ID }),
+    );
+
+    expect(result.error).toMatch(/12 characters/);
+    expect(await prisma.user.findUnique({ where: { email: "jordan@example.test" } })).toBeNull();
+  });
+
+  it("refuses without a plan", async () => {
+    await seed();
+
+    const result = await createUser(
+      {},
+      form({ name: "Jordan", email: "jordan@example.test", password: "x".repeat(12), planId: "" }),
+    );
+
+    expect(result.error).toMatch(/plan/i);
+  });
+
+  it("refuses a plan that does not exist", async () => {
+    await seed();
+
+    const result = await createUser(
+      {},
+      form({
+        name: "Jordan",
+        email: "jordan@example.test",
+        password: "x".repeat(12),
+        planId: "no-such-plan",
+      }),
+    );
+
+    expect(result.error).toMatch(/plan/i);
+    expect(await prisma.user.findUnique({ where: { email: "jordan@example.test" } })).toBeNull();
+  });
+
+  it("refuses an email already in use, and does not touch the existing account", async () => {
+    const { creator } = await seed();
+
+    const result = await createUser(
+      {},
+      form({
+        name: "Someone Else",
+        email: creator.email,
+        password: "x".repeat(12),
+        planId: PLAN_ID,
+      }),
+    );
+
+    expect(result.error).toMatch(/already has an account/);
+    expect(await prisma.user.findUnique({ where: { id: creator.id } })).toMatchObject({
+      name: creator.name,
+    });
+  });
+
+  it("sends a signed-in non-admin home", async () => {
+    await seed();
+    viewer.current = { id: "someone", roles: ["USER", "CREATOR"] };
+
+    const destination = await turnedAwayTo(() =>
+      createUser(
+        {},
+        form({ name: "Jordan", email: "jordan@example.test", password: "x".repeat(12), planId: PLAN_ID }),
+      ),
+    );
+
+    expect(destination).toBe("/");
+    expect(await prisma.user.findUnique({ where: { email: "jordan@example.test" } })).toBeNull();
+  });
+
+  it("sends a stranger to sign-in", async () => {
+    await seed();
+    viewer.current = null;
+
+    expect(
+      await turnedAwayTo(() =>
+        createUser(
+          {},
+          form({ name: "Jordan", email: "jordan@example.test", password: "x".repeat(12), planId: PLAN_ID }),
+        ),
+      ),
+    ).toBe("/login");
   });
 });
 

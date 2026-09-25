@@ -18,6 +18,7 @@ import {
 } from "@/components/ds";
 import { formatDate, waitingFor } from "@/lib/readiness";
 import { toggleRole } from "@/server/admin-actions";
+import { CreateUserForm } from "./create-user-form";
 import { DecisionPanel } from "./decision-panel";
 
 export const metadata = { title: "Admin · Builder" };
@@ -81,24 +82,35 @@ export default async function AdminPage({
   const admin = await requireRole("ADMIN");
 
   if (view === "users") {
-    const users = await prisma.user.findMany({
-      orderBy: { createdAt: "asc" },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        roles: true,
-        initials: true,
-        avatarTint: true,
-        avatarInk: true,
-        createdAt: true,
-      },
-    });
+    const [users, plans] = await Promise.all([
+      prisma.user.findMany({
+        orderBy: { createdAt: "asc" },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          roles: true,
+          initials: true,
+          avatarTint: true,
+          avatarInk: true,
+          createdAt: true,
+        },
+      }),
+      prisma.plan.findMany({ orderBy: { priceMonthly: "asc" } }),
+    ]);
 
     return (
       <div className="px-5 py-5 lg:px-7">
         <PageTitle title="Admin" />
         <AdminTabs active="users" />
+
+        <div className="mt-5">
+          <SectionLabel>New account</SectionLabel>
+          <div className="mt-2.5">
+            <CreateUserForm plans={plans} />
+          </div>
+        </div>
+
         <UsersTable users={users} currentUserId={admin.id} />
       </div>
     );
