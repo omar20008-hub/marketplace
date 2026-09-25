@@ -8,6 +8,7 @@ import {
   FolderClosed,
   Layers,
   Link2,
+  LogIn,
   LogOut,
   PanelLeft,
   PenSquare,
@@ -52,7 +53,7 @@ export function Sidebar({
   threads,
   counts,
 }: {
-  user: SidebarUser;
+  user: SidebarUser | null;
   threads: SidebarThread[];
   counts: SidebarCounts;
 }) {
@@ -70,7 +71,11 @@ export function Sidebar({
       icon: <FolderClosed {...iconProps} />,
       trailing: <span className="text-xs text-ink-3">{counts.workspace}</span>,
     },
-    { href: "/results", label: "Results", icon: <SquareCode {...iconProps} /> },
+    // Results is an admin screen, not a general one — a signed-in creator
+    // with no ADMIN role does not see it either, same as a guest.
+    ...(user?.isAdmin
+      ? [{ href: "/results", label: "Results", icon: <SquareCode {...iconProps} /> }]
+      : []),
     {
       href: "/accounts",
       label: "Connected accounts",
@@ -79,10 +84,10 @@ export function Sidebar({
         <span className="size-[7px] rounded-full bg-warn" />
       ) : null,
     },
-    ...(user.isCreator
+    ...(user?.isCreator
       ? [{ href: "/creator", label: "Creator studio", icon: <SquareCode {...iconProps} /> }]
       : []),
-    ...(user.isAdmin
+    ...(user?.isAdmin
       ? [{ href: "/admin", label: "Admin", icon: <Shield {...iconProps} /> }]
       : []),
   ];
@@ -212,26 +217,45 @@ export function Sidebar({
       </div>
 
       <div className="flex items-center gap-1 border-t border-selected px-2 pt-2.5 pb-3">
-        <Link
-          href="/workspace"
-          className="flex min-w-0 flex-1 items-center gap-2.5 rounded-row px-2.5 py-2 text-ink hover:bg-selected/60"
-        >
-          <Avatar initials={user.initials} tint={user.avatarTint} ink={user.avatarInk} />
-          <span className="flex min-w-0 flex-col">
-            <span className="truncate text-sm font-medium">{user.name}</span>
-            <span className="truncate text-xs text-ink-3">{user.line}</span>
-          </span>
-        </Link>
-        <form action={logout}>
-          <button
-            type="submit"
-            aria-label="Sign out"
-            title="Sign out"
-            className="flex size-8 items-center justify-center rounded-row text-ink-3 hover:bg-selected hover:text-ink"
+        {user ? (
+          <>
+            <Link
+              href="/workspace"
+              className="flex min-w-0 flex-1 items-center gap-2.5 rounded-row px-2.5 py-2 text-ink hover:bg-selected/60"
+            >
+              <Avatar initials={user.initials} tint={user.avatarTint} ink={user.avatarInk} />
+              <span className="flex min-w-0 flex-col">
+                <span className="truncate text-sm font-medium">{user.name}</span>
+                <span className="truncate text-xs text-ink-3">{user.line}</span>
+              </span>
+            </Link>
+            <form action={logout}>
+              <button
+                type="submit"
+                aria-label="Sign out"
+                title="Sign out"
+                className="flex size-8 items-center justify-center rounded-row text-ink-3 hover:bg-selected hover:text-ink"
+              >
+                <LogOut size={16} strokeWidth={1.8} />
+              </button>
+            </form>
+          </>
+        ) : (
+          <Link
+            href="/login"
+            className="flex min-w-0 flex-1 items-center gap-2.5 rounded-row px-2.5 py-2 text-ink hover:bg-selected/60"
           >
-            <LogOut size={16} strokeWidth={1.8} />
-          </button>
-        </form>
+            <span className="flex size-8 flex-none items-center justify-center rounded-full bg-selected text-ink-2">
+              <LogIn size={16} strokeWidth={1.8} />
+            </span>
+            <span className="flex min-w-0 flex-col">
+              <span className="truncate text-sm font-medium">Log in</span>
+              <span className="truncate text-xs text-ink-3">
+                Save your work and connect accounts
+              </span>
+            </span>
+          </Link>
+        )}
       </div>
     </div>
   );

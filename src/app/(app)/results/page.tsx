@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Download, FileSpreadsheet, Trash2 } from "lucide-react";
 import { prisma } from "@/lib/db";
-import { requireUser } from "@/lib/auth";
+import { requireRole } from "@/lib/auth";
 import {
   Badge,
   ButtonAnchor,
@@ -50,7 +50,10 @@ export default async function ResultsPage({
   const { view = "runs", run: selectedRunId, status } = await searchParams;
   if (!VIEWS.includes(view)) notFound();
 
-  const user = await requireUser();
+  // Admin-only by decision, not by what the data itself needs: this still
+  // shows only the signed-in admin's own runs, same as before — it is the
+  // screen that is restricted, not the query.
+  const user = await requireRole("ADMIN");
 
   const [runs, schedules, schedulable, storage] = await Promise.all([
     prisma.run.findMany({

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BadgeCheck, HeartPulse, ShieldCheck, Sparkles } from "lucide-react";
 import { prisma } from "@/lib/db";
-import { requireUser } from "@/lib/auth";
+import { currentUser } from "@/lib/auth";
 import {
   Badge,
   ButtonLink,
@@ -37,7 +37,11 @@ export default async function ProductPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const user = await requireUser();
+  // No requireUser(): the catalogue is public. Only "Add to workspace" below
+  // needs an account, and /marketplace/[slug]/setup already requires one on
+  // its own — this page just has to stop assuming there is a viewer to
+  // compute readiness against.
+  const user = await currentUser();
 
   const product = await prisma.product.findUnique({
     where: { slug },
@@ -55,13 +59,19 @@ export default async function ProductPage({
   );
 
   const [accounts, installation, runsThisMonth] = await Promise.all([
-    prisma.connectedAccount.findMany({ where: { userId: user.id } }),
-    prisma.installation.findFirst({
-      where: { userId: user.id, productId: product.id },
-    }),
-    prisma.run.count({
-      where: { userId: user.id, startedAt: { gte: monthStart }, charged: true },
-    }),
+    user
+      ? prisma.connectedAccount.findMany({ where: { userId: user.id } })
+      : Promise.resolve([]),
+    user
+      ? prisma.installation.findFirst({
+          where: { userId: user.id, productId: product.id },
+        })
+      : Promise.resolve(null),
+    user
+      ? prisma.run.count({
+          where: { userId: user.id, startedAt: { gte: monthStart }, charged: true },
+        })
+      : Promise.resolve(0),
   ]);
 
   const installed = Boolean(installation && installation.status !== "UNINSTALLED");
@@ -71,9 +81,12 @@ export default async function ProductPage({
     accounts,
     installed,
     installationStatus: installation?.status,
-    overPlanLimit:
-      runsThisMonth >= user.plan.monthlyRuns ||
-      (product.usesCredits && user.credits <= 0),
+    // A guest has no plan to be over and no credits to be out of — see the
+    // same note on the marketplace list page.
+    overPlanLimit: user
+      ? runsThisMonth >= user.plan.monthlyRuns ||
+        (product.usesCredits && user.credits <= 0)
+      : false,
   });
 
   const inputs = (product.inputSchema as unknown as InputField[]) ?? [];

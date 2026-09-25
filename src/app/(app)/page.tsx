@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { ChevronDown, Sparkles } from "lucide-react";
 import { prisma } from "@/lib/db";
-import { requireUser } from "@/lib/auth";
+import { currentUser } from "@/lib/auth";
 import { Badge, ButtonLink } from "@/components/ds";
 import { ProductGlyph } from "@/components/app/product-glyph";
 import { Composer } from "@/components/app/composer";
+import { GuestChat } from "@/components/app/guest-chat";
 import { readinessFor } from "@/lib/readiness";
 import { relativeDays } from "@/lib/readiness";
 
@@ -17,7 +18,35 @@ const SUGGESTIONS = [
 ];
 
 export default async function HomePage() {
-  const user = await requireUser();
+  const user = await currentUser();
+
+  if (!user) {
+    return (
+      <div className="flex min-h-full flex-col">
+        <header className="flex h-14 items-center justify-between px-4 md:pr-4 md:pl-5">
+          <div className="flex h-9 items-center gap-1.5 rounded-row px-2.5 text-base font-medium">
+            Builder <span className="font-normal text-ink-3">Auto</span>
+            <ChevronDown size={16} strokeWidth={1.8} className="text-ink-3" />
+          </div>
+          <ButtonLink href="/login" tone="secondary" size="sm" className="h-[34px]">
+            Log in
+          </ButtonLink>
+        </header>
+
+        <div className="flex flex-1 flex-col items-center px-5 pt-12 pb-16 md:px-10 md:pt-24">
+          <h1 className="text-center text-[30px] leading-tight font-medium tracking-[-0.02em]">
+            What do you want to get done?
+          </h1>
+          <p className="mt-2.5 max-w-[520px] text-center text-[15px] text-ink-2">
+            Ask a question, or browse the Marketplace. Running a product you
+            own takes an account — the chat itself does not.
+          </p>
+
+          <GuestChat className="mt-8" suggestions={SUGGESTIONS} />
+        </div>
+      </div>
+    );
+  }
 
   const [installations, accounts, runCounts] = await Promise.all([
     prisma.installation.findMany({

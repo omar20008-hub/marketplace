@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowUpRight, Search } from "lucide-react";
 import { prisma } from "@/lib/db";
-import { requireUser } from "@/lib/auth";
+import { currentUser } from "@/lib/auth";
 import { Badge } from "@/components/ds";
 import { ProductGlyph } from "@/components/app/product-glyph";
 import { readinessFor, type Readiness } from "@/lib/readiness";
@@ -39,7 +39,12 @@ export default async function MarketplacePage({
   searchParams: Promise<Search>;
 }) {
   const params = await searchParams;
-  const user = await requireUser();
+  // No requireUser(): a guest may browse the whole catalogue. What changes
+  // below is only which of it reads as "ready" for them specifically —
+  // nothing here is owned, connected or metered without an account, so an
+  // absent user just means every product needs setup rather than none of it
+  // does.
+  const user = await currentUser();
 
   const monthStart = new Date(
     Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1),
@@ -51,18 +56,24 @@ export default async function MarketplacePage({
       where: { status: { in: ["PUBLISHED", "RESTRICTED"] } },
       include: { requirements: true, creator: true },
     }),
-    prisma.connectedAccount.findMany({ where: { userId: user.id } }),
-    prisma.installation.findMany({
-      where: { userId: user.id, status: { in: ["ACTIVE", "PARTIAL", "DISABLED"] } },
-      select: { productId: true },
-    }),
-    prisma.run.count({
-      where: { userId: user.id, startedAt: { gte: monthStart }, charged: true },
-    }),
+    user
+      ? prisma.connectedAccount.findMany({ where: { userId: user.id } })
+      : Promise.resolve([]),
+    user
+      ? prisma.installation.findMany({
+          where: { userId: user.id, status: { in: ["ACTIVE", "PARTIAL", "DISABLED"] } },
+          select: { productId: true },
+        })
+      : Promise.resolve([]),
+    user
+      ? prisma.run.count({
+          where: { userId: user.id, startedAt: { gte: monthStart }, charged: true },
+        })
+      : Promise.resolve(0),
   ]);
 
   const installedIds = new Set(installations.map((i) => i.productId));
-  const outOfRuns = runsThisMonth >= user.plan.monthlyRuns;
+  const outOfRuns = user ? runsThisMonth >= user.plan.monthlyRuns : false;
 
   // Counts come from the table, not from the mock copy. They can be small, but
   // they can never be wrong.
@@ -104,7 +115,9 @@ export default async function MarketplacePage({
       requirements: product.requirements,
       accounts,
       installed: installedIds.has(product.id),
-      overPlanLimit: outOfRuns || (product.usesCredits && user.credits <= 0),
+      // A guest has no credits to be out of — that reads as "needs your
+      // account" like everything else does for them, not as a plan limit.
+      overPlanLimit: outOfRuns || (user ? product.usesCredits && user.credits <= 0 : false),
     }),
   }));
 
