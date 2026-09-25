@@ -60,32 +60,21 @@ export function titleFor(task: string) {
   return short.charAt(0).toUpperCase() + short.slice(1);
 }
 
-/** Deterministic, explainable matching — no model involved on this path. */
-export function matchInstallation(
-  task: string,
-  installations: {
-    id: string;
-    product: { title: string; summary: string; category: string };
-  }[],
-) {
-  const words = new Set(
-    task
-      .toLowerCase()
-      .split(/[^a-z0-9]+/)
-      .filter((word) => word.length > 3),
-  );
-  let best: { id: string; score: number } | null = null;
-
-  for (const installation of installations) {
-    const haystack =
-      `${installation.product.title} ${installation.product.summary} ${installation.product.category}`.toLowerCase();
-    let score = 0;
-    for (const word of words) if (haystack.includes(word)) score += 1;
-    if (score > 0 && (!best || score > best.score)) {
-      best = { id: installation.id, score };
-    }
+/**
+ * Sends a message to the Orchestrator and returns what to show, never
+ * throwing into the caller. A network failure, a timeout or n8n itself being
+ * down is not this person's fault and not "nothing matches" — it is a fixed,
+ * generic line, with the real cause left in the server log for whoever
+ * reads it, same as any other unhandled error here.
+ */
+export async function askOrchestrator(sessionId: string, chatInput: string) {
+  try {
+    const reply = await n8n.chat({ sessionId, chatInput });
+    return reply.output;
+  } catch (error) {
+    console.error("Orchestrator chat failed", error);
+    return "Something went wrong reaching the assistant. Please try again in a moment.";
   }
-  return best?.id ?? null;
 }
 
 async function runsThisMonth(userId: string) {

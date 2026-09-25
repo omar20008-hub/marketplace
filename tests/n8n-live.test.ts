@@ -15,6 +15,7 @@ const BASE = "https://n8n.example.test/api/v1";
 const UPLOAD = "https://n8n.example.test/webhook/upload";
 const DISPATCH = "https://n8n.example.test/webhook/dispatch";
 const STORAGE = "https://n8n.example.test/webhook/storage";
+const ORCHESTRATOR_CHAT = "https://n8n.example.test/webhook/chat";
 
 /**
  * env is built once at import, so each test imports the driver fresh after
@@ -29,6 +30,7 @@ async function loadDriver(overrides: Record<string, string> = {}) {
   vi.stubEnv("N8N_UPLOAD_WEBHOOK_URL", UPLOAD);
   vi.stubEnv("N8N_DISPATCH_WEBHOOK_URL", DISPATCH);
   vi.stubEnv("N8N_STORAGE_WEBHOOK_URL", STORAGE);
+  vi.stubEnv("N8N_ORCHESTRATOR_CHAT_URL", ORCHESTRATOR_CHAT);
   vi.stubEnv("N8N_DISPATCHER_WORKFLOW_ID", "disp1");
   for (const [key, value] of Object.entries(overrides)) vi.stubEnv(key, value);
 
@@ -250,6 +252,67 @@ describe("dispatch and storage go over a webhook too", () => {
     await expect(
       driver.dispatch({ userId: "u1", installationId: "i1", args: {} }),
     ).rejects.toThrow(/Webhook Trigger/);
+  });
+});
+
+describe("chat", () => {
+  it("posts action:sendMessage with the session id and message to the chat webhook", async () => {
+    fetchMock.mockResolvedValue(reply(JSON.stringify({ output: "Paris" })));
+    const driver = await loadDriver();
+
+    const out = await driver.chat({
+      sessionId: "user_1",
+      chatInput: "what is the capital of France",
+    });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe(ORCHESTRATOR_CHAT);
+    expect(JSON.parse(init.body)).toEqual({
+      action: "sendMessage",
+      sessionId: "user_1",
+      chatInput: "what is the capital of France",
+    });
+    expect(out).toEqual({ output: "Paris" });
+  });
+
+  it("sends the shared secret as x-platform-token, same as every other webhook", async () => {
+    fetchMock.mockResolvedValue(reply(JSON.stringify({ output: "hi" })));
+    const driver = await loadDriver();
+
+    await driver.chat({ sessionId: "user_1", chatInput: "hi" });
+
+    expect(fetchMock.mock.calls[0][1].headers["x-platform-token"]).toBe(
+      "test-webhook-token",
+    );
+  });
+
+  it("refuses a 5xx from the orchestrator rather than showing it as a reply", async () => {
+    fetchMock.mockResolvedValue(reply("upstream error", { status: 503 }));
+    const driver = await loadDriver();
+
+    await expect(
+      driver.chat({ sessionId: "user_1", chatInput: "hi" }),
+    ).rejects.toThrow(/n8n replied 503/);
+  });
+
+  it("refuses an HTML reply instead of showing a raw error page as the answer", async () => {
+    fetchMock.mockResolvedValue(
+      reply("<html>502 Bad Gateway</html>", { contentType: "text/html" }),
+    );
+    const driver = await loadDriver();
+
+    await expect(
+      driver.chat({ sessionId: "user_1", chatInput: "hi" }),
+    ).rejects.toThrow(/Webhook Trigger/);
+  });
+
+  it("refuses a reply that does not carry an output string", async () => {
+    fetchMock.mockResolvedValue(reply(JSON.stringify({ ok: true })));
+    const driver = await loadDriver();
+
+    await expect(
+      driver.chat({ sessionId: "user_1", chatInput: "hi" }),
+    ).rejects.toThrow();
   });
 });
 

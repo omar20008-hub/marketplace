@@ -2,11 +2,11 @@ import "server-only";
 import { env } from "../env";
 import type { N8nDriver } from "./driver";
 import {
+  ChatOutput,
   DispatchOutput,
   InstallOutput,
   UploadOutput,
   type ChatInput,
-  type ChatOutput,
   type CredentialSchema,
   type DispatchInput,
   type InstallInput,
@@ -137,21 +137,16 @@ export const liveDriver: N8nDriver = {
   },
 
   async chat(input: ChatInput): Promise<ChatOutput> {
-    // responseMode is streaming; this collects it into one reply. A custom chat
-    // UI that wants tokens as they arrive should read the stream directly.
-    const response = await fetch(env.n8n.orchestratorChatUrl, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(input),
-      cache: "no-store",
+    // Goes through postWebhook like every other workflow call, so a 5xx, a
+    // timeout, or the workflow answering with an HTML page all fail loudly
+    // here rather than surfacing as a made-up reply. action:"sendMessage" is
+    // the n8n Chat Trigger's own envelope, not this platform's invention.
+    const raw = await postWebhook<unknown>(env.n8n.orchestratorChatUrl, {
+      action: "sendMessage",
+      sessionId: input.sessionId,
+      chatInput: input.chatInput,
     });
-    const text = await response.text();
-    try {
-      const parsed = JSON.parse(text) as { output?: string };
-      return { output: parsed.output ?? text };
-    } catch {
-      return { output: text };
-    }
+    return ChatOutput.parse(raw);
   },
 
   async credentialSchema(credentialType: string) {

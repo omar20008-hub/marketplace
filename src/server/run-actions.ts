@@ -4,28 +4,35 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import {
-  executeRun,
-  fields,
-  matchInstallation,
-  titleFor,
-} from "./run-engine";
+import { askOrchestrator, executeRun, fields, titleFor } from "./run-engine";
 
+/**
+ * Opens a thread from whatever the person typed. Whether that is a direct
+ * question or a request to run something they own is the Orchestrator's call,
+ * not this platform's: it builds its tool catalogue from this user's real
+ * installations and decides — invent nothing here to second-guess it.
+ *
+ * "Pick a product" in the composer still lets someone name a product up
+ * front; when they do, it rides along as context in the same message rather
+ * than skipping the Orchestrator, so the decision to invoke it is still made
+ * on that side of the boundary.
+ */
 export async function startTask(formData: FormData) {
   const user = await requireUser();
   const task = String(formData.get("task") ?? "").trim();
   if (!task) return;
 
   const pinned = String(formData.get("installationId") ?? "");
+  const pinnedInstallation = pinned
+    ? await prisma.installation.findFirst({
+        where: { id: pinned, userId: user.id },
+        include: { product: true },
+      })
+    : null;
 
-  const installations = await prisma.installation.findMany({
-    where: { userId: user.id, status: { in: ["ACTIVE", "PARTIAL"] } },
-    include: { product: true },
-  });
-
-  const chosen =
-    installations.find((i) => i.id === pinned)?.id ??
-    matchInstallation(task, installations);
+  const chatInput = pinnedInstallation
+    ? `[Product: ${pinnedInstallation.product.title}] ${task}`
+    : task;
 
   const thread = await prisma.thread.create({
     data: {
@@ -35,50 +42,10 @@ export async function startTask(formData: FormData) {
     },
   });
 
-  if (!chosen) {
-    await prisma.message.create({
-      data: {
-        threadId: thread.id,
-        role: "ASSISTANT",
-        body:
-          "Nothing in your workspace matches that yet. Have a look in the " +
-          "Marketplace — I only run products you already own.",
-      },
-    });
-    redirect(`/tasks/${thread.id}`);
-  }
-
-  const installation = installations.find((i) => i.id === chosen)!;
-
-  // Fill the first required text field from the task itself, the way the
-  // orchestrator would from the conversation. Anything else it cannot know
-  // comes back from the deterministic validator as "incomplete".
-  const schema = fields(installation.product);
-  const args: Record<string, unknown> = {};
-  const firstText = schema.find(
-    (field) => field.required !== false && ["string", "text"].includes(field.type),
-  );
-  if (firstText) args[firstText.name] = task;
-
-  const run = await executeRun({
-    user,
-    installationId: installation.id,
-    args,
-    threadId: thread.id,
-  });
+  const output = await askOrchestrator(user.id, chatInput);
 
   await prisma.message.create({
-    data: {
-      threadId: thread.id,
-      role: "ASSISTANT",
-      runId: run?.id,
-      body:
-        run?.result === "SUCCESS"
-          ? "I found a match in your workspace. It's connected and ready, so I started the run."
-          : run?.result === "INCOMPLETE"
-            ? "I matched a product, but it needs a couple of details before it can run."
-            : "I matched a product, but it can't run right now.",
-    },
+    data: { threadId: thread.id, role: "ASSISTANT", body: output },
   });
 
   revalidatePath("/", "layout");

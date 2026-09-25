@@ -4,10 +4,11 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
  * The three form actions, and the thread follow-up.
  *
  * executeRun() itself is covered in run-engine.test.ts; what these add is the
- * part around it — the thread a run gets written into, the deterministic
- * matching that picks a product from what the person typed, and the rule that
- * the conversation's session id is the authenticated user and never anything
- * the browser sent.
+ * part around it — the thread a run gets written into, and the rule that the
+ * conversation's session id is the authenticated user and never anything the
+ * browser sent. Which product to run, if any, is the Orchestrator's call:
+ * startTask and followUp both hand it the message as written and show back
+ * whatever it answers, rather than matching locally.
  */
 
 const viewer = vi.hoisted(() => ({
@@ -35,6 +36,8 @@ vi.mock("next/navigation", () => ({
 
 /** Records what the orchestrator was asked, so the session id can be checked. */
 const chatCalls: { sessionId: string; chatInput: string }[] = [];
+/** Set per-test to make the next chat() call reject, the way a timeout or a 5xx would. */
+const chatFailure = vi.hoisted(() => ({ next: null as Error | null }));
 vi.mock("@/lib/n8n", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/n8n")>();
   return {
@@ -43,6 +46,11 @@ vi.mock("@/lib/n8n", async (importOriginal) => {
       ...actual.n8n,
       chat: async (input: { sessionId: string; chatInput: string }) => {
         chatCalls.push(input);
+        if (chatFailure.next) {
+          const error = chatFailure.next;
+          chatFailure.next = null;
+          throw error;
+        }
         return { output: `answered ${input.chatInput}` };
       },
     },
@@ -149,6 +157,7 @@ async function destinationOf(run: () => Promise<unknown>) {
 
 beforeEach(async () => {
   chatCalls.length = 0;
+  chatFailure.next = null;
   await wipe();
 });
 
@@ -158,26 +167,32 @@ afterAll(async () => {
 });
 
 describe("startTask", () => {
-  it("opens a thread and runs the product it matched", async () => {
+  it("opens a thread and asks the orchestrator, never matching locally", async () => {
     const user = await seedUser();
-    await seedProduct(user.id);
 
     const to = await destinationOf(() =>
       startTask(form({ task: "Build my expense report for last month" })),
     );
 
     expect(to).toMatch(/^\/tasks\//);
+    expect(chatCalls).toEqual([
+      { sessionId: user.id, chatInput: "Build my expense report for last month" },
+    ]);
     const thread = await prisma.thread.findFirst({
       include: { messages: { orderBy: { createdAt: "asc" } } },
     });
     expect(thread!.messages[0]).toMatchObject({ role: "USER" });
-    expect(thread!.messages[1]).toMatchObject({ role: "ASSISTANT" });
-    expect(await prisma.run.count()).toBe(1);
+    expect(thread!.messages[1]).toMatchObject({
+      role: "ASSISTANT",
+      body: "answered Build my expense report for last month",
+    });
+    // Whether anything runs is the Orchestrator's decision, made on its own
+    // side of the boundary — this platform never invents that call itself.
+    expect(await prisma.run.count()).toBe(0);
   });
 
   it("titles the thread from the task, capitalised and cut short", async () => {
-    const user = await seedUser();
-    await seedProduct(user.id);
+    await seedUser();
 
     await destinationOf(() =>
       startTask(form({ task: "build my expense report" })),
@@ -189,8 +204,7 @@ describe("startTask", () => {
   });
 
   it("trims a long title rather than storing the whole message", async () => {
-    const user = await seedUser();
-    await seedProduct(user.id);
+    await seedUser();
 
     await destinationOf(() => startTask(form({ task: "expense ".repeat(20) })));
 
@@ -200,22 +214,16 @@ describe("startTask", () => {
   });
 
   it("does nothing at all for an empty task", async () => {
-    const user = await seedUser();
-    await seedProduct(user.id);
+    await seedUser();
 
     await startTask(form({ task: "   " }));
 
     expect(await prisma.thread.count()).toBe(0);
-    expect(await prisma.run.count()).toBe(0);
+    expect(chatCalls).toEqual([]);
   });
 
-  it("says so, and starts no run, when nothing in the workspace matches", async () => {
-    const user = await seedUser();
-    await seedProduct(user.id, {
-      title: "Contract Reviewer",
-      summary: "Flags unusual clauses.",
-      category: "Legal",
-    });
+  it("shows whatever the orchestrator answers, verbatim", async () => {
+    await seedUser();
 
     await destinationOf(() =>
       startTask(form({ task: "Something entirely unrelated aaaaa" })),
@@ -223,13 +231,15 @@ describe("startTask", () => {
 
     const thread = await prisma.thread.findFirst({ include: { messages: true } });
     expect(thread!.messages).toHaveLength(2);
-    expect(thread!.messages[1].body).toMatch(/Marketplace/);
-    expect(await prisma.run.count()).toBe(0);
+    // No locally-programmed "Marketplace" copy — the reply is the
+    // Orchestrator's, unmodified.
+    expect(thread!.messages[1].body).toBe(
+      "answered Something entirely unrelated aaaaa",
+    );
   });
 
-  it("uses the pinned product over the one the words would have matched", async () => {
+  it("carries the pinned product as context, rather than choosing for the orchestrator", async () => {
     const user = await seedUser();
-    await seedProduct(user.id, { title: "Expense Report Builder" });
     const { installation: pinned } = await seedProduct(user.id, {
       title: "Contract Reviewer",
       summary: "Flags unusual clauses.",
@@ -242,42 +252,12 @@ describe("startTask", () => {
       ),
     );
 
-    expect(await prisma.run.findFirst()).toMatchObject({
-      installationId: pinned.id,
-    });
-  });
-
-  it("fills the first required text field from the task itself", async () => {
-    const user = await seedUser();
-    await seedProduct(user.id, {
-      inputSchema: [
-        { name: "question", label: "Question", type: "string", required: true },
-      ],
-    });
-
-    await destinationOf(() =>
-      startTask(form({ task: "Build my expense report for last month" })),
-    );
-
-    // It had everything it needed, so the run completed rather than asking.
-    expect(await prisma.run.findFirst()).toMatchObject({ result: "SUCCESS" });
-  });
-
-  it("comes back incomplete when a required field is not text it can guess", async () => {
-    const user = await seedUser();
-    await seedProduct(user.id, {
-      inputSchema: [
-        { name: "olderThanDays", label: "Older than", type: "number", required: true },
-      ],
-    });
-
-    await destinationOf(() =>
-      startTask(form({ task: "Build my expense report for last month" })),
-    );
-
-    expect(await prisma.run.findFirst()).toMatchObject({ result: "INCOMPLETE" });
-    const thread = await prisma.thread.findFirst({ include: { messages: true } });
-    expect(thread!.messages[1].body).toMatch(/needs a couple of details/);
+    expect(chatCalls).toEqual([
+      {
+        sessionId: user.id,
+        chatInput: "[Product: Contract Reviewer] expense report please",
+      },
+    ]);
   });
 
   it("sends a stranger to sign-in without writing anything", async () => {
@@ -287,6 +267,19 @@ describe("startTask", () => {
       "/login",
     );
     expect(await prisma.thread.count()).toBe(0);
+    expect(chatCalls).toEqual([]);
+  });
+
+  it("shows a generic message, not a crash or a made-up match, when the orchestrator is unreachable", async () => {
+    await seedUser();
+    chatFailure.next = new Error("n8n replied 503");
+
+    await destinationOf(() => startTask(form({ task: "anything" })));
+
+    const thread = await prisma.thread.findFirst({ include: { messages: true } });
+    expect(thread!.messages[1].body).toBe(
+      "Something went wrong reaching the assistant. Please try again in a moment.",
+    );
   });
 });
 
@@ -321,13 +314,18 @@ describe("runFromWorkspace", () => {
 describe("provideInputs", () => {
   it("re-runs with what the person supplied, and types it as declared", async () => {
     const user = await seedUser();
-    await seedProduct(user.id, {
+    const { installation } = await seedProduct(user.id, {
       inputSchema: [
         { name: "olderThanDays", label: "Older than", type: "number", required: true },
       ],
     });
 
-    await destinationOf(() => startTask(form({ task: "expense report" })));
+    // A run with a missing required field, the way the explicit Run button
+    // from Workspace starts one — startTask no longer executes anything
+    // itself, so it is not the path that creates the INCOMPLETE run here.
+    await destinationOf(() =>
+      runFromWorkspace(form({ installationId: installation.id })),
+    );
     const incomplete = await prisma.run.findFirst();
     expect(incomplete).toMatchObject({ result: "INCOMPLETE" });
 
@@ -340,12 +338,14 @@ describe("provideInputs", () => {
 
   it("does nothing for a run that is not the caller's", async () => {
     const first = await seedUser("first@example.test");
-    await seedProduct(first.id, {
+    const { installation } = await seedProduct(first.id, {
       inputSchema: [
         { name: "olderThanDays", label: "Older than", type: "number", required: true },
       ],
     });
-    await destinationOf(() => startTask(form({ task: "expense report" })));
+    await destinationOf(() =>
+      runFromWorkspace(form({ installationId: installation.id })),
+    );
     const incomplete = await prisma.run.findFirst();
 
     await seedUser("second@example.test");
@@ -409,5 +409,20 @@ describe("followUp", () => {
 
     expect(await prisma.message.count()).toBe(0);
     expect(chatCalls).toHaveLength(0);
+  });
+
+  it("shows a generic message, not a crash, when the orchestrator is unreachable", async () => {
+    const user = await seedUser();
+    const thread = await prisma.thread.create({
+      data: { userId: user.id, title: "A thread" },
+    });
+    chatFailure.next = new Error("fetch failed");
+
+    await followUp(form({ threadId: thread.id, message: "hi" }));
+
+    const reply = await prisma.message.findFirst({ where: { role: "ASSISTANT" } });
+    expect(reply!.body).toBe(
+      "Something went wrong reaching the assistant. Please try again in a moment.",
+    );
   });
 });

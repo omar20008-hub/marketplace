@@ -150,7 +150,8 @@ export type ChatInput = {
   chatInput: string;
 };
 
-export type ChatOutput = { output: string };
+export const ChatOutput = z.object({ output: z.string() });
+export type ChatOutput = z.infer<typeof ChatOutput>;
 
 // ------------------------------------------------- n8n REST API, not a workflow
 

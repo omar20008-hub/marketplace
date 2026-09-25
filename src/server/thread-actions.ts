@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { n8n } from "@/lib/n8n";
+import { askOrchestrator } from "./run-engine";
 
 /**
  * A follow-up inside an existing thread. The conversation itself lives in
@@ -27,10 +27,10 @@ export async function followUp(formData: FormData) {
     data: { threadId: thread.id, role: "USER", body },
   });
 
-  const reply = await n8n.chat({ sessionId: user.id, chatInput: body });
+  const output = await askOrchestrator(user.id, body);
 
   await prisma.message.create({
-    data: { threadId: thread.id, role: "ASSISTANT", body: reply.output },
+    data: { threadId: thread.id, role: "ASSISTANT", body: output },
   });
 
   await prisma.thread.update({
