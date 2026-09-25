@@ -4,7 +4,9 @@ import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { env } from "@/lib/env";
 import {
+  Avatar,
   Badge,
+  Button,
   Card,
   FootNote,
   Mono,
@@ -14,22 +16,93 @@ import {
   Td,
   Th,
 } from "@/components/ds";
-import { waitingFor } from "@/lib/readiness";
+import { formatDate, waitingFor } from "@/lib/readiness";
+import { toggleRole } from "@/server/admin-actions";
 import { DecisionPanel } from "./decision-panel";
 
 export const metadata = { title: "Admin · Builder" };
 
-const TABS = ["Submissions", "Products", "Health", "Plans", "Audit"] as const;
+/** Only "submissions" and "users" go anywhere; the rest are the design's
+ * placeholders for screens nothing here builds yet, same as before this tab
+ * existed — inert, not broken. */
+const TABS = [
+  { key: "submissions", label: "Submissions" },
+  { key: "products", label: "Products" },
+  { key: "health", label: "Health" },
+  { key: "plans", label: "Plans" },
+  { key: "audit", label: "Audit" },
+  { key: "users", label: "Users" },
+] as const;
+
+function AdminTabs({ active, openCount }: { active: string; openCount?: number }) {
+  return (
+    <nav className="mt-4 flex gap-1 overflow-x-auto text-sm">
+      {TABS.map((tab) => {
+        const linkable = tab.key === "submissions" || tab.key === "users";
+        const isActive = tab.key === active;
+        const className = isActive
+          ? "flex items-center gap-1.5 rounded-full bg-fill px-3.5 py-[7px] font-medium whitespace-nowrap text-ink"
+          : "rounded-full px-3.5 py-[7px] whitespace-nowrap text-ink-3";
+        const content = (
+          <>
+            {tab.label}
+            {tab.key === "submissions" && openCount !== undefined ? (
+              <span className="text-xs text-ink-3">{openCount}</span>
+            ) : null}
+          </>
+        );
+        return linkable ? (
+          <Link
+            key={tab.key}
+            href={tab.key === "submissions" ? "/admin" : `/admin?view=${tab.key}`}
+            className={className}
+          >
+            {content}
+          </Link>
+        ) : (
+          <span key={tab.key} className={className}>
+            {content}
+          </span>
+        );
+      })}
+    </nav>
+  );
+}
 
 type Filter = "review" | "passed" | "failed";
 
 export default async function AdminPage({
   searchParams,
 }: {
-  searchParams: Promise<{ filter?: Filter; submission?: string }>;
+  searchParams: Promise<{ filter?: Filter; submission?: string; view?: string }>;
 }) {
-  const { filter = "review", submission: submissionId } = await searchParams;
-  await requireRole("ADMIN");
+  const { filter = "review", submission: submissionId, view = "submissions" } =
+    await searchParams;
+  const admin = await requireRole("ADMIN");
+
+  if (view === "users") {
+    const users = await prisma.user.findMany({
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        roles: true,
+        initials: true,
+        avatarTint: true,
+        avatarInk: true,
+        createdAt: true,
+      },
+    });
+
+    return (
+      <div className="px-5 py-5 lg:px-7">
+        <PageTitle title="Admin" />
+        <AdminTabs active="users" />
+        <UsersTable users={users} currentUserId={admin.id} />
+      </div>
+    );
+  }
 
   const [open, products, installations, audit] = await Promise.all([
     prisma.submission.findMany({
@@ -79,23 +152,7 @@ export default async function AdminPage({
     <div className="px-5 py-5 lg:px-7">
       <PageTitle title="Admin" />
 
-      <nav className="mt-4 flex gap-1 overflow-x-auto text-sm">
-        {TABS.map((tab, index) => (
-          <span
-            key={tab}
-            className={
-              index === 0
-                ? "flex items-center gap-1.5 rounded-full bg-fill px-3.5 py-[7px] font-medium whitespace-nowrap text-ink"
-                : "rounded-full px-3.5 py-[7px] whitespace-nowrap text-ink-3"
-            }
-          >
-            {tab}
-            {index === 0 ? (
-              <span className="text-xs text-ink-3">{open.length}</span>
-            ) : null}
-          </span>
-        ))}
-      </nav>
+      <AdminTabs active="submissions" openCount={open.length} />
 
       <div className="mt-5 grid grid-cols-1 gap-7 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0">
@@ -333,5 +390,131 @@ function Stat({
         {value}
       </div>
     </Card>
+  );
+}
+
+type ManagedUser = {
+  id: string;
+  email: string;
+  name: string;
+  roles: string[];
+  initials: string;
+  avatarTint: string;
+  avatarInk: string;
+  createdAt: Date;
+};
+
+/**
+ * Every row's two buttons post straight to toggleRole() — no client state,
+ * because there is nothing to hold: the server re-reads the account's current
+ * roles and flips the one requested, rather than trusting a hidden field for
+ * what it already was.
+ */
+function UsersTable({
+  users,
+  currentUserId,
+}: {
+  users: ManagedUser[];
+  currentUserId: string;
+}) {
+  const adminCount = users.filter((u) => u.roles.includes("ADMIN")).length;
+
+  return (
+    <div className="mt-5">
+      <Table>
+        <thead>
+          <tr>
+            <Th>User</Th>
+            <Th>Roles</Th>
+            <Th>Joined</Th>
+            <Th />
+          </tr>
+        </thead>
+        <tbody>
+          {users.map((user) => {
+            const isCreator = user.roles.includes("CREATOR");
+            const isAdmin = user.roles.includes("ADMIN");
+            const isSelf = user.id === currentUserId;
+            const isLastAdmin = isAdmin && adminCount <= 1;
+            const adminDisabled = isAdmin && (isSelf || isLastAdmin);
+
+            return (
+              <tr key={user.id}>
+                <Td>
+                  <div className="flex items-center gap-2.5">
+                    <Avatar
+                      initials={user.initials}
+                      tint={user.avatarTint}
+                      ink={user.avatarInk}
+                      size={28}
+                    />
+                    <div>
+                      <div className="text-sm font-medium">
+                        {user.name}
+                        {isSelf ? (
+                          <span className="text-ink-3"> · you</span>
+                        ) : null}
+                      </div>
+                      <div className="text-xs text-ink-3">{user.email}</div>
+                    </div>
+                  </div>
+                </Td>
+                <Td>
+                  <div className="flex flex-wrap gap-1.5">
+                    <Badge tone="neutral">User</Badge>
+                    {isCreator ? <Badge tone="platform">Creator</Badge> : null}
+                    {isAdmin ? <Badge tone="ready">Admin</Badge> : null}
+                  </div>
+                </Td>
+                <Td className="whitespace-nowrap text-ink-2">
+                  <Mono>{formatDate(user.createdAt)}</Mono>
+                </Td>
+                <Td>
+                  <div className="flex flex-wrap justify-end gap-1.5">
+                    <form action={toggleRole}>
+                      <input type="hidden" name="userId" value={user.id} />
+                      <input type="hidden" name="role" value="CREATOR" />
+                      <Button type="submit" tone={isCreator ? "danger" : "secondary"} size="sm">
+                        {isCreator ? "Revoke creator" : "Grant creator"}
+                      </Button>
+                    </form>
+                    <form action={toggleRole}>
+                      <input type="hidden" name="userId" value={user.id} />
+                      <input type="hidden" name="role" value="ADMIN" />
+                      <Button
+                        type="submit"
+                        tone={adminDisabled ? "quiet" : isAdmin ? "danger" : "secondary"}
+                        size="sm"
+                        disabled={adminDisabled}
+                        title={
+                          isAdmin && isSelf
+                            ? "You cannot remove your own admin access here."
+                            : isAdmin && isLastAdmin
+                              ? "At least one admin must remain."
+                              : undefined
+                        }
+                      >
+                        {isAdmin ? "Revoke admin" : "Grant admin"}
+                      </Button>
+                    </form>
+                  </div>
+                </Td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </Table>
+
+      {users.length === 0 ? (
+        <p className="py-12 text-center text-sm text-ink-3">No accounts yet.</p>
+      ) : null}
+
+      <div className="mt-4">
+        <FootNote>
+          Granting Creator or Admin, and revoking either, is written to the
+          audit log under the Submissions tab.
+        </FootNote>
+      </div>
+    </div>
   );
 }

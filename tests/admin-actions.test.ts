@@ -37,7 +37,7 @@ vi.mock("@/lib/auth", () => ({
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
 const { prisma } = await import("@/lib/db");
-const { approve, hold, reject, requestChanges } = await import(
+const { approve, hold, reject, requestChanges, toggleRole } = await import(
   "@/server/admin-actions"
 );
 
@@ -342,5 +342,150 @@ describe("hold", () => {
       action: "security hold",
       reason: "Reported exfiltration",
     });
+  });
+});
+
+describe("toggleRole", () => {
+  async function member(email = "member@example.test", roles: string[] = ["USER"]) {
+    return prisma.user.create({
+      data: {
+        email,
+        name: "Member",
+        passwordHash: "x",
+        initials: "ME",
+        planId: PLAN_ID,
+        roles: roles as never,
+      },
+    });
+  }
+
+  it("grants creator to an account that does not have it", async () => {
+    const { admin } = await seed();
+    const account = await member();
+
+    await toggleRole(form({ userId: account.id, role: "CREATOR" }));
+
+    expect((await prisma.user.findUnique({ where: { id: account.id } }))!.roles).toEqual([
+      "USER",
+      "CREATOR",
+    ]);
+    expect(await prisma.auditLog.findFirst()).toMatchObject({
+      actorId: admin.id,
+      action: "grant creator",
+      subject: account.email,
+    });
+  });
+
+  it("revokes creator from an account that has it", async () => {
+    const { creator } = await seed();
+
+    await toggleRole(form({ userId: creator.id, role: "CREATOR" }));
+
+    expect((await prisma.user.findUnique({ where: { id: creator.id } }))!.roles).toEqual([
+      "USER",
+    ]);
+    expect(await prisma.auditLog.findFirst()).toMatchObject({ action: "revoke creator" });
+  });
+
+  it("grants admin to an account", async () => {
+    const { creator } = await seed();
+
+    await toggleRole(form({ userId: creator.id, role: "ADMIN" }));
+
+    expect((await prisma.user.findUnique({ where: { id: creator.id } }))!.roles).toEqual([
+      "USER",
+      "CREATOR",
+      "ADMIN",
+    ]);
+  });
+
+  it("refuses to remove your own admin access", async () => {
+    const { admin } = await seed();
+
+    await toggleRole(form({ userId: admin.id, role: "ADMIN" }));
+
+    expect((await prisma.user.findUnique({ where: { id: admin.id } }))!.roles).toEqual([
+      "USER",
+      "ADMIN",
+    ]);
+    expect(await prisma.auditLog.count()).toBe(0);
+  });
+
+  it("refuses to leave the platform with no admin, even acting as someone else", async () => {
+    // The mocked session says this second account is an admin; the database
+    // does not, which is what it takes to reach the count check without the
+    // self-check catching it first — the case the count check exists for is
+    // otherwise unreachable through this action, since the only account that
+    // can ever be "the last admin" while calling it is the caller themself.
+    const { admin: onlyAdmin } = await seed();
+    const actor = await member("actor@example.test");
+    viewer.current = { id: actor.id, roles: ["USER", "ADMIN"] };
+
+    await toggleRole(form({ userId: onlyAdmin.id, role: "ADMIN" }));
+
+    expect((await prisma.user.findUnique({ where: { id: onlyAdmin.id } }))!.roles).toEqual([
+      "USER",
+      "ADMIN",
+    ]);
+    expect(await prisma.auditLog.count()).toBe(0);
+  });
+
+  it("does not touch the count when a second admin is the one losing it", async () => {
+    const { admin: first } = await seed();
+    const second = await member("second-admin@example.test", ["USER", "ADMIN"]);
+
+    await toggleRole(form({ userId: second.id, role: "ADMIN" }));
+
+    expect((await prisma.user.findUnique({ where: { id: second.id } }))!.roles).toEqual([
+      "USER",
+    ]);
+    expect(await prisma.auditLog.findFirst()).toMatchObject({
+      actorId: first.id,
+      action: "revoke admin",
+      subject: second.email,
+    });
+  });
+
+  it("sends a signed-in non-admin home", async () => {
+    const { creator } = await seed();
+    viewer.current = { id: "someone", roles: ["USER", "CREATOR"] };
+
+    const destination = await turnedAwayTo(() =>
+      toggleRole(form({ userId: creator.id, role: "CREATOR" })),
+    );
+
+    expect(destination).toBe("/");
+    expect(await prisma.auditLog.count()).toBe(0);
+  });
+
+  it("sends a stranger to sign-in", async () => {
+    const { creator } = await seed();
+    viewer.current = null;
+
+    expect(
+      await turnedAwayTo(() =>
+        toggleRole(form({ userId: creator.id, role: "CREATOR" })),
+      ),
+    ).toBe("/login");
+  });
+
+  it("does nothing for an account that does not exist", async () => {
+    await seed();
+
+    await toggleRole(form({ userId: "does-not-exist", role: "CREATOR" }));
+
+    expect(await prisma.auditLog.count()).toBe(0);
+  });
+
+  it("ignores a role it does not manage", async () => {
+    const { creator } = await seed();
+
+    await toggleRole(form({ userId: creator.id, role: "USER" }));
+
+    expect((await prisma.user.findUnique({ where: { id: creator.id } }))!.roles).toEqual([
+      "USER",
+      "CREATOR",
+    ]);
+    expect(await prisma.auditLog.count()).toBe(0);
   });
 });

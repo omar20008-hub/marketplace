@@ -189,3 +189,50 @@ export async function hold(formData: FormData) {
   revalidatePath("/admin");
   revalidatePath("/marketplace");
 }
+
+/**
+ * Grants or revokes CREATOR or ADMIN for another account, from the Users tab.
+ * USER is not toggleable here — it is the floor every account starts on
+ * (`@default([USER])`), and nothing in the codebase gives meaning to an
+ * account with no roles at all.
+ *
+ * Revoking ADMIN has two refusals, both silent no-ops like every other
+ * refusal in this file rather than errors: an admin can never drop their own
+ * access from this panel — that is how a lockout happens by accident, not on
+ * purpose — and the platform can never be left with zero admins, checked by
+ * count rather than assumed, in case that ever stops being equivalent to "not
+ * yourself".
+ */
+export async function toggleRole(formData: FormData) {
+  const admin = await requireRole("ADMIN");
+  const userId = String(formData.get("userId") ?? "");
+  const role = String(formData.get("role") ?? "");
+  if (role !== "CREATOR" && role !== "ADMIN") return;
+
+  const target = await prisma.user.findUnique({ where: { id: userId } });
+  if (!target) return;
+
+  const has = target.roles.includes(role);
+
+  if (role === "ADMIN" && has) {
+    if (target.id === admin.id) return;
+    const adminCount = await prisma.user.count({ where: { roles: { has: "ADMIN" } } });
+    if (adminCount <= 1) return;
+  }
+
+  await prisma.user.update({
+    where: { id: target.id },
+    data: {
+      roles: has ? target.roles.filter((r) => r !== role) : [...target.roles, role],
+    },
+  });
+
+  await record(
+    admin.id,
+    has ? `revoke ${role.toLowerCase()}` : `grant ${role.toLowerCase()}`,
+    target.email,
+    "",
+  );
+
+  revalidatePath("/admin");
+}
