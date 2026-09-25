@@ -29,6 +29,7 @@ vi.mock("next/navigation", () => ({
     throw new Redirected(to);
   },
 }));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
 const { prisma } = await import("@/lib/db");
 const { hashPassword } = await import("@/lib/auth");
@@ -186,7 +187,7 @@ describe("login", () => {
 });
 
 describe("logout", () => {
-  it("clears the session and sends them to sign-in", async () => {
+  it("clears the session and sends them to the home page, which renders as a guest", async () => {
     const user = await makeUser("nora@acme.co");
     await attempt_({ email: "nora@acme.co", password: "builder" });
     await expect(readSession()).resolves.toEqual({ userId: user.id });
@@ -199,7 +200,11 @@ describe("logout", () => {
       else throw error;
     }
 
-    expect(destination).toBe("/login");
+    // Not /login: that would put a form in front of someone who has done
+    // nothing wrong. "/" already renders for a guest, so that is where
+    // signing out lands them, same as opening the product with no session at
+    // all.
+    expect(destination).toBe("/");
     await expect(readSession()).resolves.toBeNull();
   });
 });

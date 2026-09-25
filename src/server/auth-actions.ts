@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { verifyPassword } from "@/lib/auth";
 import { createSession, destroySession } from "@/lib/session";
@@ -61,10 +62,23 @@ export async function login(
   clear(`login:${email}`);
 
   await createSession(user.id);
+  // The whole (app) layout reads the session to decide what to render — the
+  // sidebar, and now whether "/" is the guest composer or the real one — so
+  // signing in has to invalidate all of it, not just the page being
+  // navigated to. Without this, a browser that already has "/" in its
+  // client-side Router Cache from before this sign-in keeps showing that
+  // cached, signed-out render after the redirect below.
+  revalidatePath("/", "layout");
   redirect("/");
 }
 
 export async function logout() {
   await destroySession();
-  redirect("/login");
+  // Same cache-invalidation reason as login() above, in the other direction:
+  // without it, "/" is still cached from while this session was signed in.
+  revalidatePath("/", "layout");
+  // Not /login: the home page already renders for a guest, so signing out
+  // lands there — the same page the product opens to for anyone with no
+  // session, not a form asking them to sign back in immediately.
+  redirect("/");
 }
