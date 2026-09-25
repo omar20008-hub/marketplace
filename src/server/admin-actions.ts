@@ -64,6 +64,8 @@ export async function approve(formData: FormData) {
         securityCheckedAt: new Date(),
         publishedAt: new Date(),
         rejectionReason: null,
+        invocationMode: submission.invocationMode,
+        inputFields: submission.inputFields,
       },
     }),
     prisma.productVersion.updateMany({

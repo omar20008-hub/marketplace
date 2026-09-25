@@ -71,6 +71,7 @@ export default async function SetupPage({
         slug: product.slug,
         title: product.title,
         version: product.version,
+        invocationMode: product.invocationMode,
       }}
       requirements={requirements}
       // Only destinations with an active adapter are offered. A disabled one is

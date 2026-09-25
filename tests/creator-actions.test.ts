@@ -209,6 +209,12 @@ describe("a workflow the scan accepts", () => {
     expect(product!.requiredCredentials).toEqual(["slackApi"]);
     expect(product!.externalHosts).toContain("api.example.com");
     expect(product!.needsFromYou).toContain("slackApi");
+    expect(product!.invocationMode).toBe("on_demand");
+
+    expect(await prisma.submission.findFirst()).toMatchObject({
+      invocationMode: "on_demand",
+      inferenceStatus: "confident",
+    });
   });
 
   it("says nothing is needed when the workflow asks for no account", async () => {

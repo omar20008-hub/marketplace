@@ -14,6 +14,7 @@ import {
 } from "@/components/ds";
 import { ProductGlyph } from "@/components/app/product-glyph";
 import { readinessFor, relativeDays } from "@/lib/readiness";
+import { invocationModeLabel } from "@/lib/invocation-mode";
 
 type InputField = { name: string; label: string; type: string; required?: boolean; note?: string };
 type Output = { name: string; note: string };
@@ -126,6 +127,7 @@ export default async function ProductPage({
                   {product.kind === "AGENT" ? "Agent" : "Workflow"}
                 </Badge>
                 <Badge tone="neutral">{product.category}</Badge>
+                <Badge tone="platform">{invocationModeLabel(product.invocationMode)}</Badge>
                 <Mono>
                   v{product.version} · updated {relativeDays(product.updatedAt)}
                 </Mono>

@@ -40,7 +40,13 @@ export function SetupWizard({
   requirements,
   backends,
 }: {
-  product: { id: string; slug: string; title: string; version: string };
+  product: {
+    id: string;
+    slug: string;
+    title: string;
+    version: string;
+    invocationMode: string;
+  };
   requirements: SetupRequirement[];
   backends: { backend: string; label: string }[];
 }) {
@@ -275,6 +281,24 @@ export function SetupWizard({
                 <span className="flex-1 text-sm">Model</span>
                 <Badge tone="platform">Auto · included</Badge>
               </Card>
+
+              {product.invocationMode === "scheduled" ? (
+                <Card className="flex flex-col gap-2 p-3">
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-[13px] font-medium">Schedule</span>
+                    <Input
+                      name="schedule"
+                      type="text"
+                      autoComplete="off"
+                      placeholder="0 9 * * *"
+                    />
+                    <span className="text-xs text-ink-3">
+                      A cron expression for when this runs on its own. Leave blank
+                      to use the product&apos;s own default schedule.
+                    </span>
+                  </label>
+                </Card>
+              ) : null}
             </div>
           </div>
 

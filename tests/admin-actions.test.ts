@@ -65,12 +65,16 @@ type Seed = {
   productStatus?: "IN_REVIEW" | "PUBLISHED";
   issues?: { severity: "BLOCKER" | "QUALITY"; title: string; detail: string }[];
   version?: string;
+  invocationMode?: string;
+  inputFields?: string[];
 };
 
 async function seed({
   productStatus = "IN_REVIEW",
   issues = [],
   version = "2.0",
+  invocationMode = "on_demand",
+  inputFields = [],
 }: Seed = {}) {
   await prisma.plan.create({
     data: {
@@ -122,6 +126,8 @@ async function seed({
       version,
       state: "UNDER_REVIEW",
       issues: { create: issues },
+      invocationMode,
+      inputFields,
     },
   });
 
@@ -232,6 +238,20 @@ describe("approve", () => {
       actorId: admin.id,
       action: "approve",
       reason: "Looks good",
+    });
+  });
+
+  it("carries invocationMode and inputFields from the submission to the product", async () => {
+    const { product, submission } = await seed({
+      invocationMode: "scheduled",
+      inputFields: ["sheetUrl", "note"],
+    });
+
+    await approve(form({ submissionId: submission.id, reason: "Looks good" }));
+
+    expect(await prisma.product.findUnique({ where: { id: product.id } })).toMatchObject({
+      invocationMode: "scheduled",
+      inputFields: ["sheetUrl", "note"],
     });
   });
 

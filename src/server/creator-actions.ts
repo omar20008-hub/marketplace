@@ -84,6 +84,8 @@ export async function uploadProduct(
       externalHosts: splitList(reply.externalHosts),
       flaggedNodes: splitList(reply.flaggedNodes),
       credentialDurability: reply.credentialDurability,
+      invocationMode: reply.invocationMode,
+      inputFields: splitList(reply.inputFields),
     },
     update: {
       templateId: reply.templateId,
@@ -95,6 +97,8 @@ export async function uploadProduct(
       externalHosts: splitList(reply.externalHosts),
       flaggedNodes: splitList(reply.flaggedNodes),
       credentialDurability: reply.credentialDurability,
+      invocationMode: reply.invocationMode,
+      inputFields: splitList(reply.inputFields),
     },
   });
 
@@ -117,6 +121,10 @@ export async function uploadProduct(
       quality: summary === description.slice(0, 120) ? "PARTIAL" : "PASSED",
       policy: "PASSED",
       secretsRemoved: 0,
+      invocationMode: reply.invocationMode,
+      inputFields: splitList(reply.inputFields),
+      inferenceStatus: reply.inferenceStatus,
+      notes: reply.notes || null,
     },
   });
 

@@ -164,6 +164,32 @@ describe("upload — the credential durability rule", () => {
   });
 });
 
+describe("upload — invocationMode", () => {
+  it("reports on_demand for a workflow with only the required trigger", async () => {
+    const reply = await mockDriver.upload(upload(workflow()));
+    expect(reply).toMatchObject({ invocationMode: "on_demand" });
+  });
+
+  it("reports scheduled when a Schedule Trigger is present", async () => {
+    const reply = await mockDriver.upload(
+      upload(workflow({ type: "n8n-nodes-base.scheduleTrigger" })),
+    );
+    expect(reply).toMatchObject({ invocationMode: "scheduled" });
+  });
+
+  it("reports event for any other trigger-shaped node", async () => {
+    const reply = await mockDriver.upload(
+      upload(workflow({ type: "n8n-nodes-base.gmailTrigger" })),
+    );
+    expect(reply).toMatchObject({ invocationMode: "event" });
+  });
+
+  it("collects the declared input field names", async () => {
+    const reply = await mockDriver.upload(upload(workflow()));
+    expect("inputFields" in reply && reply.inputFields).toBe("sheetUrl");
+  });
+});
+
 describe("install", () => {
   it("refuses a credential type whose sign-in flow does not exist yet", async () => {
     const reply = await mockDriver.install({
@@ -171,6 +197,7 @@ describe("install", () => {
       templateId: "tpl_1",
       storageBackend: "platform",
       credentialsJson: JSON.stringify({ googleSheetsOAuth2Api: { token: "x" } }),
+      schedule: "",
     });
 
     expect(reply).toMatchObject({ ok: false });
@@ -185,10 +212,11 @@ describe("install", () => {
       templateId: "tpl_1",
       storageBackend: "platform",
       credentialsJson: JSON.stringify({ slackApi: { accessToken: "x" } }),
+      schedule: "",
     });
 
     expect("installationId" in reply && reply.installationId).toMatch(/^inst_/);
-    expect(reply).toMatchObject({ storageBackend: "platform" });
+    expect(reply).toMatchObject({ storageBackend: "platform", activationStatus: "active" });
   });
 
   it("refuses credentials that are not JSON", async () => {
@@ -197,6 +225,7 @@ describe("install", () => {
       templateId: "tpl_1",
       storageBackend: "platform",
       credentialsJson: "{oops",
+      schedule: "",
     });
 
     expect(reply).toMatchObject({ ok: false });

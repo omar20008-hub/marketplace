@@ -134,6 +134,19 @@ model Product {
   flaggedNodes         String[] @default([])
   credentialDurability String   @default("durable")
 
+  /// How the published version is invoked: "on_demand" (asked for in the
+  /// conversation — the only kind before Upload & Provision stopped rejecting
+  /// AI and Google Drive nodes), "scheduled" (a Schedule Trigger inside the
+  /// workflow itself, running in n8n independently of this platform's own
+  /// Schedule model below) or "event" (an external trigger, e.g. inbound
+  /// mail). Can arrive composite ("scheduled,event") on the rare template with
+  /// more than one trigger. Copied from the accepted Submission at upload and
+  /// again at approval, same as nodeCount and requiredCredentials above.
+  invocationMode String   @default("on_demand")
+  /// Field names Upload & Provision inferred as this template's on_demand
+  /// inputs. Meaningless for scheduled/event, which take no inputs at call time.
+  inputFields    String[] @default([])
+
   // Marketplace signals. Ratings are platform-owned, health is derived from runs.
   ratingAvg   Float   @default(0)
   ratingCount Int     @default(0)
@@ -276,6 +289,18 @@ model Installation {
   failureCount       Int                @default(0)
   favourite          Boolean            @default(false)
   attentionNote      String?
+
+  /// Cron the user chose for a scheduled product, sent to MP · Install
+  /// Template as-is. Null means the template's own built-in default schedule
+  /// applies. Unused for on_demand/event products.
+  schedule String?
+  /// From MP · Install Template's reply for scheduled/event products: "active"
+  /// once n8n turned the trigger on, "activation_failed" if the install call
+  /// itself succeeded (installationId exists) but n8n could not activate the
+  /// trigger — which reads as "needs review", not as a working tool, in My
+  /// workspace. Meaningless for on_demand, where readinessFor() already
+  /// decides what shows instead.
+  activationStatus String @default("active")
 
   installedAt DateTime  @default(now())
   lastRunAt   DateTime?
@@ -498,6 +523,21 @@ model Submission {
   decidedById    String?
   decidedAt      DateTime?
   decisionReason String?
+
+  /// See Product.invocationMode — this is where it first lands, from the same
+  /// Upload & Provision reply, before a decision copies it onto the product.
+  invocationMode String   @default("on_demand")
+  inputFields    String[] @default([])
+  /// "confident" needs nothing from the creator. "needs_confirmation" means
+  /// Upload & Provision inferred something ambiguous (dynamic data access, or
+  /// a trigger worth a second look) — shown to the creator as information
+  /// alongside `notes`, since there is no n8n API path yet to confirm or edit
+  /// it; the human review inside n8n is what actually settles it.
+  inferenceStatus String  @default("confident")
+  /// Arabic prose describing any automatic conversion Upload & Provision made
+  /// (a node retargeted, a trigger swapped for a chat-callable one). Shown to
+  /// the creator as transparency, not as an error.
+  notes           String?
 
   issues SubmissionIssue[]
 }

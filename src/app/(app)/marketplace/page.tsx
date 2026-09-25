@@ -5,6 +5,7 @@ import { currentUser } from "@/lib/auth";
 import { Badge } from "@/components/ds";
 import { ProductGlyph } from "@/components/app/product-glyph";
 import { readinessFor, type Readiness } from "@/lib/readiness";
+import { invocationModeLabel } from "@/lib/invocation-mode";
 import { MarketplaceFilters } from "./filters";
 
 export const metadata = { title: "Marketplace · Builder" };
@@ -244,6 +245,7 @@ function Section({
       runsLast30d: number;
       healthPct: number;
       status: string;
+      invocationMode: string;
     };
     readiness: Readiness;
   }[];
@@ -266,6 +268,7 @@ function Section({
                 <Badge tone={installedIds.has(product.id) ? "neutral" : readiness.tone}>
                   {installedIds.has(product.id) ? "In workspace" : readiness.label}
                 </Badge>
+                <Badge tone="platform">{invocationModeLabel(product.invocationMode)}</Badge>
               </div>
               <p className="text-[13px] leading-snug text-ink-2">{product.summary}</p>
               <p className="mt-[3px] text-xs text-ink-3">

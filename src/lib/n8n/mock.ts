@@ -185,6 +185,25 @@ export const mockDriver: N8nDriver = {
       ),
     ];
 
+    // Mirrors how Upload & Provision now infers invocationMode: a Schedule
+    // Trigger node makes it scheduled, any other trigger-shaped node (a
+    // webhook, a Gmail trigger, …) makes it event, and the Execute Workflow
+    // Trigger on its own — the only thing every product is required to have —
+    // means the chat interface is the only way in, i.e. on_demand.
+    const triggerTypes = nodes.map((n) => n.type ?? "").filter((t) => /trigger/i.test(t));
+    const invocationMode = triggerTypes.includes("n8n-nodes-base.scheduleTrigger")
+      ? "scheduled"
+      : triggerTypes.some((t) => t !== "n8n-nodes-base.executeWorkflowTrigger")
+        ? "event"
+        : "on_demand";
+
+    const inputFields = (
+      (trigger.parameters?.workflowInputs as { values?: { name?: string }[] } | undefined)
+        ?.values ?? []
+    )
+      .map((field) => field.name ?? "")
+      .filter(Boolean);
+
     return {
       templateId: shortId("tpl"),
       status: "in_review",
@@ -193,6 +212,10 @@ export const mockDriver: N8nDriver = {
       requiredCredentials: credentialTypes.join(","),
       credentialDurability: blocked ? "blocked" : "durable",
       externalHosts: hosts.join(","),
+      invocationMode,
+      inputFields: inputFields.join(","),
+      inferenceStatus: "confident",
+      notes: "",
     };
   },
 
@@ -220,6 +243,7 @@ export const mockDriver: N8nDriver = {
       instanceWorkflowId: `u_${input.userId}_${input.templateId}`,
       storageBackend: input.storageBackend,
       title: input.templateId,
+      activationStatus: "active",
     };
   },
 

@@ -228,6 +228,31 @@ export default async function CreatorPage({
               </p>
             </div>
 
+            {selected.inferenceStatus === "needs_confirmation" ? (
+              <Card tone="plain" className="flex flex-col gap-2 border-warn p-3.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium">
+                    Invocation mode and inputs were inferred, not declared
+                  </span>
+                  <Badge tone="partial">Needs confirmation</Badge>
+                </div>
+                {selected.notes ? (
+                  <p className="text-[13px] leading-relaxed text-ink-2">
+                    {selected.notes}
+                  </p>
+                ) : null}
+                {selected.inputFields.length > 0 ? (
+                  <p className="text-[13px] text-ink-2">
+                    Inferred inputs: {selected.inputFields.join(", ")}
+                  </p>
+                ) : null}
+                <FootNote>
+                  Informational only — re-upload the file with an explicit
+                  Execute Workflow Trigger schema to change this.
+                </FootNote>
+              </Card>
+            ) : null}
+
             <div className="flex flex-wrap gap-2">
               <Check label="Parsing" state={selected.parsing} />
               <Check

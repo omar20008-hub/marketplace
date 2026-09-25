@@ -152,7 +152,9 @@ describe("postWebhook", () => {
     );
     const driver = await loadDriver();
 
-    // The comma-separated list fields default rather than failing the parse.
+    // The comma-separated list fields, and the invocationMode fields a reply
+    // from before that policy change would omit entirely, all default rather
+    // than failing the parse.
     expect(await driver.upload(uploadInput)).toEqual({
       templateId: "tpl_9",
       status: "in_review",
@@ -161,6 +163,10 @@ describe("postWebhook", () => {
       flaggedNodes: "",
       requiredCredentials: "",
       externalHosts: "",
+      invocationMode: "on_demand",
+      inputFields: "",
+      inferenceStatus: "confident",
+      notes: "",
     });
   });
 

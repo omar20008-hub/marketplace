@@ -284,12 +284,14 @@ function ProductList({
       id: string;
       favourite: boolean;
       lastRunAt: Date | null;
+      activationStatus: string;
       product: {
         slug: string;
         title: string;
         category: string;
         kind: "AGENT" | "WORKFLOW";
         ratingAvg: number;
+        invocationMode: string;
       };
     };
     readiness: { tone: "ready" | "partial" | "plan" | "blocked" | "restricted" | "platform" | "neutral"; label: string };
@@ -332,7 +334,19 @@ function ProductList({
               </div>
             </div>
 
-            {readiness.tone === "ready" ? (
+            {readiness.tone === "ready" &&
+            installation.product.invocationMode !== "on_demand" ? (
+              installation.activationStatus === "activation_failed" ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-danger-tint px-3 py-1.5 text-[13px] font-medium text-danger-ink">
+                  <CircleAlert size={14} strokeWidth={2} />
+                  Activation failed — needs review
+                </span>
+              ) : (
+                <span className="inline-flex items-center rounded-full bg-fill px-3 py-1.5 text-[13px] text-ink-2">
+                  Runs automatically
+                </span>
+              )
+            ) : readiness.tone === "ready" ? (
               <form action={runFromWorkspace}>
                 <input
                   type="hidden"

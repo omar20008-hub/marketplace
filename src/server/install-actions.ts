@@ -26,6 +26,7 @@ export async function activate(
   const user = await requireUser();
   const productId = String(formData.get("productId") ?? "");
   const storageBackend = String(formData.get("storageBackend") ?? "platform");
+  const schedule = String(formData.get("schedule") ?? "");
 
   const product = await prisma.product.findUnique({
     where: { id: productId },
@@ -115,8 +116,9 @@ export async function activate(
         storageBackend,
         status: "PARTIAL",
         attentionNote: `${missing.map(labelFor).join(", ")} still needs connecting.`,
+        schedule: schedule || null,
       },
-      update: { status: "PARTIAL", storageBackend },
+      update: { status: "PARTIAL", storageBackend, schedule: schedule || null },
     });
     revalidatePath("/workspace");
     redirect("/workspace");
@@ -138,6 +140,7 @@ export async function activate(
     templateId: product.templateId ?? product.id,
     storageBackend,
     credentialsJson,
+    schedule,
   });
 
   if ("ok" in reply) {
@@ -154,6 +157,8 @@ export async function activate(
       instanceWorkflowId: reply.instanceWorkflowId,
       storageBackend: reply.storageBackend,
       status: "ACTIVE",
+      schedule: schedule || null,
+      activationStatus: reply.activationStatus,
     },
     update: {
       installationId: reply.installationId,
@@ -161,6 +166,8 @@ export async function activate(
       storageBackend: reply.storageBackend,
       status: "ACTIVE",
       attentionNote: null,
+      schedule: schedule || null,
+      activationStatus: reply.activationStatus,
     },
   });
 

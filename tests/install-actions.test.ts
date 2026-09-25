@@ -447,4 +447,32 @@ describe("activate — a completed install", () => {
       attentionNote: null,
     });
   });
+
+  it("stores the submitted schedule and the activation status the reply gave", async () => {
+    const user = await seedUser();
+    const product = await prisma.product.create({
+      data: { ...productData(user.id, "PUBLISHED", []), invocationMode: "scheduled" },
+    });
+
+    await submit({
+      productId: product.id,
+      storageBackend: "platform",
+      schedule: "0 9 * * *",
+    });
+
+    expect(await prisma.installation.findFirst()).toMatchObject({
+      status: "ACTIVE",
+      schedule: "0 9 * * *",
+      activationStatus: "active",
+    });
+  });
+
+  it("leaves schedule unset when the field is left blank", async () => {
+    const user = await seedUser();
+    const product = await prisma.product.create({ data: productData(user.id, "PUBLISHED", []) });
+
+    await submit({ productId: product.id, storageBackend: "platform" });
+
+    expect(await prisma.installation.findFirst()).toMatchObject({ schedule: null });
+  });
 });

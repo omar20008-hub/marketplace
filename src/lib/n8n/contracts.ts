@@ -30,6 +30,19 @@ export const UploadAccepted = z.object({
   requiredCredentials: z.string().default(""),
   credentialDurability: z.enum(["durable", "blocked"]),
   externalHosts: z.string().default(""),
+  /**
+   * Added once Upload & Provision stopped rejecting AI/Google Drive nodes in
+   * favour of accepting almost anything, with automatic conversion instead of
+   * refusal. Defaulted rather than required, so a workflow still on the old
+   * reply shape (no invocationMode at all) parses as "on_demand" — the only
+   * kind that existed before.
+   */
+  invocationMode: z.string().default("on_demand"),
+  /** Comma-separated field names inferred for an on_demand template; split before use. */
+  inputFields: z.string().default(""),
+  inferenceStatus: z.enum(["confident", "needs_confirmation"]).default("confident"),
+  /** Arabic prose describing any automatic conversion. Absent means none happened. */
+  notes: z.string().default(""),
 });
 
 export const UploadRejected = z.object({
@@ -52,6 +65,13 @@ export const InstallInput = z.object({
    * (see credentialSchema below), never from a textarea the user types into.
    */
   credentialsJson: z.string().default("{}"),
+  /**
+   * Cron for a scheduled product's Schedule Trigger. Empty string (the
+   * default, not omitted — n8n reads a present-but-empty field as "use the
+   * template's own default") for anything on_demand or event, or a scheduled
+   * product whose activator left the field blank.
+   */
+  schedule: z.string().default(""),
 });
 export type InstallInput = z.infer<typeof InstallInput>;
 
@@ -60,6 +80,14 @@ export const InstallSucceeded = z.object({
   instanceWorkflowId: z.string(),
   storageBackend: z.string(),
   title: z.string(),
+  /**
+   * For a scheduled/event product: whether n8n actually turned the trigger on.
+   * "activation_failed" means the install call itself succeeded — this
+   * installation exists — but the trigger did not, which the platform has to
+   * show as needing review rather than as a working tool. Meaningless for
+   * on_demand, where there is no trigger to activate.
+   */
+  activationStatus: z.enum(["active", "activation_failed"]).default("active"),
 });
 
 export const InstallFailed = z.object({
