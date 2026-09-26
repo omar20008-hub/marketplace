@@ -166,7 +166,7 @@ export default async function AdminPage({
 
       <AdminTabs active="submissions" openCount={open.length} />
 
-      <div className="mt-5 grid grid-cols-1 gap-7 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="mt-5 grid grid-cols-1 gap-7 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0">
           <div className="flex flex-wrap gap-1.5">
             {FILTERS.map((item) => (
