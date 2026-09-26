@@ -138,6 +138,8 @@ export const env = {
     uploadWebhookUrl: process.env.N8N_UPLOAD_WEBHOOK_URL ?? "",
     installWebhookUrl: process.env.N8N_INSTALL_WEBHOOK_URL ?? "",
     uninstallWebhookUrl: process.env.N8N_UNINSTALL_WEBHOOK_URL ?? "",
+    approveTemplateWebhookUrl: process.env.N8N_APPROVE_TEMPLATE_WEBHOOK_URL ?? "",
+    rejectTemplateWebhookUrl: process.env.N8N_REJECT_TEMPLATE_WEBHOOK_URL ?? "",
     /**
      * Dispatcher and Storage each gained a Webhook Trigger beside the Execute
      * Workflow Trigger the Orchestrator calls them through, so the platform

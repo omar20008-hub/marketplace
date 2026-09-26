@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * Review decisions.
@@ -45,9 +45,22 @@ vi.mock("@/lib/auth", async () => {
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
 const { prisma } = await import("@/lib/db");
-const { approve, createUser, hold, reject, requestChanges, toggleRole } =
-  await import("@/server/admin-actions");
+const {
+  approve: approveRaw,
+  createUser,
+  hold,
+  reject: rejectRaw,
+  requestChanges,
+  toggleRole,
+} = await import("@/server/admin-actions");
 const { verifyPassword } = await import("@/lib/password");
+const { n8n } = await import("@/lib/n8n");
+
+// approve/reject take (prevState, formData) now that a failure from n8n has
+// something to report; every existing call site here only cares about the
+// FormData half, same as before.
+const approve = (formData: FormData) => approveRaw({}, formData);
+const reject = (formData: FormData) => rejectRaw({}, formData);
 
 const PLAN_ID = "test-plan-admin";
 
@@ -153,6 +166,9 @@ async function turnedAwayTo(run: () => Promise<unknown>) {
 }
 
 beforeEach(wipe);
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 afterAll(async () => {
   await wipe();
   await prisma.$disconnect();
@@ -306,6 +322,34 @@ describe("approve", () => {
     await approve(form({ submissionId: "nope", reason: "ok" }));
     expect(await prisma.auditLog.count()).toBe(0);
   });
+
+  it("publishes inside n8n before touching the platform's own record", async () => {
+    const { product, submission } = await seed();
+    const spy = vi.spyOn(n8n, "approveTemplate");
+
+    await approve(form({ submissionId: submission.id, reason: "Looks good" }));
+
+    expect(spy).toHaveBeenCalledWith({ templateId: product.templateId ?? product.id });
+  });
+
+  it("reports n8n's refusal instead of publishing, e.g. the durability rule", async () => {
+    const { product, submission } = await seed();
+    vi.spyOn(n8n, "approveTemplate").mockResolvedValueOnce({
+      ok: false,
+      error: "credentialDurability is blocked for this template.",
+    });
+
+    const result = await approve(form({ submissionId: submission.id, reason: "Looks good" }));
+
+    expect(result.error).toBe("credentialDurability is blocked for this template.");
+    expect(await prisma.submission.findUnique({ where: { id: submission.id } })).toMatchObject({
+      state: "UNDER_REVIEW",
+    });
+    expect(await prisma.product.findUnique({ where: { id: product.id } })).toMatchObject({
+      status: "IN_REVIEW",
+    });
+    expect(await prisma.auditLog.count()).toBe(0);
+  });
 });
 
 describe("requestChanges", () => {
@@ -352,6 +396,37 @@ describe("reject", () => {
     expect(await prisma.submission.findUnique({ where: { id: submission.id } })).toMatchObject({
       state: "REJECTED",
     });
+  });
+
+  it("rejects inside n8n before touching the platform's own record", async () => {
+    const { product, submission } = await seed();
+    const spy = vi.spyOn(n8n, "rejectTemplate");
+
+    await reject(form({ submissionId: submission.id, reason: "Not a fit" }));
+
+    expect(spy).toHaveBeenCalledWith({
+      templateId: product.templateId ?? product.id,
+      reason: "Not a fit",
+    });
+  });
+
+  it("reports n8n's refusal instead of rejecting", async () => {
+    const { product, submission } = await seed();
+    vi.spyOn(n8n, "rejectTemplate").mockResolvedValueOnce({
+      ok: false,
+      error: "n8n could not reach the template.",
+    });
+
+    const result = await reject(form({ submissionId: submission.id, reason: "Not a fit" }));
+
+    expect(result.error).toBe("n8n could not reach the template.");
+    expect(await prisma.submission.findUnique({ where: { id: submission.id } })).toMatchObject({
+      state: "UNDER_REVIEW",
+    });
+    expect(await prisma.product.findUnique({ where: { id: product.id } })).toMatchObject({
+      status: "IN_REVIEW",
+    });
+    expect(await prisma.auditLog.count()).toBe(0);
   });
 });
 

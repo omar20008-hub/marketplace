@@ -4,20 +4,24 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { hashPassword, requireRole } from "@/lib/auth";
 import { initialsFor } from "@/lib/initials";
+import { n8n } from "@/lib/n8n";
 
 /**
  * Review decisions.
  *
- * One open decision from the handover lives here. Approval in the architecture
- * means publishing the workflow inside n8n itself, and no API path exists for
- * the platform to do that on a reviewer's behalf. So these actions record the
- * decision, move the mirror, and write the audit entry — and the panel points
- * the reviewer at the workflow in n8n to finish the publish. When that API path
- * is agreed, the call goes in approve(), and nothing else changes.
+ * Approval and rejection publish or reject the template inside n8n itself
+ * first — the platform cannot decide either on its own behalf — and only then
+ * record the decision locally. n8n refuses an approve on its own when the
+ * template's connections are not durable (credentialDurability = blocked); the
+ * platform does not check that condition before calling it, only the
+ * unrelated BLOCKER-issue gate below, which already covers the same case from
+ * the original upload reply.
  *
  * Every decision is written to the audit log with the reviewer's name and their
  * reason. No path here can skip that.
  */
+
+export type DecisionState = { error?: string };
 
 async function record(
   actorId: string,
@@ -30,20 +34,30 @@ async function record(
   });
 }
 
-export async function approve(formData: FormData) {
+export async function approve(
+  _prev: DecisionState,
+  formData: FormData,
+): Promise<DecisionState> {
   const admin = await requireRole("ADMIN");
   const submissionId = String(formData.get("submissionId") ?? "");
   const reason = String(formData.get("reason") ?? "").trim();
-  if (!reason) return;
+  if (!reason) return {};
 
   const submission = await prisma.submission.findUnique({
     where: { id: submissionId },
     include: { product: true, issues: true },
   });
-  if (!submission) return;
+  if (!submission) return {};
 
   // A blocker is not something a reason can wave through.
-  if (submission.issues.some((issue) => issue.severity === "BLOCKER")) return;
+  if (submission.issues.some((issue) => issue.severity === "BLOCKER")) return {};
+
+  const published = await n8n.approveTemplate({
+    templateId: submission.product.templateId ?? submission.product.id,
+  });
+  if (!published.ok) {
+    return { error: published.error };
+  }
 
   await prisma.$transaction([
     prisma.submission.update({
@@ -99,6 +113,7 @@ export async function approve(formData: FormData) {
 
   revalidatePath("/admin");
   revalidatePath("/marketplace");
+  return {};
 }
 
 export async function requestChanges(formData: FormData) {
@@ -133,17 +148,28 @@ export async function requestChanges(formData: FormData) {
   revalidatePath("/admin");
 }
 
-export async function reject(formData: FormData) {
+export async function reject(
+  _prev: DecisionState,
+  formData: FormData,
+): Promise<DecisionState> {
   const admin = await requireRole("ADMIN");
   const submissionId = String(formData.get("submissionId") ?? "");
   const reason = String(formData.get("reason") ?? "").trim();
-  if (!reason) return;
+  if (!reason) return {};
 
   const submission = await prisma.submission.findUnique({
     where: { id: submissionId },
     include: { product: true },
   });
-  if (!submission) return;
+  if (!submission) return {};
+
+  const rejected = await n8n.rejectTemplate({
+    templateId: submission.product.templateId ?? submission.product.id,
+    reason,
+  });
+  if (!rejected.ok) {
+    return { error: rejected.error };
+  }
 
   await prisma.$transaction([
     prisma.submission.update({
@@ -174,6 +200,7 @@ export async function reject(formData: FormData) {
   );
 
   revalidatePath("/admin");
+  return {};
 }
 
 /** Security hold. Lifecycle Sweep disables every installation of it overnight. */

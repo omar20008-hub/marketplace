@@ -2,6 +2,8 @@ import "server-only";
 import { createHash, randomBytes } from "node:crypto";
 import type { N8nDriver } from "./driver";
 import type {
+  ApproveTemplateInput,
+  ApproveTemplateOutput,
   ChatInput,
   ChatOutput,
   CredentialSchema,
@@ -9,6 +11,8 @@ import type {
   DispatchOutput,
   InstallInput,
   InstallOutput,
+  RejectTemplateInput,
+  RejectTemplateOutput,
   StorageInput,
   StorageOutput,
   TemplateRow,
@@ -256,6 +260,19 @@ export const mockDriver: N8nDriver = {
       return { reason: "لم يتم التأكيد" };
     }
     return { credentialCount: 1 };
+  },
+
+  // The durability gate that blocks a real approve() lives entirely inside
+  // n8n's own mp_templates row, which the mock never persists — nothing here
+  // reproduces it. The platform doesn't need to either: its own BLOCKER
+  // SubmissionIssue already stops an admin reaching this call in that case.
+  async approveTemplate(input: ApproveTemplateInput): Promise<ApproveTemplateOutput> {
+    return { ok: true, status: "published", templateId: input.templateId };
+  },
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- the interface requires this shape; the mock never inspects it.
+  async rejectTemplate(input: RejectTemplateInput): Promise<RejectTemplateOutput> {
+    return { ok: true, status: "rejected" };
   },
 
   async dispatch(input: DispatchInput): Promise<DispatchOutput> {

@@ -1,5 +1,7 @@
 import "server-only";
 import type {
+  ApproveTemplateInput,
+  ApproveTemplateOutput,
   ChatInput,
   ChatOutput,
   CredentialSchema,
@@ -7,6 +9,8 @@ import type {
   DispatchOutput,
   InstallInput,
   InstallOutput,
+  RejectTemplateInput,
+  RejectTemplateOutput,
   StorageInput,
   StorageOutput,
   TemplateRow,
@@ -30,6 +34,10 @@ export interface N8nDriver {
   dispatch(input: DispatchInput): Promise<DispatchOutput>;
   storage(input: StorageInput): Promise<StorageOutput>;
   chat(input: ChatInput): Promise<ChatOutput>;
+
+  /** Publishes a reviewed template inside n8n itself — the platform cannot do this on its own. */
+  approveTemplate(input: ApproveTemplateInput): Promise<ApproveTemplateOutput>;
+  rejectTemplate(input: RejectTemplateInput): Promise<RejectTemplateOutput>;
 
   /** Drives the generated connection form instead of a raw JSON textarea. */
   credentialSchema(credentialType: string): Promise<CredentialSchema | null>;

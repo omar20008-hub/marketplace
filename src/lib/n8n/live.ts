@@ -2,14 +2,18 @@ import "server-only";
 import { env } from "../env";
 import type { N8nDriver } from "./driver";
 import {
+  ApproveTemplateOutput,
   ChatOutput,
   DispatchOutput,
   InstallOutput,
+  RejectTemplateOutput,
   UploadOutput,
+  type ApproveTemplateInput,
   type ChatInput,
   type CredentialSchema,
   type DispatchInput,
   type InstallInput,
+  type RejectTemplateInput,
   type StorageInput,
   type StorageOutput,
   type TemplateRow,
@@ -114,6 +118,16 @@ export const liveDriver: N8nDriver = {
 
   async uninstall(input: UninstallInput): Promise<UninstallOutput> {
     return postWebhook<UninstallOutput>(env.n8n.uninstallWebhookUrl, input);
+  },
+
+  async approveTemplate(input: ApproveTemplateInput) {
+    const raw = await postWebhook<unknown>(env.n8n.approveTemplateWebhookUrl, input);
+    return ApproveTemplateOutput.parse(raw);
+  },
+
+  async rejectTemplate(input: RejectTemplateInput) {
+    const raw = await postWebhook<unknown>(env.n8n.rejectTemplateWebhookUrl, input);
+    return RejectTemplateOutput.parse(raw);
   },
 
   /**

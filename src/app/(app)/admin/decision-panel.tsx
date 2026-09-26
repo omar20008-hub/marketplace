@@ -1,12 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import { useActionState, useState } from "react";
 import { Button, Field, Textarea } from "@/components/ds";
-import { approve, reject, requestChanges } from "@/server/admin-actions";
+import {
+  approve,
+  reject,
+  requestChanges,
+  type DecisionState,
+} from "@/server/admin-actions";
 
 /**
  * A reason is required before any of the three buttons will submit, because
  * every decision goes to the audit log with the reviewer's name against it.
+ *
+ * Approve and Reject each publish or reject the template inside n8n before
+ * touching this platform's own record of the decision, so — unlike every other
+ * refusal in admin-actions.ts — a failure here is not a silent no-op: it is
+ * surfaced, since it can be n8n itself refusing (e.g. the durability rule)
+ * rather than a mistake the reviewer made.
  */
 export function DecisionPanel({
   submissionId,
@@ -17,6 +28,15 @@ export function DecisionPanel({
 }) {
   const [reason, setReason] = useState("");
   const ready = reason.trim().length > 0;
+
+  const [approveState, approveAction, approvePending] = useActionState<
+    DecisionState,
+    FormData
+  >(approve, {});
+  const [rejectState, rejectAction, rejectPending] = useActionState<
+    DecisionState,
+    FormData
+  >(reject, {});
 
   return (
     <form className="flex flex-col gap-3">
@@ -44,28 +64,35 @@ export function DecisionPanel({
         </Button>
         <Button
           type="submit"
-          formAction={approve}
+          formAction={approveAction}
           tone={ready && !hasBlocker ? "primary" : "quiet"}
           size="sm"
-          disabled={!ready || hasBlocker}
+          disabled={!ready || hasBlocker || approvePending}
           title={
             hasBlocker
               ? "A blocker has to be fixed by the creator; it cannot be approved through."
               : undefined
           }
         >
-          Approve &amp; publish
+          {approvePending ? "Publishing…" : "Approve & publish"}
         </Button>
         <Button
           type="submit"
-          formAction={reject}
+          formAction={rejectAction}
           tone={ready ? "danger" : "quiet"}
           size="sm"
-          disabled={!ready}
+          disabled={!ready || rejectPending}
         >
-          Reject
+          {rejectPending ? "Rejecting…" : "Reject"}
         </Button>
       </div>
+
+      {approveState.error ? (
+        <p className="text-[13px] text-danger-ink">{approveState.error}</p>
+      ) : null}
+      {rejectState.error ? (
+        <p className="text-[13px] text-danger-ink">{rejectState.error}</p>
+      ) : null}
     </form>
   );
 }

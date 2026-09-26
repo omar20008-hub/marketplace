@@ -428,6 +428,21 @@ describe("chat", () => {
   });
 });
 
+describe("approveTemplate / rejectTemplate", () => {
+  // The mock never persists a template to check durability against, so unlike
+  // the real instance it always succeeds — admin-actions.ts's own BLOCKER gate
+  // is what stands in for that rule during local testing.
+  it("always publishes", async () => {
+    const reply = await mockDriver.approveTemplate({ templateId: "tpl_1" });
+    expect(reply).toEqual({ ok: true, status: "published", templateId: "tpl_1" });
+  });
+
+  it("always rejects", async () => {
+    const reply = await mockDriver.rejectTemplate({ templateId: "tpl_1", reason: "no" });
+    expect(reply).toEqual({ ok: true, status: "rejected" });
+  });
+});
+
 describe("credentialSchema", () => {
   it("returns the fields a connect form should render", async () => {
     const schema = await mockDriver.credentialSchema("slackApi");

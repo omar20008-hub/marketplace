@@ -101,6 +101,41 @@ export const InstallFailed = z.object({
 export const InstallOutput = z.union([InstallSucceeded, InstallFailed]);
 export type InstallOutput = z.infer<typeof InstallOutput>;
 
+// --------------------------------------- MP · Approve / Reject Template
+//
+// mp-review-queue (GET, returns { count, items }) also exists on the n8n side
+// but has no caller here: the admin review screen keeps reading its queue from
+// the platform's own Submission table, which already carries the same fields
+// from the original upload reply. Add a client for it if that screen is ever
+// rebuilt to read the queue from n8n directly instead.
+
+export const ApproveTemplateInput = z.object({ templateId: z.string().min(1) });
+export type ApproveTemplateInput = z.infer<typeof ApproveTemplateInput>;
+
+export const ApproveTemplateOutput = z.union([
+  z.object({ ok: z.literal(true), status: z.literal("published"), templateId: z.string() }),
+  /**
+   * n8n refuses on its own when the template's connections are not durable
+   * (credentialDurability = blocked) — the platform never has to check that
+   * condition itself before calling this, only surface whatever reason comes
+   * back if it (or anything else) makes n8n refuse.
+   */
+  z.object({ ok: z.literal(false), error: z.string() }),
+]);
+export type ApproveTemplateOutput = z.infer<typeof ApproveTemplateOutput>;
+
+export const RejectTemplateInput = z.object({
+  templateId: z.string().min(1),
+  reason: z.string().min(1),
+});
+export type RejectTemplateInput = z.infer<typeof RejectTemplateInput>;
+
+export const RejectTemplateOutput = z.union([
+  z.object({ ok: z.literal(true), status: z.literal("rejected") }),
+  z.object({ ok: z.literal(false), error: z.string() }),
+]);
+export type RejectTemplateOutput = z.infer<typeof RejectTemplateOutput>;
+
 // -------------------------------------------------- MP · Dispatcher (LDwK…)
 
 export const DispatchInput = z.object({
