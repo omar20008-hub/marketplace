@@ -185,17 +185,21 @@ export const mockDriver: N8nDriver = {
       ),
     ];
 
-    // Mirrors how Upload & Provision now infers invocationMode: a Schedule
-    // Trigger node makes it scheduled, any other trigger-shaped node (a
-    // webhook, a Gmail trigger, …) makes it event, and the Execute Workflow
-    // Trigger on its own — the only thing every product is required to have —
-    // means the chat interface is the only way in, i.e. on_demand.
+    // Mirrors how Upload & Provision now infers invocationMode. The Execute
+    // Workflow Trigger is mandatory (checked above), so on_demand is always
+    // one of the modes; a Schedule Trigger node alongside it adds scheduled,
+    // and any other trigger-shaped node (a webhook, a Gmail trigger, …) adds
+    // event. A workflow can combine these — comma-separated, not exclusive —
+    // e.g. a chat agent that also reacts to an incoming event.
     const triggerTypes = nodes.map((n) => n.type ?? "").filter((t) => /trigger/i.test(t));
-    const invocationMode = triggerTypes.includes("n8n-nodes-base.scheduleTrigger")
-      ? "scheduled"
-      : triggerTypes.some((t) => t !== "n8n-nodes-base.executeWorkflowTrigger")
-        ? "event"
-        : "on_demand";
+    const invocationModes = ["on_demand"];
+    if (triggerTypes.includes("n8n-nodes-base.scheduleTrigger")) {
+      invocationModes.push("scheduled");
+    }
+    if (triggerTypes.some((t) => t !== "n8n-nodes-base.executeWorkflowTrigger" && t !== "n8n-nodes-base.scheduleTrigger")) {
+      invocationModes.push("event");
+    }
+    const invocationMode = invocationModes.join(",");
 
     const inputFields = (
       (trigger.parameters?.workflowInputs as { values?: { name?: string }[] } | undefined)

@@ -14,6 +14,7 @@ import {
   SectionLabel,
 } from "@/components/ds";
 import { activate, type ActivateState } from "@/server/install-actions";
+import { isScheduled } from "@/lib/invocation-mode";
 
 export type SetupRequirement = {
   id: string;
@@ -282,7 +283,7 @@ export function SetupWizard({
                 <Badge tone="platform">Auto · included</Badge>
               </Card>
 
-              {product.invocationMode === "scheduled" ? (
+              {isScheduled(product.invocationMode) ? (
                 <Card className="flex flex-col gap-2 p-3">
                   <label className="flex flex-col gap-1.5">
                     <span className="text-[13px] font-medium">Schedule</span>

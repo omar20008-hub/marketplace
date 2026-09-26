@@ -165,23 +165,25 @@ describe("upload — the credential durability rule", () => {
 });
 
 describe("upload — invocationMode", () => {
-  it("reports on_demand for a workflow with only the required trigger", async () => {
+  it("reports on_demand alone for a workflow with only the required trigger", async () => {
     const reply = await mockDriver.upload(upload(workflow()));
     expect(reply).toMatchObject({ invocationMode: "on_demand" });
   });
 
-  it("reports scheduled when a Schedule Trigger is present", async () => {
+  it("adds scheduled when a Schedule Trigger is also present", async () => {
+    // The Execute Workflow Trigger stays mandatory, so a workflow that also
+    // schedules itself is invocable both ways — comma-combined, not exclusive.
     const reply = await mockDriver.upload(
       upload(workflow({ type: "n8n-nodes-base.scheduleTrigger" })),
     );
-    expect(reply).toMatchObject({ invocationMode: "scheduled" });
+    expect(reply).toMatchObject({ invocationMode: "on_demand,scheduled" });
   });
 
-  it("reports event for any other trigger-shaped node", async () => {
+  it("adds event for any other trigger-shaped node alongside it", async () => {
     const reply = await mockDriver.upload(
       upload(workflow({ type: "n8n-nodes-base.gmailTrigger" })),
     );
-    expect(reply).toMatchObject({ invocationMode: "event" });
+    expect(reply).toMatchObject({ invocationMode: "on_demand,event" });
   });
 
   it("collects the declared input field names", async () => {

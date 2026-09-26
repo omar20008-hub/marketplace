@@ -15,6 +15,7 @@ import { ProductGlyph } from "@/components/app/product-glyph";
 import { runFromWorkspace } from "@/server/run-actions";
 import { UninstallButton } from "./uninstall-button";
 import { formatBytes, readinessFor, relativeDays } from "@/lib/readiness";
+import { isOnDemand } from "@/lib/invocation-mode";
 
 export const metadata = { title: "My workspace · Builder" };
 
@@ -335,7 +336,7 @@ function ProductList({
             </div>
 
             {readiness.tone === "ready" &&
-            installation.product.invocationMode !== "on_demand" ? (
+            !isOnDemand(installation.product.invocationMode) ? (
               installation.activationStatus === "activation_failed" ? (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-danger-tint px-3 py-1.5 text-[13px] font-medium text-danger-ink">
                   <CircleAlert size={14} strokeWidth={2} />
