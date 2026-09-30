@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { n8n } from "@/lib/n8n";
-import { genericSecretSchema, isOAuthCredential } from "@/lib/credentials";
+import { fallbackCredentialSchema } from "@/lib/credentials";
 import { SetupWizard, type SetupRequirement } from "./wizard";
 
 export const metadata = { title: "Add to workspace · Builder" };
@@ -41,7 +41,7 @@ export default async function SetupPage({
         requirement.credentialType &&
         account?.status !== "ACTIVE"
           ? ((await n8n.credentialSchema(requirement.credentialType)) ??
-            (isOAuthCredential(requirement.credentialType) ? null : genericSecretSchema))
+            fallbackCredentialSchema(requirement.credentialType))
           : null;
 
       return {
@@ -60,6 +60,8 @@ export default async function SetupPage({
               description: property.description ?? null,
               secret: property.format === "password",
               required: schema.required?.includes(name) ?? false,
+              default:
+                typeof property.default === "string" ? property.default : null,
             }))
           : [],
       };

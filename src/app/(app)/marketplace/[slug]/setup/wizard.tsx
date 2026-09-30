@@ -31,6 +31,7 @@ export type SetupRequirement = {
     description: string | null;
     secret: boolean;
     required: boolean;
+    default: string | null;
   }[];
 };
 
@@ -236,6 +237,7 @@ export function SetupWizard({
                                       name={`cred.${requirement.credentialType}.${field.name}`}
                                       type={field.secret ? "password" : "text"}
                                       autoComplete="off"
+                                      defaultValue={field.default ?? undefined}
                                       onChange={(event) =>
                                         setFilled((current) => ({
                                           ...current,
