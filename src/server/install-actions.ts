@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { n8n } from "@/lib/n8n";
 import { openCredential, sealCredential } from "@/lib/secrets";
+import { credentialLabel as labelFor } from "@/lib/credentials";
 
 /**
  * Adding a product to the workspace.
@@ -224,17 +225,4 @@ export async function uninstall(formData: FormData) {
   });
 
   revalidatePath("/", "layout");
-}
-
-function labelFor(credentialType: string) {
-  const labels: Record<string, string> = {
-    googleSheetsOAuth2Api: "Google Sheets",
-    googleDriveOAuth2Api: "Google Drive",
-    facebookGraphApi: "Instagram Business",
-    slackApi: "Slack",
-    microsoftTeamsOAuth2Api: "Microsoft Teams",
-    hubspotApi: "HubSpot",
-    openAiApi: "AI model",
-  };
-  return labels[credentialType] ?? credentialType;
 }

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { hashPassword, requireRole } from "@/lib/auth";
 import { initialsFor } from "@/lib/initials";
 import { n8n } from "@/lib/n8n";
+import { credentialLabel } from "@/lib/credentials";
 
 /**
  * Review decisions.
@@ -59,6 +60,24 @@ export async function approve(
     return { error: published.error };
   }
 
+  // The wizard's Connections step and the Review call's credentialsJson both
+  // read from here. Upload already wrote requiredCredentials onto the product
+  // (creator-actions.ts), but nothing before this turned that list into the
+  // Requirement rows a setup actually reads — so every real approval left
+  // them at zero, and Install rejected with the exact credential n8n itself
+  // derived from the same upload. Re-derived on every approval, not just the
+  // first, so a version that adds or drops a connection stays in sync.
+  const requirementRows = submission.product.requiredCredentials.map(
+    (credentialType, index) => ({
+      productId: submission.productId,
+      kind: "CONNECTION" as const,
+      label: credentialLabel(credentialType),
+      credentialType,
+      providedBy: "USER" as const,
+      sortOrder: index,
+    }),
+  );
+
   await prisma.$transaction([
     prisma.submission.update({
       where: { id: submission.id },
@@ -86,6 +105,10 @@ export async function approve(
       where: { productId: submission.productId },
       data: { current: false },
     }),
+    prisma.requirement.deleteMany({ where: { productId: submission.productId } }),
+    ...(requirementRows.length > 0
+      ? [prisma.requirement.createMany({ data: requirementRows })]
+      : []),
   ]);
 
   await prisma.productVersion.upsert({

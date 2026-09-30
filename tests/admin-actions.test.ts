@@ -80,6 +80,7 @@ type Seed = {
   version?: string;
   invocationMode?: string;
   inputFields?: string[];
+  requiredCredentials?: string[];
 };
 
 async function seed({
@@ -88,6 +89,7 @@ async function seed({
   version = "2.0",
   invocationMode = "on_demand",
   inputFields = [],
+  requiredCredentials = [],
 }: Seed = {}) {
   await prisma.plan.create({
     data: {
@@ -130,6 +132,7 @@ async function seed({
       category: "Reporting",
       status: productStatus,
       version: "1.0",
+      requiredCredentials,
     },
   });
   const submission = await prisma.submission.create({
@@ -269,6 +272,60 @@ describe("approve", () => {
       invocationMode: "scheduled",
       inputFields: ["sheetUrl", "note"],
     });
+  });
+
+  it("creates a Requirement the setup wizard can ask for, from the product's requiredCredentials", async () => {
+    // This is the gap that shipped as "googlePalmApi: not activated. Missing"
+    // on real installs: requiredCredentials was already on the product from
+    // upload, but nothing ever turned it into a Requirement row, so the
+    // wizard never asked and Install always got an empty credentialsJson.
+    const { product, submission } = await seed({
+      requiredCredentials: ["googlePalmApi"],
+    });
+
+    await approve(form({ submissionId: submission.id, reason: "Looks good" }));
+
+    const requirements = await prisma.requirement.findMany({
+      where: { productId: product.id },
+    });
+    expect(requirements).toMatchObject([
+      {
+        kind: "CONNECTION",
+        label: "Google Gemini",
+        credentialType: "googlePalmApi",
+        providedBy: "USER",
+      },
+    ]);
+  });
+
+  it("replaces stale Requirement rows rather than piling on top of them", async () => {
+    const { product, submission } = await seed({
+      requiredCredentials: ["openAiApi"],
+    });
+    await prisma.requirement.create({
+      data: {
+        productId: product.id,
+        kind: "CONNECTION",
+        label: "Old and no longer needed",
+        credentialType: "slackApi",
+        providedBy: "USER",
+      },
+    });
+
+    await approve(form({ submissionId: submission.id, reason: "Looks good" }));
+
+    const requirements = await prisma.requirement.findMany({
+      where: { productId: product.id },
+    });
+    expect(requirements.map((r) => r.credentialType)).toEqual(["openAiApi"]);
+  });
+
+  it("leaves no Requirement rows for a product that needs nothing from the user", async () => {
+    const { product, submission } = await seed({ requiredCredentials: [] });
+
+    await approve(form({ submissionId: submission.id, reason: "Looks good" }));
+
+    expect(await prisma.requirement.count({ where: { productId: product.id } })).toBe(0);
   });
 
   it("marks the approved version current, and the previous one not", async () => {
