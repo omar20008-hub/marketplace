@@ -3,12 +3,14 @@
 import clsx from "clsx";
 import { useActionState, useState } from "react";
 import { Check, Minus } from "lucide-react";
-import { Button, Card, FootNote, Input, SectionLabel } from "@/components/ds";
+import { Button, ButtonAnchor, Card, FootNote, Input, SectionLabel } from "@/components/ds";
 import { connectAccount, type ConnectState } from "@/server/account-actions";
 
 export type Connectable = {
   credentialType: string;
   displayName: string;
+  /** Set when the platform signs the user in itself (Google) instead of taking keys. */
+  oauthStartUrl?: string;
   allows: { grants: string[]; denies: string[] };
   fields: {
     name: string;
@@ -87,7 +89,13 @@ export function ConnectPanel({
           </div>
 
           <div className="flex flex-col gap-3 border-t border-selected pt-3">
-            {option.fields.length === 0 ? (
+            {option.oauthStartUrl ? (
+              <p className="text-[13px] text-ink-2">
+                You sign in on Google&apos;s own page. The platform never sees your
+                password, and you can revoke access here or from your Google account
+                at any time.
+              </p>
+            ) : option.fields.length === 0 ? (
               <p className="text-[13px] text-ink-2">
                 This service needs a sign-in flow the platform does not offer yet,
                 so it cannot be connected here.
@@ -167,13 +175,19 @@ export function ConnectPanel({
             <Button type="reset" tone="secondary" size="sm">
               Cancel
             </Button>
-            <Button
-              type="submit"
-              size="sm"
-              disabled={pending || option.fields.length === 0}
-            >
-              {pending ? "Connecting…" : `Continue to ${option.displayName}`}
-            </Button>
+            {option.oauthStartUrl ? (
+              <ButtonAnchor href={option.oauthStartUrl} size="sm">
+                Continue with Google
+              </ButtonAnchor>
+            ) : (
+              <Button
+                type="submit"
+                size="sm"
+                disabled={pending || option.fields.length === 0}
+              >
+                {pending ? "Connecting…" : `Continue to ${option.displayName}`}
+              </Button>
+            )}
           </div>
         </form>
       ) : null}

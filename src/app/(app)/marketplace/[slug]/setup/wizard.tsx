@@ -7,6 +7,7 @@ import { Check, Sparkles, X } from "lucide-react";
 import {
   Badge,
   Button,
+  ButtonAnchor,
   ButtonLink,
   Card,
   FootNote,
@@ -25,6 +26,9 @@ export type SetupRequirement = {
   providedBy: "PLATFORM" | "PLATFORM_OR_OWN" | "USER";
   connected: boolean;
   accountRef: string | null;
+  /** Set for a connection the platform holds itself (Google): a sign-in link, not a form. */
+  connectUrl: string | null;
+  connectLabel: string;
   fields: {
     name: string;
     label: string;
@@ -41,6 +45,7 @@ export function SetupWizard({
   product,
   requirements,
   backends,
+  notice,
 }: {
   product: {
     id: string;
@@ -51,6 +56,7 @@ export function SetupWizard({
   };
   requirements: SetupRequirement[];
   backends: { backend: string; label: string }[];
+  notice: { tone: "ok" | "error"; text: string } | null;
 }) {
   const [step, setStep] = useState(0);
   const [openForm, setOpenForm] = useState<string | null>(null);
@@ -111,6 +117,17 @@ export function SetupWizard({
           connection details the first step just collected.
         */}
         <div className="border-t border-selected px-6 py-5">
+          {notice ? (
+            <p
+              role={notice.tone === "error" ? "alert" : "status"}
+              className={clsx(
+                "mb-4 text-[13px]",
+                notice.tone === "error" ? "text-danger-ink" : "text-ready-ink",
+              )}
+            >
+              {notice.text}
+            </p>
+          ) : null}
           <div className={step === 0 ? "" : "hidden"}>
             <div className="flex flex-col gap-5">
               <div>
@@ -194,6 +211,10 @@ export function SetupWizard({
                                 <Check size={12} strokeWidth={2.4} />
                                 Connected
                               </Badge>
+                            ) : requirement.connectUrl ? (
+                              <ButtonAnchor href={requirement.connectUrl} size="sm">
+                                {requirement.connectLabel}
+                              </ButtonAnchor>
                             ) : (
                               <Button
                                 type="button"

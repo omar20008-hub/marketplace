@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { n8n } from "@/lib/n8n";
 import { openCredential, sealCredential } from "@/lib/secrets";
-import { credentialLabel as labelFor } from "@/lib/credentials";
+import { credentialLabel as labelFor, isPlatformOAuth } from "@/lib/credentials";
 
 /**
  * Adding a product to the workspace.
@@ -57,6 +57,9 @@ export async function activate(
     if (!key.startsWith("cred.")) continue;
     const [, credentialType, field] = key.split(".");
     if (!credentialType || !field) continue;
+    // Held by the platform through its own sign-in flow; a posted form must not
+    // be able to write one.
+    if (isPlatformOAuth(credentialType)) continue;
     const text = String(value);
     if (!text) continue;
     (submitted[credentialType] ??= {})[field] = text;
@@ -127,12 +130,16 @@ export async function activate(
 
   // Decrypted here and nowhere else: the plaintext exists only for the length
   // of this call, on its way into n8n's own credential store.
+  // Platform-held OAuth connections (Drive) count as satisfied above, but their
+  // tokens are not n8n's to have: whatever needs them asks the platform.
   const credentialsJson = JSON.stringify(
     Object.fromEntries(
-      needed.map((type) => [
-        type,
-        openCredential(byType.get(type)?.secretJson ?? null),
-      ]),
+      needed
+        .filter((type) => !isPlatformOAuth(type))
+        .map((type) => [
+          type,
+          openCredential(byType.get(type)?.secretJson ?? null),
+        ]),
     ),
   );
 

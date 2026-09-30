@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { n8n } from "@/lib/n8n";
-import { Badge, ButtonLink, Card, PageTitle } from "@/components/ds";
+import { GOOGLE_DRIVE_CREDENTIAL, oauthStartUrl } from "@/lib/credentials";
+import { CONNECT_ERRORS } from "@/lib/google-oauth";
+import { Badge, ButtonAnchor, ButtonLink, Card, PageTitle } from "@/components/ds";
 import { disconnectAccount } from "@/server/account-actions";
 import { ConnectPanel, type Connectable } from "./connect-panel";
 
@@ -25,6 +27,10 @@ const ALLOWS: Record<string, { grants: string[]; denies: string[] }> = {
     grants: ["Read and update the records a product touches"],
     denies: ["No access to billing or user administration"],
   },
+  googleDriveOAuth2Api: {
+    grants: ["Read the files and folders you choose to index"],
+    denies: ["Cannot change, delete or share anything in your Drive"],
+  },
   googleSheetsOAuth2Api: {
     grants: ["Read and write the sheets you name"],
     denies: ["No access to the rest of your Drive"],
@@ -40,14 +46,15 @@ const CONNECTABLE: { credentialType: string; displayName: string }[] = [
   { credentialType: "slackApi", displayName: "Slack" },
   { credentialType: "hubspotApi", displayName: "HubSpot" },
   { credentialType: "openAiApi", displayName: "AI model" },
+  { credentialType: GOOGLE_DRIVE_CREDENTIAL, displayName: "Google Drive" },
 ];
 
 export default async function AccountsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ connect?: string }>;
+  searchParams: Promise<{ connect?: string; connected?: string; connect_error?: string }>;
 }) {
-  const { connect } = await searchParams;
+  const { connect, connected: justConnected, connect_error: connectError } = await searchParams;
   const user = await requireUser();
 
   const accounts = await prisma.connectedAccount.findMany({
@@ -75,11 +82,14 @@ export default async function AccountsPage({
 
   const connectable: Connectable[] = await Promise.all(
     CONNECTABLE.map(async (item) => {
-      const schema = await n8n.credentialSchema(item.credentialType);
+      const oauthStartHref =
+        item.credentialType === GOOGLE_DRIVE_CREDENTIAL ? oauthStartUrl("/accounts") : undefined;
+      const schema = oauthStartHref ? null : await n8n.credentialSchema(item.credentialType);
       return {
         credentialType: item.credentialType,
         displayName: item.displayName,
         allows: ALLOWS[item.credentialType] ?? { grants: [], denies: [] },
+        oauthStartUrl: oauthStartHref,
         fields: schema
           ? Object.entries(schema.properties).map(([name, property]) => ({
               name,
@@ -98,6 +108,16 @@ export default async function AccountsPage({
   return (
     <div className="px-5 py-5 lg:px-7">
       <PageTitle title="Connected accounts" meta={`· ${connected} connected`} />
+
+      {connectError ? (
+        <p role="alert" className="mt-3 text-[13px] text-danger-ink">
+          {CONNECT_ERRORS[connectError] ?? CONNECT_ERRORS.google}
+        </p>
+      ) : justConnected ? (
+        <p role="status" className="mt-3 text-[13px] text-ready-ink">
+          Connected.
+        </p>
+      ) : null}
 
       <div className="mt-5 grid grid-cols-1 gap-7 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="flex flex-col gap-2">
@@ -131,12 +151,18 @@ export default async function AccountsPage({
                 </div>
 
                 {account.status === "EXPIRED" ? (
-                  <ButtonLink
-                    href={`/accounts?connect=${account.credentialType}`}
-                    size="sm"
-                  >
-                    Reconnect
-                  </ButtonLink>
+                  account.credentialType === GOOGLE_DRIVE_CREDENTIAL ? (
+                    <ButtonAnchor href={oauthStartUrl("/accounts")} size="sm">
+                      Reconnect
+                    </ButtonAnchor>
+                  ) : (
+                    <ButtonLink
+                      href={`/accounts?connect=${account.credentialType}`}
+                      size="sm"
+                    >
+                      Reconnect
+                    </ButtonLink>
+                  )
                 ) : account.scope === "PLATFORM" ? (
                   <Badge tone="platform">Platform</Badge>
                 ) : account.status === "PENDING" ? (

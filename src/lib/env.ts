@@ -129,6 +129,20 @@ export const env = {
     process.env.SCHEDULE_TOKEN ?? "",
   ),
 
+  /**
+   * The platform's own Google OAuth client, for connections the platform holds
+   * itself (Drive). Not required to boot — the connect route says so and does
+   * nothing, rather than the whole app refusing to start over a feature.
+   * redirectUri must be exactly what is registered in Google Cloud, e.g.
+   * https://<domain>/api/oauth/google/callback; its origin is also where the
+   * callback sends the user back to.
+   */
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID ?? "",
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+    redirectUri: process.env.GOOGLE_REDIRECT_URI ?? "",
+  },
+
   n8n: {
     driver: (process.env.N8N_DRIVER === "live" ? "live" : "mock") as N8nDriver,
     baseUrl: process.env.N8N_BASE_URL ?? "",

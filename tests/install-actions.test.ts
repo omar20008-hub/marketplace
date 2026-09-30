@@ -38,7 +38,8 @@ vi.mock("next/navigation", () => ({
 
 const { prisma } = await import("@/lib/db");
 const { activate } = await import("@/server/install-actions");
-const { openCredential } = await import("@/lib/secrets");
+const { openCredential, sealCredential } = await import("@/lib/secrets");
+const { n8n } = await import("@/lib/n8n");
 
 const PLAN_ID = "test-plan-install";
 
@@ -261,6 +262,70 @@ describe("activate — partially ready", () => {
     expect(await prisma.installation.findFirst()).toMatchObject({
       status: "ACTIVE",
     });
+  });
+});
+
+describe("activate — a connection the platform holds itself", () => {
+  const withDrive = (creatorId: string) =>
+    productData(creatorId, "PUBLISHED", [
+      {
+        kind: "CONNECTION",
+        label: "Google Drive",
+        credentialType: "googleDriveOAuth2Api",
+        providedBy: "USER",
+      },
+    ]);
+
+  it("counts a connected Drive as satisfied, but never sends its tokens to n8n", async () => {
+    const user = await seedUser();
+    await prisma.connectedAccount.create({
+      data: {
+        userId: user.id,
+        credentialType: "googleDriveOAuth2Api",
+        displayName: "Google Drive",
+        initials: "GD",
+        accountRef: "nora@acme.co",
+        status: "ACTIVE",
+        secretJson: sealCredential({ refresh_token: "1//secret", access_token: "ya29.secret" }),
+      },
+    });
+    const product = await prisma.product.create({ data: withDrive(user.id) });
+    const install = vi.spyOn(n8n, "install");
+
+    const result = await submit({ productId: product.id, storageBackend: "platform" });
+
+    expect(result.redirectedTo).toBe("/workspace");
+    expect(install).toHaveBeenCalledTimes(1);
+    const sent = install.mock.calls[0][0].credentialsJson;
+    expect(JSON.parse(sent)).toEqual({});
+    expect(sent).not.toContain("secret");
+    install.mockRestore();
+  });
+
+  it("is still partially ready until Drive is actually connected", async () => {
+    const user = await seedUser();
+    const product = await prisma.product.create({ data: withDrive(user.id) });
+    const install = vi.spyOn(n8n, "install");
+
+    const result = await submit({ productId: product.id, storageBackend: "platform" });
+
+    expect(result.redirectedTo).toBe("/workspace");
+    expect(install).not.toHaveBeenCalled();
+    expect(await prisma.installation.findFirst()).toMatchObject({ status: "PARTIAL" });
+    install.mockRestore();
+  });
+
+  it("will not let a posted form write a Drive account", async () => {
+    const user = await seedUser();
+    const product = await prisma.product.create({ data: withDrive(user.id) });
+
+    await submit({
+      productId: product.id,
+      storageBackend: "platform",
+      "cred.googleDriveOAuth2Api.refresh_token": "1//forged",
+    });
+
+    expect(await prisma.connectedAccount.count()).toBe(0);
   });
 });
 

@@ -3,7 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { sealCredential } from "@/lib/secrets";
+import { openCredential, sealCredential } from "@/lib/secrets";
+import { GOOGLE_DRIVE_CREDENTIAL, revokeToken } from "@/lib/google-oauth";
+import { isPlatformOAuth } from "@/lib/credentials";
+import { refreshInstallationStates } from "./installation-state";
 
 /**
  * Connected accounts.
@@ -25,6 +28,9 @@ export async function connectAccount(
   const reusable = String(formData.get("reusable") ?? "all") === "all";
 
   if (!credentialType) return { error: "Pick a service to connect." };
+  if (isPlatformOAuth(credentialType)) {
+    return { error: "Connect this one with the Google sign-in button." };
+  }
 
   const values: Record<string, string> = {};
   for (const [key, value] of formData.entries()) {
@@ -83,6 +89,17 @@ export async function disconnectAccount(formData: FormData) {
   });
   if (!account || account.scope === "PLATFORM") return;
 
+  // Revoke at Google first, so "Revoke" here actually ends the access rather
+  // than only forgetting the token. Best effort: it must not block disconnecting.
+  if (account.credentialType === GOOGLE_DRIVE_CREDENTIAL && account.secretJson) {
+    try {
+      const token = openCredential(account.secretJson).refresh_token;
+      if (token) await revokeToken(token);
+    } catch {
+      // An unreadable secret is exactly a reason to still clear it below.
+    }
+  }
+
   await prisma.connectedAccount.update({
     where: { id: account.id },
     data: { status: "PENDING", secretJson: null },
@@ -91,48 +108,4 @@ export async function disconnectAccount(formData: FormData) {
   await refreshInstallationStates(user.id);
   revalidatePath("/accounts");
   revalidatePath("/workspace");
-}
-
-/**
- * Keeps the workspace honest: a product whose connection just came back should
- * stop saying it needs attention, and one whose connection just went should say
- * so before the next scheduled run fails.
- */
-async function refreshInstallationStates(userId: string) {
-  const [installations, accounts] = await Promise.all([
-    prisma.installation.findMany({
-      where: { userId, status: { in: ["ACTIVE", "PARTIAL"] } },
-      include: { product: { include: { requirements: true } } },
-    }),
-    prisma.connectedAccount.findMany({ where: { userId } }),
-  ]);
-
-  const usable = new Set(
-    accounts.filter((a) => a.status === "ACTIVE").map((a) => a.credentialType),
-  );
-
-  for (const installation of installations) {
-    const missing = installation.product.requirements
-      .filter((r) => r.providedBy === "USER" && r.credentialType)
-      .filter((r) => !usable.has(r.credentialType!))
-      .map((r) => r.label);
-
-    const isPartial = missing.length > 0;
-    if (
-      (isPartial && installation.status === "PARTIAL") ||
-      (!isPartial && installation.status === "ACTIVE" && !installation.attentionNote)
-    ) {
-      continue;
-    }
-
-    await prisma.installation.update({
-      where: { id: installation.id },
-      data: {
-        status: isPartial ? "PARTIAL" : installation.installationId ? "ACTIVE" : "PARTIAL",
-        attentionNote: isPartial
-          ? `${missing.join(", ")} still needs connecting.`
-          : null,
-      },
-    });
-  }
 }

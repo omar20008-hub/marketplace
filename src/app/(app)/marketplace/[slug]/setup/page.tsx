@@ -2,17 +2,26 @@ import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { n8n } from "@/lib/n8n";
-import { fallbackCredentialSchema, knownCredentialSchema } from "@/lib/credentials";
+import {
+  fallbackCredentialSchema,
+  isPlatformOAuth,
+  knownCredentialSchema,
+  oauthStartUrl,
+} from "@/lib/credentials";
+import { CONNECT_ERRORS } from "@/lib/google-oauth";
 import { SetupWizard, type SetupRequirement } from "./wizard";
 
 export const metadata = { title: "Add to workspace · Builder" };
 
 export default async function SetupPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ connected?: string; connect_error?: string }>;
 }) {
   const { slug } = await params;
+  const { connected, connect_error: connectError } = await searchParams;
   const user = await requireUser();
 
   const product = await prisma.product.findUnique({
@@ -36,7 +45,16 @@ export default async function SetupPage({
       const account = requirement.credentialType
         ? byType.get(requirement.credentialType)
         : undefined;
+      // A connection the platform holds through its own sign-in flow has no
+      // fields to fill in — the wizard shows a button instead.
+      const platformOAuth =
+        requirement.providedBy === "USER" &&
+        requirement.credentialType !== null &&
+        isPlatformOAuth(requirement.credentialType) &&
+        account?.status !== "ACTIVE";
+
       const schema =
+        !platformOAuth &&
         requirement.providedBy === "USER" &&
         requirement.credentialType &&
         account?.status !== "ACTIVE"
@@ -54,6 +72,8 @@ export default async function SetupPage({
         providedBy: requirement.providedBy,
         connected: account?.status === "ACTIVE",
         accountRef: account?.accountRef ?? null,
+        connectUrl: platformOAuth ? oauthStartUrl(`/marketplace/${slug}/setup`) : null,
+        connectLabel: account?.status === "EXPIRED" ? "Reconnect" : "Connect",
         fields: schema
           ? Object.entries(schema.properties).map(([name, property]) => ({
               name,
@@ -79,6 +99,13 @@ export default async function SetupPage({
         invocationMode: product.invocationMode,
       }}
       requirements={requirements}
+      notice={
+        connectError
+          ? { tone: "error", text: CONNECT_ERRORS[connectError] ?? CONNECT_ERRORS.google }
+          : connected
+            ? { tone: "ok", text: "Connected." }
+            : null
+      }
       // Only destinations with an active adapter are offered. A disabled one is
       // not shown at all, rather than shown and refused.
       backends={adapters

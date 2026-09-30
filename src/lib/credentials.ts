@@ -22,6 +22,21 @@ export function isOAuthCredential(credentialType: string) {
   return /oauth/i.test(credentialType);
 }
 
+export const GOOGLE_DRIVE_CREDENTIAL = "googleDriveOAuth2Api";
+
+/**
+ * OAuth types the platform connects and holds itself. Their tokens never go to
+ * n8n and are never typed into a form — only the sign-in flow may create one.
+ */
+export function isPlatformOAuth(credentialType: string) {
+  return credentialType === GOOGLE_DRIVE_CREDENTIAL;
+}
+
+/** The link that starts that sign-in, and where it should land the user after. */
+export function oauthStartUrl(returnTo: string) {
+  return `/api/oauth/google/start?returnTo=${encodeURIComponent(returnTo)}`;
+}
+
 const genericSecretSchema: CredentialSchema = {
   type: "object",
   required: ["apiKey"],

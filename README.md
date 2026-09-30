@@ -219,6 +219,29 @@ tick did.
 Calling it more often than the schedules need is harmless: a schedule that is
 not due is not touched.
 
+### Google Drive connection
+
+Drive is the one connection the platform holds itself, through its own OAuth
+flow (`/api/oauth/google/start` → `/callback`), scope `drive.readonly`. The
+tokens stay in the platform's encrypted store and are never sent to n8n.
+
+Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `GOOGLE_REDIRECT_URI` (exactly
+the callback URL registered in Google Cloud). For the link to last, the consent
+screen must be in **Production** — in Testing, Google expires refresh tokens
+after 7 days.
+
+Google also drops a refresh token that goes unused for six months, so something
+outside the app calls the keep-alive now and then (daily is plenty):
+
+```bash
+curl -fsS -X POST https://example.com/api/accounts/keepalive \
+  -H "x-schedule-token: $SCHEDULE_TOKEN"
+```
+
+A connection Google reports as revoked (`invalid_grant`) is marked expired and
+shows "Reconnect" in Connected accounts and on the affected installations;
+transient network or 5xx errors never disconnect anyone.
+
 **A missed window fires once, not once per miss.** The next due time is computed
 from now, not from the time that was missed, so a daily schedule after a week of
 downtime runs once and resumes. Catching up seven times would be a surprise; on

@@ -25,6 +25,10 @@ process.env.SECRETS_KEY =
 
 process.env.SCHEDULE_TOKEN = "test-schedule-token";
 
+process.env.GOOGLE_CLIENT_ID = "test-client-id.apps.googleusercontent.com";
+process.env.GOOGLE_CLIENT_SECRET = "test-client-secret";
+process.env.GOOGLE_REDIRECT_URI = "https://app.example.test/api/oauth/google/callback";
+
 process.env.N8N_DRIVER = "mock";
 process.env.N8N_WEBHOOK_TOKEN = "test-webhook-token";
 process.env.N8N_SYNC_TOKEN = "test-sync-token";
