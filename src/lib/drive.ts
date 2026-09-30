@@ -92,8 +92,9 @@ export async function listTree(
   token: string,
   folderId: string,
   { maxFiles = 2000 } = {},
-): Promise<{ files: DriveFile[]; truncated: boolean }> {
+): Promise<{ files: DriveFile[]; folders: string[]; truncated: boolean }> {
   const files: DriveFile[] = [];
+  const folders: string[] = [folderId];
   let truncated = false;
   const queue: { id: string; path: string; depth: number }[] = [{ id: folderId, path: "", depth: 0 }];
 
@@ -114,6 +115,7 @@ export async function listTree(
       for (const item of page.files) {
         if (item.mimeType === FOLDER) {
           if (folder.depth < MAX_DEPTH) {
+            folders.push(item.id);
             queue.push({
               id: item.id,
               path: folder.path ? `${folder.path}/${item.name}` : item.name,
@@ -138,7 +140,7 @@ export async function listTree(
       }
     } while (pageToken);
   }
-  return { files, truncated };
+  return { files, folders, truncated };
 }
 
 const NATIVE_EXPORTS: Record<string, string> = {
@@ -182,4 +184,119 @@ export async function readFileText(token: string, file: DriveFile): Promise<File
   const text = (await response.text()).slice(0, MAX_TEXT_CHARS);
   if (!text.trim()) return { ok: false, reason: "The file is empty." };
   return { ok: true, text };
+}
+
+// ------------------------------------------------------------ change feed
+
+async function send(token: string, url: string, init: RequestInit): Promise<Response> {
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...init,
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    });
+  } catch (error) {
+    throw new DriveError(`Drive request failed: ${(error as Error).message}`, 0);
+  }
+  if (!response.ok) throw new DriveError(`Drive answered ${response.status}.`, response.status);
+  return response;
+}
+
+export async function getStartPageToken(token: string): Promise<string> {
+  const { startPageToken } = await json<{ startPageToken: string }>(
+    token,
+    "/changes/startPageToken",
+    {},
+  );
+  return startPageToken;
+}
+
+export type DriveChange = {
+  fileId: string;
+  removed: boolean;
+  parents: string[];
+  trashed: boolean;
+};
+
+/** Everything that changed since the token, and the token to continue from. */
+export async function listChanges(
+  token: string,
+  pageToken: string,
+): Promise<{ changes: DriveChange[]; nextToken: string }> {
+  const changes: DriveChange[] = [];
+  let cursor = pageToken;
+  for (let guard = 0; guard < 50; guard++) {
+    const page = await json<{
+      changes: {
+        fileId?: string;
+        removed?: boolean;
+        file?: { parents?: string[]; trashed?: boolean };
+      }[];
+      nextPageToken?: string;
+      newStartPageToken?: string;
+    }>(token, "/changes", {
+      pageToken: cursor,
+      pageSize: "1000",
+      includeItemsFromAllDrives: "true",
+      fields: "nextPageToken,newStartPageToken,changes(fileId,removed,file(parents,trashed))",
+    });
+    for (const change of page.changes) {
+      if (!change.fileId) continue;
+      changes.push({
+        fileId: change.fileId,
+        removed: change.removed === true,
+        parents: change.file?.parents ?? [],
+        trashed: change.file?.trashed === true,
+      });
+    }
+    if (page.newStartPageToken) return { changes, nextToken: page.newStartPageToken };
+    if (!page.nextPageToken) return { changes, nextToken: cursor };
+    cursor = page.nextPageToken;
+  }
+  // A backlog this long is better served by a full listing than by paging on.
+  return { changes, nextToken: cursor };
+}
+
+/** Asks Drive to POST to `address` whenever the account's change feed moves. */
+export async function watchChanges(
+  token: string,
+  {
+    pageToken,
+    channelId,
+    address,
+    secret,
+    expiresAt,
+  }: { pageToken: string; channelId: string; address: string; secret: string; expiresAt: Date },
+): Promise<{ resourceId: string; expiresAt: Date }> {
+  const response = await send(
+    token,
+    `${API}/changes/watch?${new URLSearchParams({
+      pageToken,
+      supportsAllDrives: "true",
+      includeItemsFromAllDrives: "true",
+    })}`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        id: channelId,
+        type: "web_hook",
+        address,
+        token: secret,
+        expiration: String(expiresAt.getTime()),
+      }),
+    },
+  );
+  const body = (await response.json()) as { resourceId: string; expiration?: string };
+  return {
+    resourceId: body.resourceId,
+    // Drive may grant less than was asked for; what it says is what holds.
+    expiresAt: body.expiration ? new Date(Number(body.expiration)) : expiresAt,
+  };
+}
+
+export async function stopChannel(token: string, channelId: string, resourceId: string) {
+  await send(token, "https://www.googleapis.com/drive/v3/channels/stop", {
+    method: "POST",
+    body: JSON.stringify({ id: channelId, resourceId }),
+  });
 }

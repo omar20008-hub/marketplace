@@ -20,7 +20,7 @@ vi.mock("@/lib/drive", async (importOriginal) => {
     ...actual,
     listTree: vi.fn(async () => {
       if (drive.failList) throw drive.failList;
-      return { files: drive.files, truncated: drive.truncated };
+      return { files: drive.files, folders: ["folder1"], truncated: drive.truncated };
     }),
     readFileText: vi.fn(async (_t: string, file: { id: string }) => {
       if (drive.failRead[file.id]) throw drive.failRead[file.id];
@@ -30,6 +30,7 @@ vi.mock("@/lib/drive", async (importOriginal) => {
     getFolder: vi.fn(async (_t: string, id: string) => ({ id, name: "Contracts" })),
   };
 });
+vi.mock("@/server/knowledge/watch", () => ({ ensureWatch: vi.fn(async () => {}), renewWatches: vi.fn(async () => ({ renewed: 0, failed: 0 })) }));
 vi.mock("@/server/google-account", () => ({
   getGoogleAccessToken: vi.fn(async () => "token"),
   saveGoogleConnection: vi.fn(),
@@ -45,6 +46,7 @@ const { runKnowledgeJobs, enqueueDueSyncs } = await import("@/server/knowledge/w
 const { createKnowledgeSource } = await import("@/server/knowledge/sources");
 const { resumeKnowledgeSources } = await import("@/server/knowledge/resume");
 const { getGoogleAccessToken } = await import("@/server/google-account");
+const { ensureWatch } = await import("@/server/knowledge/watch");
 
 const PLAN_ID = "test-plan-knowledge";
 let userId = "";
@@ -188,6 +190,16 @@ describe("syncSource", () => {
     expect(files[1].error).toMatch(/cannot be read/);
     expect(await prisma.knowledgeJob.findMany({ where: { kind: "INDEX_FILE" } })).toHaveLength(1);
     expect((await prisma.knowledgeSource.findUniqueOrThrow({ where: { id: sourceId } })).lastSyncedAt).not.toBeNull();
+  });
+
+  it("remembers the folder tree, and still syncs when push setup fails", async () => {
+    vi.mocked(ensureWatch).mockRejectedValueOnce(new Error("channel refused"));
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    drive.files = [file("a")];
+    await syncSource(sourceId);
+    const source = await prisma.knowledgeSource.findUniqueOrThrow({ where: { id: sourceId } });
+    expect(source.folderIds).toEqual(["folder1"]);
+    expect(await prisma.knowledgeFile.count()).toBe(1);
   });
 
   it("re-queues only files whose revision changed", async () => {

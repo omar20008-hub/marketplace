@@ -6,6 +6,7 @@ import { EmbeddingError, embedTexts, toVectorLiteral } from "@/lib/embeddings";
 import { GoogleAuthError } from "@/lib/google-oauth";
 import { getGoogleAccessToken } from "@/server/google-account";
 import { enqueue } from "./queue";
+import { ensureWatch } from "./watch";
 
 /**
  * The two jobs the worker runs. Both are idempotent: run twice, the second finds
@@ -33,6 +34,12 @@ export async function syncSource(sourceId: string): Promise<Outcome> {
   let listing;
   try {
     const token = await getGoogleAccessToken(source.accountId);
+    // Before listing, so the cursor predates everything the listing will see.
+    // Failing to set up push must not fail the sync: re-listing covers for it.
+    await ensureWatch(source.id, token).catch((error) => {
+      if (error instanceof GoogleAuthError) throw error;
+      console.warn(`Drive watch for ${source.id} failed:`, (error as Error).message);
+    });
     listing = await listTree(token, source.folderId, { maxFiles: MAX_FILES_PER_SOURCE });
   } catch (error) {
     if (error instanceof GoogleAuthError && error.permanent) {
@@ -111,6 +118,7 @@ export async function syncSource(sourceId: string): Promise<Outcome> {
     where: { id: source.id },
     data: {
       lastSyncedAt: new Date(),
+      folderIds: listing.folders,
       lastError: listing.truncated
         ? `Only the first ${MAX_FILES_PER_SOURCE} files are indexed.`
         : null,

@@ -610,10 +610,14 @@ model KnowledgeSource {
   status     KnowledgeSourceStatus @default(ACTIVE)
 
   /// Drive changes.list cursor and the push channel that keeps it fresh (M3).
-  changesToken  String?
-  channelId     String?   @unique
-  channelToken  String?
-  channelExpiry DateTime?
+  changesToken      String?
+  channelId         String?   @unique
+  channelResourceId String?
+  channelToken      String?
+  channelExpiry     DateTime?
+  /// Every folder in the watched tree (the root included), so a change can be
+  /// judged relevant by its parents without a Drive call per file.
+  folderIds         String[]
 
   lastSyncedAt DateTime?
   lastError    String?
@@ -667,6 +671,7 @@ model KnowledgeChunk {
 
 enum KnowledgeJobKind {
   SYNC_SOURCE
+  SYNC_CHANGES // a push notification arrived: read the changes feed, sync only if it matters
   INDEX_FILE
 }
 

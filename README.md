@@ -245,6 +245,22 @@ from a durable job queue (`KnowledgeJob`), never inside n8n.
   the app (development and any host that has the source; the production Docker
   image ships only the compiled server, so it uses the tick endpoint).
 
+#### Push notifications
+
+When `GOOGLE_REDIRECT_URI` is https, each watched folder gets a Drive
+`changes.watch` channel that calls `/api/knowledge/drive-webhook`, so an added or
+edited file is picked up in seconds instead of at the next re-listing. Notes:
+
+- Google requires the webhook's domain to be **verified in Google Cloud**
+  (Search Console ownership, then "Domain verification" in the API console).
+- Channels expire (Drive chooses when; 7 days is asked for). The worker/tick
+  renews any with under 3 hours left, at most every 5 minutes.
+- A notification only says "something changed in the drive". The job reads the
+  change feed and syncs only if it touches the folder tree.
+- Push is an optimisation, never the only path: every folder is still re-listed
+  every 6 hours, so a missed notification costs freshness, not correctness. On
+  http (a laptop) there is no push and that re-listing is all there is.
+
 ### Google Drive connection
 
 Drive is the one connection the platform holds itself, through its own OAuth

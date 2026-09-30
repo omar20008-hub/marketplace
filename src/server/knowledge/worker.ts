@@ -1,5 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { processChanges } from "./changes";
+import { renewWatches } from "./watch";
 import { giveUpOnFile, indexFile, syncSource } from "./indexer";
 import { claim, complete, enqueue, fail, type Job } from "./queue";
 
@@ -27,7 +29,9 @@ export async function enqueueDueSyncs(now = new Date()): Promise<number> {
 }
 
 async function run(job: Job) {
-  return job.kind === "SYNC_SOURCE" ? syncSource(job.targetId) : indexFile(job.targetId);
+  if (job.kind === "SYNC_SOURCE") return syncSource(job.targetId);
+  if (job.kind === "SYNC_CHANGES") return processChanges(job.targetId);
+  return indexFile(job.targetId);
 }
 
 export type RunSummary = { ran: number; failed: number; gaveUp: number };
@@ -35,6 +39,7 @@ export type RunSummary = { ran: number; failed: number; gaveUp: number };
 export async function runKnowledgeJobs({ budgetMs = 50_000, maxJobs = 200 } = {}): Promise<RunSummary> {
   const deadline = Date.now() + budgetMs;
   const summary: RunSummary = { ran: 0, failed: 0, gaveUp: 0 };
+  await renewWatches().catch(() => {});
 
   while (summary.ran + summary.failed < maxJobs && Date.now() < deadline) {
     const job = await claim();

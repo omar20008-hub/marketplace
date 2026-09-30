@@ -7,7 +7,7 @@ import { prisma } from "@/lib/db";
  * lapse and the job is picked up again; two workers never get the same one.
  */
 
-export type JobKind = "SYNC_SOURCE" | "INDEX_FILE";
+export type JobKind = "SYNC_SOURCE" | "SYNC_CHANGES" | "INDEX_FILE";
 export type Job = { id: string; kind: JobKind; targetId: string; attempts: number };
 
 export const MAX_ATTEMPTS = 5;
