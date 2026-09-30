@@ -24,7 +24,8 @@
     "postinstall": "prisma generate",
     "release": "prisma migrate deploy",
     "create-admin": "tsx scripts/create-admin.ts",
-    "worker": "tsx --conditions react-server scripts/worker.ts"
+    "worker": "tsx --conditions react-server scripts/worker.ts",
+    "reindex": "tsx --conditions react-server scripts/reindex.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",

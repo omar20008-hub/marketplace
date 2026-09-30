@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { openCredential, sealCredential } from "@/lib/secrets";
+import { stopWatch } from "./knowledge/watch";
 import { GOOGLE_DRIVE_CREDENTIAL, revokeToken } from "@/lib/google-oauth";
 import { isPlatformOAuth } from "@/lib/credentials";
 import { refreshInstallationStates } from "./installation-state";
@@ -88,6 +89,23 @@ export async function disconnectAccount(formData: FormData) {
     where: { id: accountId, userId: user.id },
   });
   if (!account || account.scope === "PLATFORM") return;
+
+  // Folders read through this connection stop being watched while the token
+  // still works to say so, and wait for a reconnect. What was already indexed is
+  // the user's to keep or to remove from the Files page.
+  if (account.credentialType === GOOGLE_DRIVE_CREDENTIAL) {
+    const sources = await prisma.knowledgeSource.findMany({
+      where: { accountId: account.id },
+      select: { id: true },
+    });
+    for (const { id } of sources) {
+      await stopWatch(id);
+      await prisma.knowledgeSource.update({
+        where: { id },
+        data: { status: "NEEDS_RECONNECT", lastError: "Google Drive was disconnected." },
+      });
+    }
+  }
 
   // Revoke at Google first, so "Revoke" here actually ends the access rather
   // than only forgetting the token. Best effort: it must not block disconnecting.

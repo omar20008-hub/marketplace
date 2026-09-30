@@ -99,9 +99,9 @@ async function main() {
   // ------------------------------------------------------------------ plans
   await prisma.plan.createMany({
     data: [
-      { id: "free", name: "Free", monthlyRuns: 50, storageBytes: BigInt(1_000_000_000), monthlyCredits: 0 },
-      { id: "pro", name: "Pro", monthlyRuns: 1000, storageBytes: BigInt(10_000_000_000), monthlyCredits: 1500, priceMonthly: 29 },
-      { id: "team", name: "Team", monthlyRuns: 5000, storageBytes: BigInt(100_000_000_000), monthlyCredits: 8000, priceMonthly: 99 },
+      { id: "free", name: "Free", monthlyRuns: 50, storageBytes: BigInt(1_000_000_000), monthlyCredits: 0, knowledgeSources: 1, knowledgeFiles: 200 },
+      { id: "pro", name: "Pro", monthlyRuns: 1000, storageBytes: BigInt(10_000_000_000), monthlyCredits: 1500, priceMonthly: 29, knowledgeSources: 5, knowledgeFiles: 5000 },
+      { id: "team", name: "Team", monthlyRuns: 5000, storageBytes: BigInt(100_000_000_000), monthlyCredits: 8000, priceMonthly: 99, knowledgeSources: 20, knowledgeFiles: 50000 },
     ],
   });
 

@@ -284,8 +284,9 @@ export async function uninstall(formData: FormData) {
     // Stored files are deliberately left alone. Deleting them is a separate
     // request the user has to make on purpose.
     // The key stops working with the status (see installationForKey). The
-    // folders stop being watched and synced; what was indexed stays, like every
-    // other stored file, until the user asks for it to go.
+    // folders are dropped below, indexed content with them: unlike a run's
+    // output, a copy of someone's Drive files has no screen to be managed from
+    // once the installation is gone, so it does not outlive it.
     data: { status: "UNINSTALLED", attentionNote: null },
   });
 
@@ -295,7 +296,7 @@ export async function uninstall(formData: FormData) {
   });
   for (const { id } of sources) {
     await stopWatch(id);
-    await prisma.knowledgeSource.update({ where: { id }, data: { status: "PAUSED" } });
+    await prisma.knowledgeSource.delete({ where: { id } });
   }
 
   revalidatePath("/", "layout");

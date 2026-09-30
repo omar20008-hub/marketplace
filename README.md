@@ -221,6 +221,8 @@ not due is not touched.
 
 ### Knowledge indexing (RAG)
 
+Full architecture, deploy checklist and operating notes: [docs/knowledge-search.md](docs/knowledge-search.md).
+
 A watched Drive folder becomes searchable chunks: files are listed, read
 (Google Docs/Slides/Sheets, text, Markdown, CSV, JSON, PDFs with a text layer),
 cut into passages, embedded and stored in Postgres with pgvector. All of it runs

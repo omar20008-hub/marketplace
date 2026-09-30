@@ -243,7 +243,7 @@ describe("POST /api/knowledge/search", () => {
 });
 
 describe("uninstalling", () => {
-  it("kills the key and pauses the folders", async () => {
+  it("kills the key and deletes the folders with everything read from them", async () => {
     const { user, installation, key, source } = await seedLibrary("a@example.test", [
       { name: "a.txt", text: "hello there" },
     ]);
@@ -254,6 +254,8 @@ describe("uninstalling", () => {
     await uninstall(form);
 
     expect((await call(key, { query: "hello" })).status).toBe(401);
-    expect((await prisma.knowledgeSource.findUniqueOrThrow({ where: { id: source.id } })).status).toBe("PAUSED");
+    expect(await prisma.knowledgeSource.count({ where: { id: source.id } })).toBe(0);
+    expect(await prisma.knowledgeFile.count()).toBe(0);
+    expect(await prisma.knowledgeChunk.count()).toBe(0);
   });
 });

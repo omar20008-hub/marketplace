@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import { embedTexts, toVectorLiteral } from "@/lib/embeddings";
+import { embedTexts, embeddingTag, toVectorLiteral } from "@/lib/embeddings";
 
 /**
  * Passages from one installation's own sources that best answer a question.
@@ -58,6 +58,20 @@ export async function searchKnowledge(
     }
   }
 
+  // Files embedded by another model cannot be compared with this query. They are
+  // being re-indexed, so to the agent they are "still being processed", not gone.
+  if (sourceIds.length > 0) {
+    const stale = await prisma.knowledgeFile.count({
+      where: {
+        sourceId: { in: sourceIds },
+        status: "READY",
+        embeddingModel: { not: null, notIn: [embeddingTag()] },
+      },
+    });
+    counts.ready -= stale;
+    counts.pending += stale;
+  }
+
   const library: SearchResult["library"] = {
     sources: sources.length,
     files: counts,
@@ -80,6 +94,7 @@ export async function searchKnowledge(
     JOIN "KnowledgeFile" f ON f.id = c."fileId"
     WHERE c."sourceId" = ANY(${sourceIds}::text[])
       AND f.status = 'READY'
+      AND (f."embeddingModel" IS NULL OR f."embeddingModel" = ${embeddingTag()})
       AND c.embedding IS NOT NULL
     ORDER BY c.embedding <=> ${toVectorLiteral(vector)}::vector
     LIMIT ${k}`;

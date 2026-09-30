@@ -65,13 +65,17 @@ model User {
 
 // Plans, credits and quotas live only here. No workflow enforces them.
 model Plan {
-  id             String @id
-  name           String
-  monthlyRuns    Int
-  storageBytes   BigInt
-  monthlyCredits Int
-  priceMonthly   Int    @default(0)
-  users          User[]
+  id               String @id
+  name             String
+  monthlyRuns      Int
+  storageBytes     BigInt
+  monthlyCredits   Int
+  priceMonthly     Int    @default(0)
+  /// Folders a user may attach across all their installations.
+  knowledgeSources Int    @default(1)
+  /// Readable files a user may have indexed across all their folders.
+  knowledgeFiles   Int    @default(200)
+  users            User[]
 }
 
 // ---------------------------------------------------------------- catalogue
@@ -659,6 +663,11 @@ model KnowledgeFile {
   error           String?
   chunkCount      Int                 @default(0)
   indexedRevision String?
+  /// Which embedding model produced this file's chunks (see embeddingTag()).
+  /// Vectors from different models cannot be compared, so search ignores a file
+  /// whose tag is not the current one until it is re-indexed. Null is a file
+  /// indexed before this was recorded, which used the current default.
+  embeddingModel  String?
   indexedAt       DateTime?
   createdAt       DateTime            @default(now())
 

@@ -95,3 +95,12 @@ export async function embedTexts(texts: string[], task: EmbedTask): Promise<numb
 export function toVectorLiteral(vector: number[]): string {
   return `[${vector.join(",")}]`;
 }
+
+/**
+ * Names the model behind the vectors being written and searched. Stored with
+ * every indexed file, because vectors from different models live in different
+ * spaces: comparing one to the other returns confident nonsense, not an error.
+ */
+export function embeddingTag(): string {
+  return env.embeddings.driver === "fake" ? "fake" : `gemini:${env.embeddings.model}`;
+}

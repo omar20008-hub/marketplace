@@ -2,9 +2,10 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { chunkText } from "@/lib/chunking";
 import { DriveError, isReadable, listTree, readFileText, type DriveFile } from "@/lib/drive";
-import { EmbeddingError, embedTexts, toVectorLiteral } from "@/lib/embeddings";
+import { EmbeddingError, embedTexts, embeddingTag, toVectorLiteral } from "@/lib/embeddings";
 import { GoogleAuthError } from "@/lib/google-oauth";
 import { getGoogleAccessToken } from "@/server/google-account";
+import { knowledgeUsage } from "./limits";
 import { enqueue } from "./queue";
 import { ensureWatch } from "./watch";
 
@@ -65,10 +66,35 @@ export async function syncSource(sourceId: string): Promise<Outcome> {
   const seen = new Set<string>();
   const toIndex: string[] = [];
 
+  // What the plan still allows. Only a file that would newly cost something
+  // (read and embedded for the first time, or again after being removed) draws
+  // on it; a file already counted, or one that changed, does not.
+  const usage = await knowledgeUsage(source.userId);
+  // Files leaving the folder in this same pass give their place back first, so a
+  // folder that swaps one file for another is not refused for having been full.
+  const present = new Set(listing.files.map((f) => f.id));
+  const leaving = listing.truncated
+    ? 0
+    : [...known.values()].filter(
+        (f) =>
+          !present.has(f.externalId) &&
+          ["PENDING", "INDEXING", "READY", "FAILED"].includes(f.status),
+      ).length;
+  let budget = Math.max(0, usage.maxFiles - usage.files + leaving);
+  let turnedAway = 0;
+
   for (const file of listing.files) {
     seen.add(file.id);
     const existing = known.get(file.id);
     const meta = { name: file.name, mimeType: file.mimeType, path: file.path, webUrl: file.webUrl };
+
+    if ((!existing || existing.status === "REMOVED") && isReadable(file.mimeType)) {
+      if (budget <= 0) {
+        turnedAway++;
+        continue;
+      }
+      budget--;
+    }
 
     if (!existing) {
       const created = await prisma.knowledgeFile.create({
@@ -119,9 +145,12 @@ export async function syncSource(sourceId: string): Promise<Outcome> {
     data: {
       lastSyncedAt: new Date(),
       folderIds: listing.folders,
-      lastError: listing.truncated
-        ? `Only the first ${MAX_FILES_PER_SOURCE} files are indexed.`
-        : null,
+      lastError:
+        turnedAway > 0
+          ? `Your ${usage.planName} plan allows ${usage.maxFiles.toLocaleString()} files, so ${turnedAway} new file${turnedAway === 1 ? " was" : "s were"} not added. Remove files or upgrade to index more.`
+          : listing.truncated
+            ? `Only the first ${MAX_FILES_PER_SOURCE} files are indexed.`
+            : null,
     },
   });
   return {};
@@ -200,6 +229,7 @@ export async function indexFile(fileId: string): Promise<Outcome> {
           chunkCount: chunks.length,
           indexedRevision: revision,
           indexedAt: new Date(),
+          embeddingModel: embeddingTag(),
         },
       });
     }, { timeout: 60_000 });

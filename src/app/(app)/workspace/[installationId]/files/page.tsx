@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/auth";
 import { Card, FootNote, PageTitle, SectionLabel } from "@/components/ds";
 import { oauthStartUrl } from "@/lib/credentials";
 import { relativeDays } from "@/lib/readiness";
+import { knowledgeUsage } from "@/server/knowledge/limits";
 import { AttachFolder, AutoRefresh, FileRow, SourceActions, SourceStatus } from "./parts";
 
 export const metadata = { title: "Files · Builder" };
@@ -36,6 +37,8 @@ export default async function FilesPage({
   const jobs = await prisma.knowledgeJob.count({
     where: { targetId: { in: installation.knowledgeSources.map((s) => s.id) } },
   });
+
+  const usage = await knowledgeUsage(user.id);
 
   const busy =
     jobs > 0 ||
@@ -157,6 +160,12 @@ export default async function FilesPage({
           );
         })
       )}
+
+      <p className="text-xs text-ink-3">
+        {usage.files.toLocaleString()} of {usage.maxFiles.toLocaleString()} files and{" "}
+        {usage.sources} of {usage.maxSources} folder{usage.maxSources === 1 ? "" : "s"} used on
+        your {usage.planName} plan.
+      </p>
 
       <FootNote>
         Files are read-only and never modified. Add or edit a file in the folder and
