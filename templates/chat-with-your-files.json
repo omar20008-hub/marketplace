@@ -1,0 +1,164 @@
+{
+  "name": "Chat with your files",
+  "nodes": [
+    {
+      "id": "5a0d3a55-1f0a-4c1e-9a55-0d1b2c3d4e01",
+      "name": "Chat with Your Files",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        192,
+        848
+      ],
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "chatInput",
+              "type": "string"
+            },
+            {
+              "name": "sessionId",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "5a0d3a55-1f0a-4c1e-9a55-0d1b2c3d4e02",
+      "name": "Files Assistant",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        704,
+        848
+      ],
+      "parameters": {
+        "options": {
+          "systemMessage": "You answer questions about the user's own files, using ONLY what the \"Search Files\" tool returns.\n\nHow to work:\n1. ALWAYS call \"Search Files\" before answering, even for follow-ups. You may call it more than once with different queries if the first results do not cover the question.\n2. The tool returns `passages`, a ready-made `context` with numbered sources like [1], [2], and a `library` summary.\n3. Answer only from the passages. If they do not contain the answer, say you could not find it in the files — never guess or use outside knowledge to fill the gap.\n4. Cite what you used with the source numbers and file names, e.g. \"(terms.pdf [2])\". Quote figures and dates exactly as written.\n5. If `library.files.ready` is 0: if `library.files.pending` is above 0, say the files are still being processed and to try again in a minute; if there are no sources or files at all, say no folder is connected yet; if `library.needsReconnect` is true, say the Google Drive connection needs to be renewed from Connected accounts.\n6. If `library.files.failed` or `library.files.unsupported` is above 0 and the answer may depend on them, mention that some files could not be read.\n7. Reply in the language the user wrote in. Be concise; use a short list or table only when it makes the answer clearer."
+        }
+      }
+    },
+    {
+      "id": "5a0d3a55-1f0a-4c1e-9a55-0d1b2c3d4e03",
+      "name": "Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        736,
+        1040
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "5a0d3a55-1f0a-4c1e-9a55-0d1b2c3d4e04",
+      "name": "Search Files",
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.5,
+      "position": [
+        960,
+        1040
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "__MP_PLATFORM_URL__/api/knowledge/search",
+        "authentication": "none",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer __MP_KNOWLEDGE_KEY__"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "keypair",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={{ $fromAI('query', 'What to look for in the files. Rephrase the user question as a short, self-contained search query with the key terms in it.', 'string') }}"
+            }
+          ]
+        },
+        "toolDescription": "Searches the user's own files (their connected folder) and returns the most relevant passages with their file names, plus a summary of what is indexed. Call this for every question; the answer must come from what it returns.",
+        "options": {}
+      }
+    },
+    {
+      "id": "5a0d3a55-1f0a-4c1e-9a55-0d1b2c3d4e05",
+      "name": "Gemini Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        1040
+      ],
+      "parameters": {
+        "modelName": "models/gemini-3.1-flash-lite",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "credentials": {
+        "googlePalmApi": {
+          "id": "placeholder",
+          "name": "Google Gemini account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Chat with Your Files": {
+      "main": [
+        [
+          {
+            "node": "Files Assistant",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Files Assistant",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Files": {
+      "ai_tool": [
+        [
+          {
+            "node": "Files Assistant",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Files Assistant",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

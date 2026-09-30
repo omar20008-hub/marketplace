@@ -48,7 +48,10 @@ const { resumeKnowledgeSources } = await import("@/server/knowledge/resume");
 const { getGoogleAccessToken } = await import("@/server/google-account");
 const { ensureWatch } = await import("@/server/knowledge/watch");
 
+const { seedInstallation } = await import("./knowledge-fixtures");
+
 const PLAN_ID = "test-plan-knowledge";
+let installationId = "";
 let userId = "";
 let accountId = "";
 let sourceId = "";
@@ -71,6 +74,8 @@ async function wipe() {
   await prisma.knowledgeChunk.deleteMany({});
   await prisma.knowledgeFile.deleteMany({});
   await prisma.knowledgeSource.deleteMany({});
+  await prisma.installation.deleteMany({});
+  await prisma.product.deleteMany({});
   await prisma.connectedAccount.deleteMany({});
   await prisma.user.deleteMany({});
   await prisma.plan.deleteMany({});
@@ -103,8 +108,9 @@ beforeEach(async () => {
     },
   });
   accountId = account.id;
+  installationId = (await seedInstallation(userId)).id;
   const source = await prisma.knowledgeSource.create({
-    data: { userId, accountId, folderId: "folder1", folderName: "Contracts" },
+    data: { userId, installationId, accountId, folderId: "folder1", folderName: "Contracts" },
   });
   sourceId = source.id;
 });
@@ -380,11 +386,11 @@ describe("worker and sources", () => {
 
   it("creates a source for the user's own connected folder and refuses someone else's account", async () => {
     await prisma.knowledgeSource.deleteMany({});
-    const ok = await createKnowledgeSource(userId, { accountId, folderId: "f9" });
+    const ok = await createKnowledgeSource(userId, { installationId, accountId, folderId: "f9" });
     expect(ok).toMatchObject({ ok: true, folderName: "Contracts" });
     expect((await prisma.knowledgeJob.findFirstOrThrow()).kind).toBe("SYNC_SOURCE");
 
-    const other = await createKnowledgeSource("nobody", { accountId, folderId: "f9" });
+    const other = await createKnowledgeSource("nobody", { installationId, accountId, folderId: "f9" });
     expect(other.ok).toBe(false);
   });
 });

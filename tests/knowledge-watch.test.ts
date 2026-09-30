@@ -48,6 +48,7 @@ function stubGoogle() {
 }
 
 let sourceId = "";
+const { seedInstallation } = await import("./knowledge-fixtures");
 const PLAN_ID = "test-plan-watch";
 
 async function wipe() {
@@ -55,6 +56,8 @@ async function wipe() {
   await prisma.knowledgeChunk.deleteMany({});
   await prisma.knowledgeFile.deleteMany({});
   await prisma.knowledgeSource.deleteMany({});
+  await prisma.installation.deleteMany({});
+  await prisma.product.deleteMany({});
   await prisma.connectedAccount.deleteMany({});
   await prisma.user.deleteMany({});
   await prisma.plan.deleteMany({});
@@ -84,6 +87,7 @@ beforeEach(async () => {
   const source = await prisma.knowledgeSource.create({
     data: {
       userId: user.id,
+      installationId: (await seedInstallation(user.id)).id,
       accountId: account.id,
       folderId: "root",
       folderName: "Root",

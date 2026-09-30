@@ -13,11 +13,20 @@ export type ConnectSourceResult =
 /** Points the platform at a Drive folder and starts the first sync. */
 export async function createKnowledgeSource(
   userId: string,
-  { accountId, folderId }: { accountId: string; folderId: string },
+  {
+    installationId,
+    accountId,
+    folderId,
+  }: { installationId: string; accountId: string; folderId: string },
 ): Promise<ConnectSourceResult> {
   if (!(await knowledgeAvailable())) {
     return { ok: false, error: "Knowledge search is not available on this platform yet." };
   }
+
+  const installation = await prisma.installation.findFirst({
+    where: { id: installationId, userId, status: { not: "UNINSTALLED" } },
+  });
+  if (!installation) return { ok: false, error: "That installation no longer exists." };
 
   const account = await prisma.connectedAccount.findFirst({
     where: { id: accountId, userId, credentialType: GOOGLE_DRIVE_CREDENTIAL },
@@ -37,9 +46,12 @@ export async function createKnowledgeSource(
   }
 
   const source = await prisma.knowledgeSource.upsert({
-    where: { userId_provider_folderId: { userId, provider: "gdrive", folderId: folder.id } },
+    where: {
+      installationId_provider_folderId: { installationId, provider: "gdrive", folderId: folder.id },
+    },
     create: {
       userId,
+      installationId,
       accountId: account.id,
       folderId: folder.id,
       folderName: folder.name,

@@ -144,6 +144,16 @@ export const env = {
   },
 
   /**
+   * The address n8n uses to call back into the platform (knowledge search). It
+   * is written into each installed workflow, so it must be reachable from n8n,
+   * not merely from a browser. Defaults to the origin of the OAuth redirect.
+   */
+  publicUrl: (
+    process.env.PUBLIC_URL ||
+    (process.env.GOOGLE_REDIRECT_URI ? new URL(process.env.GOOGLE_REDIRECT_URI).origin : "")
+  ).replace(/\/$/, ""),
+
+  /**
    * Turns text into vectors for knowledge search. "gemini" calls Google's
    * embedding API with GEMINI_API_KEY; "fake" is a deterministic stand-in for a
    * laptop and the tests, good for plumbing and useless for meaning. Changing

@@ -245,6 +245,30 @@ from a durable job queue (`KnowledgeJob`), never inside n8n.
   the app (development and any host that has the source; the production Docker
   image ships only the compiled server, so it uses the tick endpoint).
 
+#### Search and the n8n template
+
+An installed workflow reads a user's files by calling
+`POST /api/knowledge/search` with `Authorization: Bearer <installation key>` and
+`{ "query": "…", "limit": 6 }`. It returns the best passages with file names and
+links, a ready-made numbered `context`, and a `library` summary (files ready /
+pending / failed, whether the Drive connection needs renewing) so the agent can
+say *why* it found nothing.
+
+- **The key is per installation.** `activate()` issues a new `kb_…` key on every
+  activation and sends it to Install Template together with `platformUrl`; the
+  platform keeps only its SHA-256. It is written into that instance's nodes in
+  place of the placeholders `__MP_KNOWLEDGE_KEY__` and `__MP_PLATFORM_URL__`
+  (beside `__MP_INSTALLATION_ID__`). It opens one door — search over the sources
+  attached to that installation — and stops working when the installation is
+  uninstalled or activated again. The platform's master token is never in a
+  template. (It sits in the instance's workflow JSON, visible to n8n admins,
+  which is why it is scoped this narrowly and rotated freely.)
+- **Isolation** is in the query: sources are selected by installation id before
+  anything is compared, so there is no code path that searches "everything".
+- **The template** is `templates/chat-with-your-files.json`: an on-demand chat
+  agent whose only tool is an HTTP call to the search endpoint. Upload it like
+  any product; it needs only a Gemini credential from the user.
+
 #### Push notifications
 
 When `GOOGLE_REDIRECT_URI` is https, each watched folder gets a Drive

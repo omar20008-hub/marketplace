@@ -311,6 +311,12 @@ model Installation {
   runs        Run[]
   schedules   Schedule[]
 
+  /// sha256 of the key this installation's n8n instance uses to search its
+  /// knowledge sources. The key itself exists only in that instance; here there
+  /// is nothing to leak. A new one is issued on every activation.
+  knowledgeKeyHash String?           @unique
+  knowledgeSources KnowledgeSource[]
+
   @@unique([userId, productId])
 }
 
@@ -599,15 +605,19 @@ enum KnowledgeFileStatus {
 }
 
 model KnowledgeSource {
-  id         String                @id @default(cuid())
-  userId     String
-  user       User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  accountId  String
-  account    ConnectedAccount      @relation(fields: [accountId], references: [id])
-  provider   String                @default("gdrive")
-  folderId   String
-  folderName String
-  status     KnowledgeSourceStatus @default(ACTIVE)
+  id             String                @id @default(cuid())
+  userId         String
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// A source belongs to one installation: what an agent may read is what its
+  /// own user attached to it, never the user's other folders.
+  installationId String
+  installation   Installation          @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  accountId      String
+  account        ConnectedAccount      @relation(fields: [accountId], references: [id])
+  provider       String                @default("gdrive")
+  folderId       String
+  folderName     String
+  status         KnowledgeSourceStatus @default(ACTIVE)
 
   /// Drive changes.list cursor and the push channel that keeps it fresh (M3).
   changesToken      String?
@@ -625,7 +635,7 @@ model KnowledgeSource {
 
   files KnowledgeFile[]
 
-  @@unique([userId, provider, folderId])
+  @@unique([installationId, provider, folderId])
   @@index([accountId])
 }
 

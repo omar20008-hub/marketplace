@@ -6,6 +6,9 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { n8n } from "@/lib/n8n";
 import { openCredential, sealCredential } from "@/lib/secrets";
+import { env } from "@/lib/env";
+import { newKnowledgeKey } from "./knowledge/keys";
+import { stopWatch } from "./knowledge/watch";
 import { credentialLabel as labelFor, isPlatformOAuth } from "@/lib/credentials";
 
 /**
@@ -143,12 +146,18 @@ export async function activate(
     ),
   );
 
+  // A new key every activation: the instance about to be built gets it, and any
+  // earlier one stops working the moment the hash is replaced below.
+  const knowledge = newKnowledgeKey();
+
   const reply = await n8n.install({
     userId: user.id,
     templateId: product.templateId ?? product.id,
     storageBackend,
     credentialsJson,
     schedule,
+    knowledgeKey: knowledge.key,
+    platformUrl: env.publicUrl,
   });
 
   if ("ok" in reply) {
@@ -167,6 +176,7 @@ export async function activate(
       status: "ACTIVE",
       schedule: schedule || null,
       activationStatus: reply.activationStatus,
+      knowledgeKeyHash: knowledge.hash,
     },
     update: {
       installationId: reply.installationId,
@@ -176,6 +186,7 @@ export async function activate(
       attentionNote: null,
       schedule: schedule || null,
       activationStatus: reply.activationStatus,
+      knowledgeKeyHash: knowledge.hash,
     },
   });
 
@@ -228,8 +239,20 @@ export async function uninstall(formData: FormData) {
     where: { id: installation.id },
     // Stored files are deliberately left alone. Deleting them is a separate
     // request the user has to make on purpose.
+    // The key stops working with the status (see installationForKey). The
+    // folders stop being watched and synced; what was indexed stays, like every
+    // other stored file, until the user asks for it to go.
     data: { status: "UNINSTALLED", attentionNote: null },
   });
+
+  const sources = await prisma.knowledgeSource.findMany({
+    where: { installationId: installation.id },
+    select: { id: true },
+  });
+  for (const { id } of sources) {
+    await stopWatch(id);
+    await prisma.knowledgeSource.update({ where: { id }, data: { status: "PAUSED" } });
+  }
 
   revalidatePath("/", "layout");
 }

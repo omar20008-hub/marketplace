@@ -541,3 +541,26 @@ describe("activate — a completed install", () => {
     expect(await prisma.installation.findFirst()).toMatchObject({ schedule: null });
   });
 });
+
+describe("activate — the knowledge key", () => {
+  it("gives the new instance a key, stores only its hash, and rotates it on re-activation", async () => {
+    const { hashKnowledgeKey } = await import("@/server/knowledge/keys");
+    const user = await seedUser();
+    const product = await prisma.product.create({ data: productData(user.id, "PUBLISHED", []) });
+    const spy = vi.spyOn(n8n, "install");
+
+    await submit({ productId: product.id, storageBackend: "platform" });
+    const first = spy.mock.calls[0][0];
+    expect(first.knowledgeKey).toMatch(/^kb_/);
+    const stored = await prisma.installation.findFirstOrThrow();
+    expect(stored.knowledgeKeyHash).toBe(hashKnowledgeKey(first.knowledgeKey!));
+    expect(JSON.stringify(stored)).not.toContain(first.knowledgeKey!);
+
+    await submit({ productId: product.id, storageBackend: "platform" });
+    const second = spy.mock.calls[1][0];
+    expect(second.knowledgeKey).not.toBe(first.knowledgeKey);
+    const rotated = await prisma.installation.findFirstOrThrow();
+    expect(rotated.knowledgeKeyHash).toBe(hashKnowledgeKey(second.knowledgeKey!));
+    spy.mockRestore();
+  });
+});

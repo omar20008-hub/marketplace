@@ -72,6 +72,13 @@ export const InstallInput = z.object({
    * product whose activator left the field blank.
    */
   schedule: z.string().default(""),
+  /**
+   * Written into the installed workflow in place of __MP_KNOWLEDGE_KEY__ and
+   * __MP_PLATFORM_URL__, so the instance can call the platform's knowledge search
+   * as this installation and no other. Empty for a template that uses neither.
+   */
+  knowledgeKey: z.string().optional(),
+  platformUrl: z.string().optional(),
 });
 export type InstallInput = z.infer<typeof InstallInput>;
 
