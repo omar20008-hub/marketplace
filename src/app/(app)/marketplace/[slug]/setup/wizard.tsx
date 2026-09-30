@@ -4,6 +4,7 @@ import clsx from "clsx";
 import Link from "next/link";
 import { useActionState, useState } from "react";
 import { Check, Sparkles, X } from "lucide-react";
+import { FolderPicker, type PickedFolder } from "@/components/app/folder-picker";
 import {
   Badge,
   Button,
@@ -39,13 +40,20 @@ export type SetupRequirement = {
   }[];
 };
 
-const STEPS = ["Connections", "Defaults", "Where results go", "Review"] as const;
+/** What the wizard needs to offer a folder for a product that reads the user's files. */
+export type KnowledgeSetup = {
+  connected: boolean;
+  accountRef: string | null;
+  connectUrl: string;
+  connectLabel: string;
+};
 
 export function SetupWizard({
   product,
   requirements,
   backends,
   notice,
+  knowledge,
 }: {
   product: {
     id: string;
@@ -57,8 +65,18 @@ export function SetupWizard({
   requirements: SetupRequirement[];
   backends: { backend: string; label: string }[];
   notice: { tone: "ok" | "error"; text: string } | null;
+  /** Present when the product searches the user's own files. */
+  knowledge: KnowledgeSetup | null;
 }) {
-  const [step, setStep] = useState(0);
+  // The files step sits right after Connections, only for a product that has one.
+  const steps: string[] = knowledge
+    ? ["Connections", "Your files", "Defaults", "Where results go", "Review"]
+    : ["Connections", "Defaults", "Where results go", "Review"];
+  const at = (label: string) => steps.indexOf(label);
+
+  // Coming back from Google's sign-in lands on the step that asked for it.
+  const [step, setStep] = useState(knowledge && notice ? at("Your files") : 0);
+  const [folder, setFolder] = useState<PickedFolder | null>(null);
   const [openForm, setOpenForm] = useState<string | null>(null);
   const [filled, setFilled] = useState<Record<string, boolean>>({});
   const [state, formAction, pending] = useActionState<ActivateState, FormData>(
@@ -93,7 +111,7 @@ export function SetupWizard({
         </header>
 
         <nav className="flex gap-1 overflow-x-auto px-6 pb-3">
-          {STEPS.map((label, index) => (
+          {steps.map((label, index) => (
             <button
               key={label}
               type="button"
@@ -291,7 +309,51 @@ export function SetupWizard({
             </div>
           </div>
 
-          <div className={step === 1 ? "" : "hidden"}>
+          {knowledge ? (
+            <div className={step === at("Your files") ? "" : "hidden"}>
+              <div className="flex flex-col gap-3">
+                <SectionLabel>Your files</SectionLabel>
+                <p className="text-[13px] leading-relaxed text-ink-2">
+                  Pick the Google Drive folder this should answer from. The
+                  platform reads it (read-only) and keeps it up to date: a file
+                  you add or change shows up here within moments. Subfolders are
+                  included.
+                </p>
+                {knowledge.connected ? (
+                  <>
+                    <p className="text-xs text-ink-3">
+                      Connected{knowledge.accountRef ? ` · ${knowledge.accountRef}` : ""}
+                    </p>
+                    <input type="hidden" name="knowledgeFolderId" value={folder?.id ?? ""} />
+                    <FolderPicker value={folder} onChange={setFolder} />
+                    <FootNote>
+                      You can skip this and choose a folder later from My
+                      workspace — until then the assistant will say it has no
+                      files to read.
+                    </FootNote>
+                  </>
+                ) : (
+                  <Card className="flex flex-wrap items-center gap-3 p-3">
+                    <span className="flex size-9 flex-none items-center justify-center rounded-row bg-fill text-xs font-medium text-ink-2">
+                      GD
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium">Google Drive</div>
+                      <div className="mt-0.5 text-xs leading-snug text-ink-3">
+                        Read-only access, so the platform can index the folder you
+                        choose. Revoke any time from Connected accounts.
+                      </div>
+                    </div>
+                    <ButtonAnchor href={knowledge.connectUrl} size="sm">
+                      {knowledge.connectLabel}
+                    </ButtonAnchor>
+                  </Card>
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          <div className={step === at("Defaults") ? "" : "hidden"}>
             <div className="flex flex-col gap-3">
               <SectionLabel>Defaults</SectionLabel>
               <p className="text-[13px] leading-relaxed text-ink-2">
@@ -326,7 +388,7 @@ export function SetupWizard({
             </div>
           </div>
 
-          <div className={step === 2 ? "" : "hidden"}>
+          <div className={step === at("Where results go") ? "" : "hidden"}>
             <div className="flex flex-col gap-3">
               <SectionLabel>Where results go</SectionLabel>
               <div className="flex flex-col gap-2">
@@ -354,7 +416,7 @@ export function SetupWizard({
             </div>
           </div>
 
-          <div className={step === 3 ? "" : "hidden"}>
+          <div className={step === at("Review") ? "" : "hidden"}>
             <div className="flex flex-col gap-3">
               <SectionLabel>Review</SectionLabel>
               <ul className="flex flex-col gap-2 text-sm">
@@ -375,6 +437,14 @@ export function SetupWizard({
                     </li>
                   );
                 })}
+                {knowledge ? (
+                  <li className="flex items-center justify-between gap-3 border-b border-selected pb-2">
+                    <span>Your files{folder ? ` · ${folder.name}` : ""}</span>
+                    <Badge tone={folder ? "ready" : "partial"}>
+                      {folder ? "Folder chosen" : "Choose later"}
+                    </Badge>
+                  </li>
+                ) : null}
               </ul>
               <FootNote>
                 Adding pins you to v{product.version}. You choose when to upgrade.
@@ -398,7 +468,7 @@ export function SetupWizard({
           >
             Later
           </ButtonLink>
-          {step < STEPS.length - 1 ? (
+          {step < steps.length - 1 ? (
             <Button type="button" size="sm" onClick={() => setStep(step + 1)}>
               Next
             </Button>

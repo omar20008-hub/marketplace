@@ -7,7 +7,11 @@ import { requireUser } from "@/lib/auth";
 import { n8n } from "@/lib/n8n";
 import { openCredential, sealCredential } from "@/lib/secrets";
 import { env } from "@/lib/env";
+import { DriveError, getFolder } from "@/lib/drive";
+import { GOOGLE_DRIVE_CREDENTIAL } from "@/lib/google-oauth";
+import { getGoogleAccessToken } from "./google-account";
 import { newKnowledgeKey } from "./knowledge/keys";
+import { createKnowledgeSource } from "./knowledge/sources";
 import { stopWatch } from "./knowledge/watch";
 import { credentialLabel as labelFor, isPlatformOAuth } from "@/lib/credentials";
 
@@ -73,6 +77,43 @@ export async function activate(
   });
   const byType = new Map(existing.map((account) => [account.credentialType, account]));
 
+  // The folder a knowledge product should read. Checked now, before anything is
+  // installed, so a folder that cannot be opened is said so on the wizard rather
+  // than found out later in My workspace.
+  const folderId = product.usesKnowledge ? String(formData.get("knowledgeFolderId") ?? "") : "";
+  const driveAccount = byType.get(GOOGLE_DRIVE_CREDENTIAL);
+  if (folderId) {
+    if (driveAccount?.status !== "ACTIVE") {
+      return { error: "Connect your Google Drive to choose a folder." };
+    }
+    try {
+      await getFolder(await getGoogleAccessToken(driveAccount.id), folderId);
+    } catch (error) {
+      return {
+        error:
+          error instanceof DriveError && !error.retryable
+            ? "That folder could not be opened with your Google account."
+            : "Google Drive could not be reached. Try again in a moment.",
+      };
+    }
+  }
+
+  /** Attaches the chosen folder once the installation row exists. Never fails the install. */
+  async function attachFolder(installationRowId: string) {
+    if (!folderId || !driveAccount) return;
+    const result = await createKnowledgeSource(user.id, {
+      installationId: installationRowId,
+      accountId: driveAccount.id,
+      folderId,
+    });
+    if (!result.ok) {
+      await prisma.installation.update({
+        where: { id: installationRowId },
+        data: { attentionNote: `The folder was not connected: ${result.error}` },
+      });
+    }
+  }
+
   // Reuse an account the user already connected; store a new one if they just
   // filled the generated form. An existing row of the same type is updated in
   // place rather than joined by a second one — filling this form because the
@@ -114,7 +155,7 @@ export async function activate(
   // Partially ready: recorded here, not sent to n8n. Install Template refuses an
   // incomplete credential set, and rightly so — there is nothing to install yet.
   if (missing.length > 0) {
-    await prisma.installation.upsert({
+    const partial = await prisma.installation.upsert({
       where: { userId_productId: { userId: user.id, productId: product.id } },
       create: {
         userId: user.id,
@@ -127,6 +168,7 @@ export async function activate(
       },
       update: { status: "PARTIAL", storageBackend, schedule: schedule || null },
     });
+    await attachFolder(partial.id);
     revalidatePath("/workspace");
     redirect("/workspace");
   }
@@ -189,6 +231,8 @@ export async function activate(
       knowledgeKeyHash: knowledge.hash,
     },
   });
+
+  await attachFolder(installation.id);
 
   for (const type of needed) {
     const account = byType.get(type);

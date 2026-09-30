@@ -300,3 +300,42 @@ export async function stopChannel(token: string, channelId: string, resourceId: 
     body: JSON.stringify({ id: channelId, resourceId }),
   });
 }
+
+// ---------------------------------------------------------- folder browsing
+
+export type FolderEntry = { id: string; name: string };
+
+/** Folders directly inside `parent` ("root" is My Drive, "shared" is Shared with me), by name. */
+export async function listFolders(token: string, parent: string): Promise<FolderEntry[]> {
+  const q =
+    parent === "shared"
+      ? `sharedWithMe = true and mimeType = '${FOLDER}' and trashed = false`
+      : `'${parent.replace(/'/g, "")}' in parents and mimeType = '${FOLDER}' and trashed = false`;
+  const out: FolderEntry[] = [];
+  let pageToken: string | undefined;
+  do {
+    const page = await json<{ files: FolderEntry[]; nextPageToken?: string }>(token, "/files", {
+      q,
+      fields: "nextPageToken,files(id,name)",
+      orderBy: "name_natural",
+      pageSize: "200",
+      includeItemsFromAllDrives: "true",
+      ...(pageToken ? { pageToken } : {}),
+    });
+    out.push(...page.files);
+    pageToken = page.nextPageToken;
+  } while (pageToken && out.length < 1000);
+  return out;
+}
+
+/**
+ * A folder id from whatever the user pasted: the folder's link (any of the
+ * shapes Drive produces) or the bare id. Null when it is neither.
+ */
+export function parseFolderInput(input: string): string | null {
+  const text = input.trim();
+  const fromUrl =
+    /\/folders\/([A-Za-z0-9_-]{10,})/.exec(text) ?? /[?&]id=([A-Za-z0-9_-]{10,})/.exec(text);
+  if (fromUrl) return fromUrl[1];
+  return /^[A-Za-z0-9_-]{10,}$/.test(text) ? text : null;
+}

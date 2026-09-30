@@ -147,6 +147,10 @@ model Product {
   /// Field names Upload & Provision inferred as this template's on_demand
   /// inputs. Meaningless for scheduled/event, which take no inputs at call time.
   inputFields    String[] @default([])
+  /// The template searches the user's own files through the platform (it carries
+  /// the __MP_KNOWLEDGE_KEY__ placeholder). Set from the uploaded file itself, so
+  /// the setup wizard knows to ask for a folder.
+  usesKnowledge  Boolean  @default(false)
 
   // Marketplace signals. Ratings are platform-owned, health is derived from runs.
   ratingAvg   Float   @default(0)

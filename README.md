@@ -269,6 +269,24 @@ say *why* it found nothing.
   agent whose only tool is an HTTP call to the search endpoint. Upload it like
   any product; it needs only a Gemini credential from the user.
 
+#### The user's side
+
+A template that carries `__MP_KNOWLEDGE_KEY__` is recorded at upload as
+`usesKnowledge` (read from the uploaded file itself). For such a product:
+
+- **Setup wizard** gains a *Your files* step: connect Google (the same durable
+  sign-in as Connected accounts), then browse Drive folders — or paste a folder
+  link — and select one. The listing is served by `/api/knowledge/folders`, so the
+  browser only ever sees folder names, never a Drive token. Skipping is allowed;
+  the assistant then says it has no files yet.
+- **My workspace → Files** (`/workspace/<installation>/files`) shows the folder,
+  its status (syncing / up to date / needs reconnect), every file with its own
+  status and reason (skipped types, failures with a Retry), *Check now*, and
+  *Remove folder*, which deletes everything read from it. It refreshes itself
+  every few seconds while anything is still being processed.
+- **Chat**: assistant replies render `[name](url)` links and bare URLs as links
+  (http/https only), which is how the template's citations become clickable.
+
 #### Push notifications
 
 When `GOOGLE_REDIRECT_URI` is https, each watched folder gets a Drive

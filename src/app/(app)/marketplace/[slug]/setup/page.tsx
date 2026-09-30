@@ -8,7 +8,7 @@ import {
   knownCredentialSchema,
   oauthStartUrl,
 } from "@/lib/credentials";
-import { CONNECT_ERRORS } from "@/lib/google-oauth";
+import { CONNECT_ERRORS, GOOGLE_DRIVE_CREDENTIAL } from "@/lib/google-oauth";
 import { SetupWizard, type SetupRequirement } from "./wizard";
 
 export const metadata = { title: "Add to workspace · Builder" };
@@ -99,6 +99,19 @@ export default async function SetupPage({
         invocationMode: product.invocationMode,
       }}
       requirements={requirements}
+      knowledge={
+        product.usesKnowledge
+          ? {
+              connected: byType.get(GOOGLE_DRIVE_CREDENTIAL)?.status === "ACTIVE",
+              accountRef: byType.get(GOOGLE_DRIVE_CREDENTIAL)?.accountRef ?? null,
+              connectUrl: oauthStartUrl(`/marketplace/${slug}/setup`),
+              connectLabel:
+                byType.get(GOOGLE_DRIVE_CREDENTIAL)?.status === "EXPIRED"
+                  ? "Reconnect"
+                  : "Connect",
+            }
+          : null
+      }
       notice={
         connectError
           ? { tone: "error", text: CONNECT_ERRORS[connectError] ?? CONNECT_ERRORS.google }

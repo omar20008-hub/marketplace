@@ -293,6 +293,7 @@ function ProductList({
         kind: "AGENT" | "WORKFLOW";
         ratingAvg: number;
         invocationMode: string;
+        usesKnowledge: boolean;
       };
     };
     readiness: { tone: "ready" | "partial" | "plan" | "blocked" | "restricted" | "platform" | "neutral"; label: string };
@@ -367,6 +368,16 @@ function ProductList({
                 Finish setup
               </ButtonLink>
             )}
+
+            {installation.product.usesKnowledge ? (
+              <ButtonLink
+                href={`/workspace/${installation.id}/files`}
+                tone="secondary"
+                size="sm"
+              >
+                Files
+              </ButtonLink>
+            ) : null}
 
             <UninstallButton
               installationId={installation.id}

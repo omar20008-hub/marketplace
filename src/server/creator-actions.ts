@@ -59,6 +59,10 @@ export async function uploadProduct(
     return { error: reply.errorText };
   }
 
+  // Read from the file the creator sent, not from anything n8n reports: whether a
+  // template asks the platform for a knowledge key is visible in the template.
+  const usesKnowledge = text.includes("__MP_KNOWLEDGE_KEY__");
+
   const slug = slugify(title);
   const existing = await prisma.product.findUnique({ where: { slug } });
 
@@ -86,6 +90,7 @@ export async function uploadProduct(
       credentialDurability: reply.credentialDurability,
       invocationMode: reply.invocationMode,
       inputFields: splitList(reply.inputFields),
+      usesKnowledge,
     },
     update: {
       templateId: reply.templateId,
@@ -99,6 +104,7 @@ export async function uploadProduct(
       credentialDurability: reply.credentialDurability,
       invocationMode: reply.invocationMode,
       inputFields: splitList(reply.inputFields),
+      usesKnowledge,
     },
   });
 

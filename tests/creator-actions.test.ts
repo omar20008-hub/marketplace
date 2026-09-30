@@ -226,6 +226,23 @@ describe("a workflow the scan accepts", () => {
     );
   });
 
+  it("marks a template that asks for a knowledge key, and only such a template", async () => {
+    await seedCreator();
+    const searching = {
+      type: "n8n-nodes-base.httpRequestTool",
+      name: "Search Files",
+      parameters: { url: "__MP_PLATFORM_URL__/api/knowledge/search", headerValue: "Bearer __MP_KNOWLEDGE_KEY__" },
+    };
+    await upload(workflowFile(searching), { title: "Files chat" });
+    await upload(workflowFile(), { title: "Plain one" });
+
+    const products = await prisma.product.findMany({ orderBy: { title: "asc" } });
+    expect(products.map((p) => [p.title, p.usesKnowledge])).toEqual([
+      ["Files chat", true],
+      ["Plain one", false],
+    ]);
+  });
+
   it("opens a submission under review", async () => {
     await seedCreator();
     await upload(workflowFile());

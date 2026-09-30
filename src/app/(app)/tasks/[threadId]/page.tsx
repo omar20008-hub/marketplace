@@ -1,3 +1,4 @@
+import { Linkified } from "@/components/app/linkified";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
@@ -69,7 +70,9 @@ export default async function ThreadPage({
                   {message.body}
                 </div>
               ) : (
-                <p className="text-[15px] leading-relaxed">{message.body}</p>
+                <p className="text-[15px] leading-relaxed whitespace-pre-wrap">
+                  <Linkified text={message.body} />
+                </p>
               )}
               {run ? <RunCard run={run as unknown as RunCardData} /> : null}
             </div>
