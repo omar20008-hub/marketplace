@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { n8n } from "@/lib/n8n";
-import { fallbackCredentialSchema } from "@/lib/credentials";
+import { fallbackCredentialSchema, knownCredentialSchema } from "@/lib/credentials";
 import { SetupWizard, type SetupRequirement } from "./wizard";
 
 export const metadata = { title: "Add to workspace · Builder" };
@@ -40,7 +40,8 @@ export default async function SetupPage({
         requirement.providedBy === "USER" &&
         requirement.credentialType &&
         account?.status !== "ACTIVE"
-          ? ((await n8n.credentialSchema(requirement.credentialType)) ??
+          ? (knownCredentialSchema(requirement.credentialType) ??
+            (await n8n.credentialSchema(requirement.credentialType)) ??
             fallbackCredentialSchema(requirement.credentialType))
           : null;
 

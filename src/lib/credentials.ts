@@ -1,22 +1,22 @@
 import type { CredentialSchema } from "@/lib/n8n/contracts";
 
 /**
- * n8n's own GET /credentials/schema/:type does not answer for every
- * credential type a community node package defines — a langchain model
- * credential such as googlePalmApi has been seen coming back empty even
- * though the type itself works fine once a credential of it exists. Most
- * non-OAuth n8n credential types are, underneath, a single secret field
- * named "apiKey" (openAiApi, hubspotApi, slackApi, …), so that is the
- * default fallback the setup wizard uses instead of telling the user there
- * is no way to connect at all. Same durability heuristic Install Template's
- * own Plan Credentials step already uses.
+ * n8n's own GET /credentials/schema/:type is not trustworthy for every
+ * credential type a community node package defines. For googlePalmApi it
+ * has been seen both answering nothing at all, and answering with only
+ * "apiKey" — while n8n's own POST /credentials (the endpoint that actually
+ * creates the credential) rejects a googlePalmApi body missing "host"
+ * outright ("request.body.data requires property \"host\""), confirmed
+ * against a real 400 from Create User Credentials in MP · Install Template.
+ * The UI form treats "host" as optional with a default; the create API does
+ * not honour that default on a missing key, it just rejects the request.
  *
- * googlePalmApi needs its own entry: n8n's POST /credentials rejects a
- * googlePalmApi body missing "host" outright ("request.body.data requires
- * property \"host\"") even though the UI form treats it as optional with a
- * default — confirmed against a real 400 from Create User Credentials in
- * MP · Install Template. The default here fills the field automatically so
- * the user only has to supply their key.
+ * KNOWN_SCHEMAS is ground truth for types this has already burned us on, and
+ * wins over whatever the live endpoint says, right or wrong. For everything
+ * else, a non-OAuth n8n credential type is, underneath, usually a single
+ * secret field named "apiKey" (openAiApi, hubspotApi, slackApi, …), so that
+ * is the fallback the setup wizard uses instead of telling the user there is
+ * no way to connect at all — only when the live endpoint has nothing.
  */
 export function isOAuthCredential(credentialType: string) {
   return /oauth/i.test(credentialType);
@@ -30,7 +30,7 @@ const genericSecretSchema: CredentialSchema = {
   },
 };
 
-const FALLBACK_SCHEMAS: Record<string, CredentialSchema> = {
+const KNOWN_SCHEMAS: Record<string, CredentialSchema> = {
   googlePalmApi: {
     type: "object",
     required: ["apiKey", "host"],
@@ -45,9 +45,15 @@ const FALLBACK_SCHEMAS: Record<string, CredentialSchema> = {
   },
 };
 
+/** Ground-truthed schema for a type, when the live endpoint can't be trusted for it. */
+export function knownCredentialSchema(credentialType: string): CredentialSchema | null {
+  return KNOWN_SCHEMAS[credentialType] ?? null;
+}
+
+/** Used only when the live endpoint answers with nothing at all. */
 export function fallbackCredentialSchema(credentialType: string): CredentialSchema | null {
   if (isOAuthCredential(credentialType)) return null;
-  return FALLBACK_SCHEMAS[credentialType] ?? genericSecretSchema;
+  return KNOWN_SCHEMAS[credentialType] ?? genericSecretSchema;
 }
 
 /**
