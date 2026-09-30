@@ -9,6 +9,7 @@ import {
   type TokenSet,
 } from "@/lib/google-oauth";
 import { refreshInstallationStates } from "./installation-state";
+import { resumeKnowledgeSources } from "./knowledge/resume";
 
 /**
  * A Google connection the platform holds — the half of "durable" that lives in
@@ -97,6 +98,7 @@ export async function saveGoogleConnection({
   });
 
   await refreshInstallationStates(userId);
+  await resumeKnowledgeSources(account.id);
   return { ok: true, accountId: account.id };
 }
 

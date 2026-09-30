@@ -143,6 +143,21 @@ export const env = {
     redirectUri: process.env.GOOGLE_REDIRECT_URI ?? "",
   },
 
+  /**
+   * Turns text into vectors for knowledge search. "gemini" calls Google's
+   * embedding API with GEMINI_API_KEY; "fake" is a deterministic stand-in for a
+   * laptop and the tests, good for plumbing and useless for meaning. Changing
+   * the model or its dimensions makes every stored vector unusable, so both are
+   * pinned in the schema (vector(768)) and only the model name is a setting.
+   */
+  embeddings: {
+    driver: (process.env.EMBEDDINGS_DRIVER === "gemini" ? "gemini" : "fake") as
+      | "gemini"
+      | "fake",
+    apiKey: process.env.GEMINI_API_KEY ?? "",
+    model: process.env.EMBEDDINGS_MODEL ?? "gemini-embedding-001",
+  },
+
   n8n: {
     driver: (process.env.N8N_DRIVER === "live" ? "live" : "mock") as N8nDriver,
     baseUrl: process.env.N8N_BASE_URL ?? "",

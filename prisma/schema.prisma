@@ -30,15 +30,15 @@ enum Role {
 }
 
 model User {
-  id           String @id @default(cuid())
-  email        String @unique
+  id           String  @id @default(cuid())
+  email        String  @unique
   name         String
   passwordHash String
-  roles        Role[] @default([USER])
+  roles        Role[]  @default([USER])
   orgName      String?
   initials     String
-  avatarTint   String @default("#dfe7f5")
-  avatarInk    String @default("#1f4f9a")
+  avatarTint   String  @default("#dfe7f5")
+  avatarInk    String  @default("#1f4f9a")
 
   planId   String
   plan     Plan      @relation(fields: [planId], references: [id])
@@ -60,6 +60,7 @@ model User {
   submissions   Submission[]
   schedules     Schedule[]
   auditLogs     AuditLog[]
+  knowledge     KnowledgeSource[]
 }
 
 // Plans, credits and quotas live only here. No workflow enforces them.
@@ -260,7 +261,8 @@ model ConnectedAccount {
   expiresAt  DateTime?
   createdAt  DateTime  @default(now())
 
-  links InstallationCredential[]
+  links            InstallationCredential[]
+  knowledgeSources KnowledgeSource[]
 
   @@unique([userId, credentialType, accountRef])
 }
@@ -293,14 +295,14 @@ model Installation {
   /// Cron the user chose for a scheduled product, sent to MP · Install
   /// Template as-is. Null means the template's own built-in default schedule
   /// applies. Unused for on_demand/event products.
-  schedule String?
+  schedule         String?
   /// From MP · Install Template's reply for scheduled/event products: "active"
   /// once n8n turned the trigger on, "activation_failed" if the install call
   /// itself succeeded (installationId exists) but n8n could not activate the
   /// trigger — which reads as "needs review", not as a working tool, in My
   /// workspace. Meaningless for on_demand, where readinessFor() already
   /// decides what shows instead.
-  activationStatus String @default("active")
+  activationStatus String  @default("active")
 
   installedAt DateTime  @default(now())
   lastRunAt   DateTime?
@@ -526,14 +528,14 @@ model Submission {
 
   /// See Product.invocationMode — this is where it first lands, from the same
   /// Upload & Provision reply, before a decision copies it onto the product.
-  invocationMode String   @default("on_demand")
-  inputFields    String[] @default([])
+  invocationMode  String   @default("on_demand")
+  inputFields     String[] @default([])
   /// "confident" needs nothing from the creator. "needs_confirmation" means
   /// Upload & Provision inferred something ambiguous (dynamic data access, or
   /// a trigger worth a second look) — shown to the creator as information
   /// alongside `notes`, since there is no n8n API path yet to confirm or edit
   /// it; the human review inside n8n is what actually settles it.
-  inferenceStatus String  @default("confident")
+  inferenceStatus String   @default("confident")
   /// Arabic prose describing any automatic conversion Upload & Provision made
   /// (a node retargeted, a trigger swapped for a chat-callable one). Shown to
   /// the creator as transparency, not as an error.
@@ -572,4 +574,117 @@ model AuditLog {
   createdAt DateTime @default(now())
 
   @@index([createdAt])
+}
+
+// --------------------------------------------------------------- knowledge
+//
+// What a user's agents may read: a folder the platform watches, the files in it,
+// and those files cut into embedded chunks. Owned by the platform, not n8n — a
+// workflow asks for passages through the retrieval endpoint and never touches
+// these tables.
+
+enum KnowledgeSourceStatus {
+  ACTIVE
+  NEEDS_RECONNECT // the Google connection died; nothing syncs until it is renewed
+  PAUSED
+}
+
+enum KnowledgeFileStatus {
+  PENDING // seen, waiting for the worker
+  INDEXING
+  READY
+  FAILED // retries exhausted; `error` says why, a change to the file retries it
+  UNSUPPORTED // a type we cannot read; shown to the user, never silently skipped
+  REMOVED // gone from the folder; its chunks are deleted
+}
+
+model KnowledgeSource {
+  id         String                @id @default(cuid())
+  userId     String
+  user       User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId  String
+  account    ConnectedAccount      @relation(fields: [accountId], references: [id])
+  provider   String                @default("gdrive")
+  folderId   String
+  folderName String
+  status     KnowledgeSourceStatus @default(ACTIVE)
+
+  /// Drive changes.list cursor and the push channel that keeps it fresh (M3).
+  changesToken  String?
+  channelId     String?   @unique
+  channelToken  String?
+  channelExpiry DateTime?
+
+  lastSyncedAt DateTime?
+  lastError    String?
+  createdAt    DateTime  @default(now())
+
+  files KnowledgeFile[]
+
+  @@unique([userId, provider, folderId])
+  @@index([accountId])
+}
+
+model KnowledgeFile {
+  id              String              @id @default(cuid())
+  sourceId        String
+  source          KnowledgeSource     @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  externalId      String
+  name            String
+  mimeType        String
+  path            String? // folder path inside the source, for citations
+  webUrl          String?
+  /// md5 for binary files, modifiedTime for Google-native ones: whatever changes
+  /// when the content does.
+  revision        String
+  status          KnowledgeFileStatus @default(PENDING)
+  error           String?
+  chunkCount      Int                 @default(0)
+  indexedRevision String?
+  indexedAt       DateTime?
+  createdAt       DateTime            @default(now())
+
+  chunks KnowledgeChunk[]
+
+  @@unique([sourceId, externalId])
+  @@index([sourceId, status])
+}
+
+model KnowledgeChunk {
+  id        String                      @id @default(cuid())
+  fileId    String
+  file      KnowledgeFile               @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  sourceId  String
+  ordinal   Int
+  content   String
+  /// Written and searched with raw SQL — Prisma cannot express pgvector. Absent
+  /// on a database without the extension (see the migration).
+  embedding Unsupported("vector(768)")?
+
+  @@index([sourceId])
+  @@index([fileId, ordinal])
+}
+
+enum KnowledgeJobKind {
+  SYNC_SOURCE
+  INDEX_FILE
+}
+
+/// A durable queue in Postgres: claimed with FOR UPDATE SKIP LOCKED under a
+/// lease, so a worker that dies mid-job simply lets the lease lapse.
+model KnowledgeJob {
+  id          String           @id @default(cuid())
+  kind        KnowledgeJobKind
+  targetId    String // sourceId or fileId
+  /// One pending job per (kind, target): enqueueing again while one waits is a no-op.
+  dedupeKey   String           @unique
+  attempts    Int              @default(0)
+  runAfter    DateTime         @default(now())
+  leasedUntil DateTime?
+  /// Enqueued again while it was running: it goes round once more instead of being lost.
+  rerun       Boolean          @default(false)
+  lastError   String?
+  createdAt   DateTime         @default(now())
+
+  @@index([runAfter])
 }

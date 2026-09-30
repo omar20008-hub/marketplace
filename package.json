@@ -23,7 +23,8 @@
     "setup": "npm run db:up && prisma migrate deploy && prisma db seed",
     "postinstall": "prisma generate",
     "release": "prisma migrate deploy",
-    "create-admin": "tsx scripts/create-admin.ts"
+    "create-admin": "tsx scripts/create-admin.ts",
+    "worker": "tsx --conditions react-server scripts/worker.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",
@@ -38,6 +39,7 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "server-only": "^0.0.1",
+    "unpdf": "^1.8.1",
     "zod": "^4.6.5"
   },
   "devDependencies": {

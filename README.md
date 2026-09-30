@@ -219,6 +219,32 @@ tick did.
 Calling it more often than the schedules need is harmless: a schedule that is
 not due is not touched.
 
+### Knowledge indexing (RAG)
+
+A watched Drive folder becomes searchable chunks: files are listed, read
+(Google Docs/Slides/Sheets, text, Markdown, CSV, JSON, PDFs with a text layer),
+cut into passages, embedded and stored in Postgres with pgvector. All of it runs
+from a durable job queue (`KnowledgeJob`), never inside n8n.
+
+- **pgvector.** The migration adds the embedding column only if the extension is
+  installable, so a database without it still deploys; knowledge features then
+  report themselves unavailable. On Railway use a pgvector-enabled Postgres, then
+  run the `DO $$ … $$` block at the end of the `knowledge` migration once.
+- **Embeddings.** `EMBEDDINGS_DRIVER=gemini` with `GEMINI_API_KEY` in production.
+  The default `fake` driver is deterministic and only good for plumbing. Vectors
+  are 768-wide; changing the model means re-indexing everything.
+- **Draining the queue.** Either call the tick endpoint from the same clock as
+  the scheduler — it also re-lists any folder not synced for six hours:
+
+  ```bash
+  curl -fsS -X POST https://example.com/api/knowledge/tick \
+    -H "x-schedule-token: $SCHEDULE_TOKEN"
+  ```
+
+  or run `npm run worker`, a long-running process with the same environment as
+  the app (development and any host that has the source; the production Docker
+  image ships only the compiled server, so it uses the tick endpoint).
+
 ### Google Drive connection
 
 Drive is the one connection the platform holds itself, through its own OAuth
