@@ -80,8 +80,14 @@ test.describe("signed in as a creator", () => {
 });
 
 test.describe("before signing in", () => {
-  test("every screen redirects to the sign-in page", async ({ page }) => {
-    for (const path of ["/", "/workspace", "/results", "/accounts", "/admin"]) {
+  test("the home page is open to guests, with a way to sign in", async ({ page }) => {
+    await page.goto("/");
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.locator('a[href="/login"]').first()).toBeVisible();
+  });
+
+  test("every private screen redirects to the sign-in page", async ({ page }) => {
+    for (const path of ["/workspace", "/results", "/accounts", "/admin"]) {
       await page.goto(path);
       await expect(page, `${path} should require signing in`).toHaveURL(/\/login/);
     }
