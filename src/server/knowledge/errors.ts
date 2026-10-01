@@ -56,3 +56,43 @@ export function logName(name: string): string {
   const flat = name.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
   return flat.length > 120 ? `${flat.slice(0, 117)}...` : flat;
 }
+
+import type { RetryInfo } from "./queue";
+
+/** Whether this failure is a rate limit, and how long the service said to wait. */
+export function retryInfoOf(error: unknown): RetryInfo {
+  if (error instanceof EmbeddingError && /answered 429/.test(error.message)) {
+    return { rateLimited: true, retryAfterSeconds: error.limit?.retryAfterSeconds };
+  }
+  if (error instanceof DriveError && error.status === 429) return { rateLimited: true };
+  return {};
+}
+
+/**
+ * What the Files page says, in words a person can act on, for a failure of this
+ * kind. Null means there is nothing better than the raw reason. Still no content:
+ * the text depends only on the kind.
+ */
+export function friendlyJobError(type: string, gaveUp: boolean): string | null {
+  switch (type) {
+    case "embeddings_rate_limit":
+      return gaveUp
+        ? "The embedding service kept limiting requests (rate limit or daily quota). Press Retry later, or raise the quota."
+        : "The embedding service is limiting requests (rate limit or daily quota). Retrying automatically.";
+    case "embeddings_server_error":
+    case "embeddings_network":
+      return gaveUp
+        ? "The embedding service could not be reached. Press Retry later."
+        : "The embedding service is not responding. Retrying automatically.";
+    case "drive_rate_limit":
+      return gaveUp
+        ? "Google Drive kept limiting requests. Press Retry later."
+        : "Google Drive is limiting requests. Retrying automatically.";
+    case "nul_byte_in_text":
+      return gaveUp ? "The file contains characters that cannot be stored." : null;
+    case "pdf_parse_error":
+      return gaveUp ? "This PDF could not be read (damaged, protected, or not text)." : null;
+    default:
+      return gaveUp ? null : "Retrying after a temporary problem.";
+  }
+}

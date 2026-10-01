@@ -5,8 +5,8 @@ import { processChanges } from "./changes";
 import { recordTick } from "./heartbeat";
 import { renewWatches } from "./watch";
 import { giveUpOnFile, indexFile, syncSource } from "./indexer";
-import { classifyJobError, logName } from "./errors";
-import { MAX_ATTEMPTS, claim, complete, enqueue, fail, retryDelaySeconds, type Job } from "./queue";
+import { classifyJobError, friendlyJobError, logName, retryInfoOf } from "./errors";
+import { claim, complete, enqueue, fail, maxAttemptsFor, retryDelaySeconds, type Job, type RetryInfo } from "./queue";
 
 /**
  * Runs queued jobs until the queue is empty or the time budget is spent. Called
@@ -51,10 +51,16 @@ export type RunSummary = {
  * tried again, then the file (or folder) on its own line. The kind only — never
  * the error's own message.
  */
-async function logFailure(job: Job, type: string, gaveUp: boolean, log: (line: string) => void) {
+async function logFailure(
+  job: Job,
+  type: string,
+  gaveUp: boolean,
+  info: RetryInfo,
+  log: (line: string) => void,
+) {
   try {
-    const next = gaveUp ? "gave up" : `retry_in=${retryDelaySeconds(job.attempts)}s`;
-    log(`knowledge job failed: kind=${job.kind} type=${type} attempt=${job.attempts}/${MAX_ATTEMPTS} ${next}`);
+    const next = gaveUp ? "gave up" : `retry_in=${retryDelaySeconds(job.attempts, info)}s`;
+    log(`knowledge job failed: kind=${job.kind} type=${type} attempt=${job.attempts}/${maxAttemptsFor(info)} ${next}`);
     if (job.kind === "INDEX_FILE") {
       const file = await prisma.knowledgeFile.findUnique({ where: { id: job.targetId }, select: { name: true } });
       if (file) log(`knowledge job file: ${logName(file.name)}`);
@@ -90,11 +96,12 @@ export async function runKnowledgeJobs({
       const type = classifyJobError(error);
       summary.failed++;
       summary.failedByType[type] = (summary.failedByType[type] ?? 0) + 1;
-      const gaveUp = await fail(job, message);
-      await logFailure(job, type, gaveUp, log);
+      const info = retryInfoOf(error);
+      const gaveUp = await fail(job, message, info);
+      await logFailure(job, type, gaveUp, info, log);
       if (gaveUp) {
         summary.gaveUp++;
-        if (job.kind === "INDEX_FILE") await giveUpOnFile(job.targetId, message);
+        if (job.kind === "INDEX_FILE") await giveUpOnFile(job.targetId, friendlyJobError(type, true) ?? message);
         else {
           await prisma.knowledgeSource.updateMany({
             where: { id: job.targetId },

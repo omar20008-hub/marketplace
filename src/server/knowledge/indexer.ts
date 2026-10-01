@@ -6,6 +6,7 @@ import { EmbeddingError, embedTexts, embeddingTag, toVectorLiteral } from "@/lib
 import { GoogleAuthError } from "@/lib/google-oauth";
 import { getGoogleAccessToken } from "@/server/google-account";
 import { knowledgeUsage } from "./limits";
+import { classifyJobError, friendlyJobError } from "./errors";
 import { enqueue } from "./queue";
 import { ensureWatch } from "./watch";
 
@@ -254,7 +255,10 @@ export async function indexFile(fileId: string): Promise<Outcome> {
     // look stuck, so say what is happening.
     await prisma.knowledgeFile.update({
       where: { id: file.id },
-      data: { status: "PENDING", error: "Retrying after a temporary problem." },
+      data: {
+        status: "PENDING",
+        error: friendlyJobError(classifyJobError(error), false) ?? "Retrying after a temporary problem.",
+      },
     });
     throw error;
   }

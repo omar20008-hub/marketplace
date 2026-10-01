@@ -121,7 +121,7 @@ export default async function FilesPage({
                         : " · not checked yet"}
                     </div>
                   </div>
-                  <SourceStatus status={source.status} busy={busy} />
+                  <SourceStatus status={source.status} busy={busy} failed={counts.failed} />
                 </div>
 
                 <p className="text-[13px] text-ink-2">

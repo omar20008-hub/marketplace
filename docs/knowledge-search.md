@@ -149,6 +149,19 @@ the queue is being drained. Otherwise it says which: `google.missing` (names onl
   `nul_byte_in_text`, `pdf_parse_error`, `timeout`, `network`, `database_error_<code>`.
   `retry_in` is the backoff (30 s, 2 m, 8 m, 32 m); after 5 attempts the line says
   `gave up` and the file becomes Failed.
+- **Embedding rate limits (HTTP 429).** Gemini limits embedding requests per minute
+  and per day, and a free-tier key hits both on a large PDF. The code reads what the
+  API says (`Retry-After`, or `RetryInfo`/quota id in the body — never logged): a
+  per-minute limit of up to ~25 s is waited out *inside* the call, so a big file is
+  not restarted for a short pause; anything longer, and any daily limit, goes back to
+  the queue, which retries a rate limit **12 times** (1 min doubling to 1 h, never
+  sooner than the API asked) instead of the ordinary 5 (30 s … 32 min) — so a file
+  survives a quota window rather than failing inside it. The Files page says "The
+  embedding service is limiting requests … Retrying automatically."; after the last
+  try, "Press Retry later, or raise the quota." (Retry re-queues it with fresh
+  attempts.) Requests are sent in batches of 25. A folder with failed files shows
+  "N failed" rather than "Up to date". The durable fix is quota: use a paid key, or
+  raise the `gemini-embedding-001` limits in Google AI Studio.
 - **A file stuck "Failed"**: the reason is on the Files page; Retry re-queues it.
   After 5 attempts a job is dropped and the file is marked Failed, never left
   spinning.
