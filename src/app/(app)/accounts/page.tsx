@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { n8n } from "@/lib/n8n";
 import { GOOGLE_DRIVE_CREDENTIAL, oauthStartUrl } from "@/lib/credentials";
-import { CONNECT_ERRORS } from "@/lib/google-oauth";
+import { connectErrorText } from "@/lib/google-oauth";
 import { Badge, ButtonAnchor, ButtonLink, Card, PageTitle } from "@/components/ds";
 import { disconnectAccount } from "@/server/account-actions";
 import { ConnectPanel, type Connectable } from "./connect-panel";
@@ -52,9 +52,17 @@ const CONNECTABLE: { credentialType: string; displayName: string }[] = [
 export default async function AccountsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ connect?: string; connected?: string; connect_error?: string }>;
+  searchParams: Promise<{
+    connect?: string;
+    connected?: string;
+    connect_error?: string;
+  }>;
 }) {
-  const { connect, connected: justConnected, connect_error: connectError } = await searchParams;
+  const {
+    connect,
+    connected: justConnected,
+    connect_error: connectError,
+  } = await searchParams;
   const user = await requireUser();
 
   const accounts = await prisma.connectedAccount.findMany({
@@ -111,7 +119,7 @@ export default async function AccountsPage({
 
       {connectError ? (
         <p role="alert" className="mt-3 text-[13px] text-danger-ink">
-          {CONNECT_ERRORS[connectError] ?? CONNECT_ERRORS.google}
+          {connectErrorText(connectError)}
         </p>
       ) : justConnected ? (
         <p role="status" className="mt-3 text-[13px] text-ready-ink">

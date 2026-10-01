@@ -716,3 +716,12 @@ model KnowledgeJob {
 
   @@index([runAfter])
 }
+
+/// The last time each background process proved it was alive: one row per name,
+/// overwritten, never a log. Read to tell "nothing is queued" from "nothing is
+/// running" — a queue that never drains looks the same on screen as one that is
+/// merely slow.
+model Heartbeat {
+  name String   @id
+  at   DateTime
+}

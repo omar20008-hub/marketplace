@@ -126,11 +126,14 @@ RUN rm -f .env .env.local .env.production .env.production.local
 USER nextjs
 EXPOSE 3000
 
+# PORT is read at probe time: a platform (Railway) that injects its own PORT would
+# otherwise leave this probing 3000 while the server listens elsewhere.
+#
 # The endpoint runs `SELECT 1`, so an instance that cannot reach Postgres is
 # reported unhealthy rather than restarted-and-still-broken. start-period is
 # generous because the first request compiles nothing but does open the pool.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 # Migrations are deliberately not run here. Two instances starting at once would
 # race, and a rollback would leave the schema ahead of the code. They run in the

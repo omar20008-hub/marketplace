@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { env } from "@/lib/env";
 import { knowledgeAvailable } from "@/server/knowledge/availability";
+import { recordTick } from "@/server/knowledge/heartbeat";
 import { enqueueDueSyncs, runKnowledgeJobs } from "@/server/knowledge/worker";
 
 /**
@@ -13,6 +14,9 @@ export async function POST(request: Request) {
   if (!env.scheduleToken || token !== env.scheduleToken) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  // The clock is running, whether or not there is anything to do with it.
+  await recordTick();
+
   if (!(await knowledgeAvailable())) {
     return NextResponse.json({ ok: true, available: false });
   }

@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/auth";
 import { Card, FootNote, PageTitle, SectionLabel } from "@/components/ds";
 import { oauthStartUrl } from "@/lib/credentials";
 import { relativeDays } from "@/lib/readiness";
+import { processingStalled } from "@/server/knowledge/heartbeat";
 import { knowledgeUsage } from "@/server/knowledge/limits";
 import { AttachFolder, AutoRefresh, FileRow, SourceActions, SourceStatus } from "./parts";
 
@@ -39,6 +40,9 @@ export default async function FilesPage({
   });
 
   const usage = await knowledgeUsage(user.id);
+  // Work is queued and nothing has come to run it. Only then does the page say so;
+  // while the worker is alive this changes nothing on screen.
+  const stalled = await processingStalled(installation.knowledgeSources.map((s) => s.id));
 
   const busy =
     jobs > 0 ||
@@ -61,6 +65,17 @@ export default async function FilesPage({
           meta="What this assistant can read. It answers only from these files, and only yours."
         />
       </div>
+
+      {stalled ? (
+        <p
+          role="alert"
+          className="rounded-card bg-warn-tint px-4 py-3 text-[13px] leading-relaxed text-warn-ink"
+        >
+          Processing has not started. The scheduled worker that reads your files may be
+          stopped, so they will stay on &ldquo;Syncing&rdquo; until it runs again. Ask the
+          platform administrator to check it.
+        </p>
+      ) : null}
 
       {installation.knowledgeSources.length === 0 ? (
         <section className="flex flex-col gap-3">

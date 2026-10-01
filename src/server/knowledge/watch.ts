@@ -21,8 +21,8 @@ export const RENEW_BEFORE_MS = 3 * 3_600_000;
 
 /** Where Google should call. Drive refuses anything but https, so a laptop gets none and falls back to polling. */
 export function webhookAddress(): string | null {
-  if (!env.google.redirectUri) return null;
-  const origin = new URL(env.google.redirectUri).origin;
+  if (!env.publicUrl) return null;
+  const origin = new URL(env.publicUrl).origin;
   return origin.startsWith("https://") ? `${origin}/api/knowledge/drive-webhook` : null;
 }
 

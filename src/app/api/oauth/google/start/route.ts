@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
-import { appUrl, authorizationUrl, googleConfigured, pkcePair } from "@/lib/google-oauth";
+import { appUrl, authorizationUrl, googleMissingConfig, pkcePair } from "@/lib/google-oauth";
 import {
   OAUTH_COOKIE,
   OAUTH_COOKIE_PATH,
@@ -20,21 +20,33 @@ export async function GET(request: Request) {
   const user = await requireUser();
   const returnTo = safeReturnTo(new URL(request.url).searchParams.get("returnTo"));
 
-  if (!googleConfigured()) {
+  // Every way out of here but Google itself puts the person back where they
+  // were with a message, and leaves a line in the server log saying why. A
+  // redirect that does nothing visible is the failure that is hardest to find.
+  const missing = googleMissingConfig();
+  if (missing.length > 0) {
+    console.error(`Google sign-in is not configured; missing settings: ${missing.join(", ")}`);
     return NextResponse.redirect(appUrl(returnTo, { connect_error: "not_configured" }, request));
   }
 
-  const { verifier, challenge } = pkcePair();
-  const { nonce, cookie } = newOAuthState({ userId: user.id, verifier, returnTo });
-
-  const response = NextResponse.redirect(authorizationUrl({ state: nonce, challenge }));
-  response.cookies.set(OAUTH_COOKIE, cookie, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: OAUTH_COOKIE_PATH,
-    maxAge: OAUTH_STATE_TTL_SECONDS,
-  });
+  let response: NextResponse;
+  try {
+    const { verifier, challenge } = pkcePair();
+    const { nonce, cookie } = newOAuthState({ userId: user.id, verifier, returnTo });
+    response = NextResponse.redirect(authorizationUrl({ state: nonce, challenge }));
+    response.cookies.set(OAUTH_COOKIE, cookie, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: OAUTH_COOKIE_PATH,
+      maxAge: OAUTH_STATE_TTL_SECONDS,
+    });
+  } catch (error) {
+    console.error(
+      `Google sign-in could not be started: ${error instanceof Error ? error.name : "unknown error"}`,
+    );
+    return NextResponse.redirect(appUrl(returnTo, { connect_error: "unavailable" }, request));
+  }
   return response;
 }
 
