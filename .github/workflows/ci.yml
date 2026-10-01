@@ -28,7 +28,11 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16-alpine
+        # pgvector is part of the product (knowledge search stores embeddings in
+        # it), and the knowledge tests insert vectors. The plain postgres image has
+        # no such extension, so the migration quietly skips the embedding column
+        # and every one of those tests fails on it.
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: builder
           POSTGRES_PASSWORD: builder

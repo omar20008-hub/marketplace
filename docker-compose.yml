@@ -1,6 +1,7 @@
 services:
   db:
-    image: postgres:17-alpine
+    # pgvector is needed by knowledge search (see docs/knowledge-search.md).
+    image: pgvector/pgvector:pg17
     container_name: builder-db
     restart: unless-stopped
     environment:
