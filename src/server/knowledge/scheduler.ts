@@ -65,8 +65,14 @@ export async function runScheduledPass(
   } else if (!result.value.available) {
     log("knowledge tick: pgvector is not available on this database");
   } else {
-    const { queued, ran, failed, gaveUp } = result.value;
-    log(`knowledge tick ok: queued=${queued} ran=${ran} failed=${failed} gaveUp=${gaveUp}`);
+    const { queued, ran, failed, gaveUp, failedByType } = result.value;
+    const types = Object.entries(failedByType)
+      .map(([type, count]) => `${type}:${count}`)
+      .join(",");
+    log(
+      `knowledge tick ok: queued=${queued} ran=${ran} failed=${failed} gaveUp=${gaveUp}` +
+        (failed > 0 ? ` types=${types}` : ""),
+    );
   }
 }
 

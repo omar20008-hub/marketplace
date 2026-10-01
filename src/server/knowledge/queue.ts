@@ -56,13 +56,18 @@ export async function complete(job: Job) {
     DELETE FROM "KnowledgeJob" WHERE id = ${job.id} AND NOT EXISTS (SELECT 1 FROM again)`;
 }
 
+/** How long a job that has failed `attempts` times waits before its next try: 30s, 2m, 8m, 32m. */
+export function retryDelaySeconds(attempts: number): number {
+  return 30 * 4 ** (attempts - 1);
+}
+
 /** Failed: back off and retry, or drop it once it has had its chances. Returns true when it gave up. */
 export async function fail(job: Job, message: string): Promise<boolean> {
   if (job.attempts >= MAX_ATTEMPTS) {
     await prisma.knowledgeJob.deleteMany({ where: { id: job.id } });
     return true;
   }
-  const delay = 30 * 4 ** (job.attempts - 1); // 30s, 2m, 8m, 32m
+  const delay = retryDelaySeconds(job.attempts);
   await prisma.$executeRaw`
     UPDATE "KnowledgeJob"
     SET "leasedUntil" = NULL, "lastError" = ${message.slice(0, 500)},

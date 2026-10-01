@@ -139,6 +139,16 @@ the queue is being drained. Otherwise it says which: `google.missing` (names onl
   (they show as "being processed"). Run `npm run reindex` to queue exactly those.
   Vectors are 768 wide; a model that cannot produce 768 needs a migration.
 - **Re-read everything** (`npm run reindex -- --all`, optionally `--source <id>`).
+- **Reading a failure in the log.** Each failed job prints two lines, e.g.
+  `knowledge job failed: kind=INDEX_FILE type=embeddings_rate_limit attempt=2/5 retry_in=120s`
+  then `knowledge job file: <name>` (or `… folder: <name>`), and the per-minute
+  line carries the kinds: `knowledge tick ok: … failed=1 gaveUp=0 types=embeddings_rate_limit:1`.
+  The `type` is a category, never the error's own text: `embeddings_rate_limit` /
+  `embeddings_server_error` / `embeddings_network` / `embeddings_not_configured`,
+  `drive_rate_limit` / `drive_forbidden` / `drive_server_error` / `drive_network`,
+  `nul_byte_in_text`, `pdf_parse_error`, `timeout`, `network`, `database_error_<code>`.
+  `retry_in` is the backoff (30 s, 2 m, 8 m, 32 m); after 5 attempts the line says
+  `gave up` and the file becomes Failed.
 - **A file stuck "Failed"**: the reason is on the Files page; Retry re-queues it.
   After 5 attempts a job is dropped and the file is marked Failed, never left
   spinning.
