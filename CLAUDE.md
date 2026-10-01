@@ -37,6 +37,10 @@ this app owns everything that is displayed or entered by a person. Read
 - pgvector is optional at migration time: the embedding column is added in a
   `DO $$ … $$` block that tolerates a database without the extension. Keep it that
   way, or a deploy onto such a database fails.
+- **Never build an absolute URL from `request.url`.** Behind Railway's proxy the
+  server reports its own listening address (`https://0.0.0.0:8080`), so a redirect
+  built from it strands the browser. Use `appUrl()` / `publicOrigin()` from
+  `src/lib/public-origin.ts` (PUBLIC_URL, else the forwarded host, else the request).
 - Secrets never go in code, commits, logs or chat: `DATABASE_URL`, `AUTH_SECRET`,
   `SECRETS_KEY`, Google/Gemini keys, the `kb_…` installation keys.
 

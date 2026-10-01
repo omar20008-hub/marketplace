@@ -2,8 +2,9 @@ import "server-only";
 import { createHash, randomBytes } from "node:crypto";
 import { GOOGLE_DRIVE_CREDENTIAL } from "./credentials";
 import { env } from "./env";
+import { appUrl } from "./public-origin";
 
-export { GOOGLE_DRIVE_CREDENTIAL };
+export { GOOGLE_DRIVE_CREDENTIAL, appUrl };
 
 /**
  * Google OAuth for the connections the platform holds itself.
@@ -48,13 +49,39 @@ export class GoogleAuthError extends Error {
   }
 }
 
+export const GOOGLE_CALLBACK_PATH = "/api/oauth/google/callback";
+
+/**
+ * The redirect URI registered in Google Cloud. GOOGLE_REDIRECT_URI exactly as
+ * given; failing that, the app's public address plus the callback path, so a
+ * deployment that sets PUBLIC_URL does not also have to repeat it.
+ */
+export function googleRedirectUri(): string {
+  if (env.google.redirectUri) return env.google.redirectUri;
+  return env.publicUrl ? `${env.publicUrl}${GOOGLE_CALLBACK_PATH}` : "";
+}
+
+/**
+ * Which of the settings Google sign-in needs are absent, by name. Never values:
+ * the answer is safe to log, and to show the person who runs the deployment.
+ */
+export function googleMissingConfig(): string[] {
+  const missing: string[] = [];
+  if (!env.google.clientId) missing.push("GOOGLE_CLIENT_ID");
+  if (!env.google.clientSecret) missing.push("GOOGLE_CLIENT_SECRET");
+  if (!googleRedirectUri()) missing.push("GOOGLE_REDIRECT_URI");
+  return missing;
+}
+
 export function googleConfigured(): boolean {
-  return Boolean(env.google.clientId && env.google.clientSecret && env.google.redirectUri);
+  return googleMissingConfig().length === 0;
 }
 
 /** What the user is told when a connect attempt comes back with ?connect_error=. */
 export const CONNECT_ERRORS: Record<string, string> = {
-  not_configured: "Google sign-in is not set up on this deployment yet.",
+  not_configured:
+    "Google sign-in is not fully set up on the server yet. Ask the platform administrator to finish the Google configuration.",
+  unavailable: "Google sign-in could not be started. Try again in a moment.",
   denied: "Google access was declined, so nothing was connected.",
   state: "That sign-in link expired or was not started here. Try connecting again.",
   scope:
@@ -64,6 +91,23 @@ export const CONNECT_ERRORS: Record<string, string> = {
   identity: "Google did not confirm which account this is. Try connecting again.",
   google: "Google could not complete the connection. Try again in a moment.",
 };
+
+/**
+ * The banner for a failed connect attempt. Anyone gets the plain message; only
+ * an administrator — who can do something about it — is also told which settings
+ * are missing (names only, and only if they look like setting names).
+ */
+export function connectErrorText(
+  code: string | undefined,
+  missing: string | undefined,
+  isAdmin: boolean,
+): string {
+  const base = CONNECT_ERRORS[code ?? ""] ?? CONNECT_ERRORS.google;
+  if (code === "not_configured" && isAdmin && missing && /^[A-Z_]+(,[A-Z_]+)*$/.test(missing)) {
+    return `${base} Missing on the server: ${missing.split(",").join(", ")}.`;
+  }
+  return base;
+}
 
 export function pkcePair() {
   const verifier = randomBytes(32).toString("base64url");
@@ -80,7 +124,7 @@ export function authorizationUrl({ state, challenge }: { state: string; challeng
   const url = new URL(AUTH_URL);
   url.search = new URLSearchParams({
     client_id: env.google.clientId,
-    redirect_uri: env.google.redirectUri,
+    redirect_uri: googleRedirectUri(),
     response_type: "code",
     scope: SCOPES.join(" "),
     access_type: "offline",
@@ -90,16 +134,6 @@ export function authorizationUrl({ state, challenge }: { state: string; challeng
     code_challenge: challenge,
     code_challenge_method: "S256",
   }).toString();
-  return url.toString();
-}
-
-/** A path on this app, as an absolute URL that survives sitting behind a proxy. */
-export function appUrl(path: string, params: Record<string, string>, request: Request) {
-  const origin = env.google.redirectUri
-    ? new URL(env.google.redirectUri).origin
-    : new URL(request.url).origin;
-  const url = new URL(path, origin);
-  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
   return url.toString();
 }
 
@@ -147,7 +181,7 @@ export function exchangeCode(code: string, verifier: string) {
   return tokenRequest({
     grant_type: "authorization_code",
     code,
-    redirect_uri: env.google.redirectUri,
+    redirect_uri: googleRedirectUri(),
     code_verifier: verifier,
   });
 }

@@ -8,7 +8,7 @@ import {
   knownCredentialSchema,
   oauthStartUrl,
 } from "@/lib/credentials";
-import { CONNECT_ERRORS, GOOGLE_DRIVE_CREDENTIAL } from "@/lib/google-oauth";
+import { connectErrorText, GOOGLE_DRIVE_CREDENTIAL } from "@/lib/google-oauth";
 import { SetupWizard, type SetupRequirement } from "./wizard";
 
 export const metadata = { title: "Add to workspace · Builder" };
@@ -18,10 +18,18 @@ export default async function SetupPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ connected?: string; connect_error?: string }>;
+  searchParams: Promise<{
+    connected?: string;
+    connect_error?: string;
+    connect_missing?: string;
+  }>;
 }) {
   const { slug } = await params;
-  const { connected, connect_error: connectError } = await searchParams;
+  const {
+    connected,
+    connect_error: connectError,
+    connect_missing: connectMissing,
+  } = await searchParams;
   const user = await requireUser();
 
   const product = await prisma.product.findUnique({
@@ -114,7 +122,10 @@ export default async function SetupPage({
       }
       notice={
         connectError
-          ? { tone: "error", text: CONNECT_ERRORS[connectError] ?? CONNECT_ERRORS.google }
+          ? {
+              tone: "error",
+              text: connectErrorText(connectError, connectMissing, user.roles.includes("ADMIN")),
+            }
           : connected
             ? { tone: "ok", text: "Connected." }
             : null
