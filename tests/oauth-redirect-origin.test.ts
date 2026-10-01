@@ -197,6 +197,18 @@ describe("connectErrorText", () => {
     );
   });
 
+  it("names the token-encryption key when it is unusable, without its value", async () => {
+    const saved = process.env.SECRETS_KEY;
+    process.env.SECRETS_KEY = "too-short-to-be-a-key";
+    try {
+      const text = await banner({});
+      expect(text).toBe("Google sign-in is not set up on the server yet. Missing: SECRETS_KEY.");
+      expect(text).not.toContain("too-short-to-be-a-key");
+    } finally {
+      process.env.SECRETS_KEY = saved;
+    }
+  });
+
   it("does not report the redirect URI as missing when PUBLIC_URL provides it", async () => {
     const text = await banner({ GOOGLE_CLIENT_SECRET: null, GOOGLE_REDIRECT_URI: null, PUBLIC_URL: "https://pub.example.test" });
     expect(text).toContain("GOOGLE_CLIENT_SECRET");

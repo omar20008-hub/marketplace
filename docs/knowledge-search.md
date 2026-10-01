@@ -34,44 +34,82 @@ n8n instance ──Bearer kb_…──▶ /api/knowledge/search ◀── Knowle
 
 ## Deploy checklist
 
-**Google Cloud (M0 — outside the code)**
-1. OAuth client (Web) with redirect `https://<domain>/api/oauth/google/callback`.
-2. Consent screen in **Production**, not Testing (Testing expires refresh tokens in 7 days).
-3. Scope `drive.readonly` is *restricted*: verification is required beyond 100 users
-   (and may need a security assessment). Until then users see a warning screen.
-4. Privacy policy page on the verified domain.
-5. Verify the domain for push notifications (Search Console + API console "Domain
-   verification"). A `*.up.railway.app` domain probably cannot be verified — use a
-   custom domain.
+A deployment is **not ready** until every box below is true. Each one has a way to
+check it; the first thing to run is the status call at the end.
 
-**Google sign-in settings — check these first.** Three must be present:
-`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `GOOGLE_REDIRECT_URI` (or
-`PUBLIC_URL` instead of the last, which then derives
-`<PUBLIC_URL>/api/oauth/google/callback`). If any is missing, *Connect* returns the person to where they were with
-"Google sign-in is not set up on the server yet. Missing: <names>." (worked out
-from the server's environment when the page renders, so it cannot be spoofed
-through the URL), and the server log has the line `Google sign-in is not
-configured; missing settings: <names>`. Names only, never values.
-Redirects are built from `PUBLIC_URL` / the origin of
-`GOOGLE_REDIRECT_URI`, then the proxy's `x-forwarded-host`/`x-forwarded-proto`, and
-only last from the request itself — behind a proxy the request says
-`0.0.0.0:<port>`, which is not an address a browser can reach.
+**Database**
+- [ ] Migrations applied (Railway Pre-deploy command `npm run migrate` succeeded).
+- [ ] Postgres has pgvector. Migrations succeed without it (knowledge is then
+  reported unavailable); after installing it, run the `DO $$ … $$` block at the end
+  of the `knowledge` migration once.
 
-**Environment**: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`
-(https), `PUBLIC_URL` (only if n8n reaches the app at another address),
-`EMBEDDINGS_DRIVER=gemini`, `GEMINI_API_KEY`, `SCHEDULE_TOKEN`.
+**Environment** (names exactly; values only ever in Railway, never in the repo)
+- [ ] `GOOGLE_CLIENT_ID`
+- [ ] `GOOGLE_CLIENT_SECRET`
+- [ ] `GOOGLE_REDIRECT_URI` — **must match, character for character, the "Authorized
+  redirect URI" registered for the OAuth client in Google Cloud.** It is the public
+  address plus `/api/oauth/google/callback`, over https, no trailing slash, e.g.
+  `https://marketplace-production-3f79.up.railway.app/api/oauth/google/callback`.
+  Any difference gives Google's `redirect_uri_mismatch`. (If `PUBLIC_URL` is set,
+  this may be left out and is derived as `<PUBLIC_URL>/api/oauth/google/callback`;
+  the Google Cloud registration is still required.)
+- [ ] `SECRETS_KEY` — 64 hex characters; the connection's refresh token is stored
+  encrypted with it.
+- [ ] `SCHEDULE_TOKEN` — the secret the clock below sends.
+- [ ] `EMBEDDINGS_DRIVER=gemini` and `GEMINI_API_KEY`.
+- [ ] `PUBLIC_URL` — the app's public address (`https://…`, no path), used for every
+  redirect and written into installed workflows. Only strictly needed if n8n
+  reaches the app at an address other than `GOOGLE_REDIRECT_URI`'s origin.
 
-**Database**: Postgres with pgvector. Migrations succeed without it (knowledge is
-then reported unavailable); after installing it, run the `DO $$ … $$` block at the
-end of the `knowledge` migration once.
+If a Google setting is missing, *Connect* returns the person to where they were with
+"Google sign-in is not set up on the server yet. Missing: <names>." (worked out from
+the server's environment when the page renders, so it cannot be spoofed through the
+URL), and the server log has `Google sign-in is not configured; missing settings:
+<names>`. Names only, never values. Redirects are built from `PUBLIC_URL` / the
+origin of `GOOGLE_REDIRECT_URI`, then the proxy's `x-forwarded-host` /
+`x-forwarded-proto`, and only last from the request — behind a proxy the request says
+`0.0.0.0:<port>`, which no browser can reach.
 
-**Clock**: something must call, with `x-schedule-token`, roughly every minute
-`POST /api/knowledge/tick` (drains the queue, renews push channels, re-lists stale
-folders) and daily `POST /api/accounts/keepalive`. `npm run worker` is the
-long-running alternative wherever the source is available.
+**The clock — without it nothing is ever indexed**
+- [ ] Something calls `POST /api/knowledge/tick` **about once a minute**, with a
+  header named `x-schedule-token` whose value is `SCHEDULE_TOKEN`. Nothing in the app
+  does this itself: a Railway cron service, a GitHub Action, an n8n Schedule Trigger
+  or any external scheduler will do. It drains the queue, renews push channels and
+  re-lists stale folders. (`npm run worker` is the long-running alternative where the
+  source is available; the production image has no worker, so it uses this.)
+- [ ] Also daily: `POST /api/accounts/keepalive`, same header.
+- **How to verify:** in Railway's HTTP logs, a `POST /api/knowledge/tick` with status
+  `200` roughly every minute (a `401` means the token differs from `SCHEDULE_TOKEN`).
+  If it is not running, a user's *Files* page shows "Processing has not started. The
+  scheduled worker … may be stopped" once work has waited two minutes.
 
-**n8n**: MP · Install Template must be the version that substitutes the two
-placeholders (already published). Upload `templates/chat-with-your-files.json`.
+**Google Cloud**
+- [ ] OAuth client (Web) with the redirect URI above.
+- [ ] **Publishing status.** In *Testing*, Google expires refresh tokens after **7
+  days**: every connection then shows **"Needs reconnect"** and indexing stops until
+  the user reconnects. Only accounts listed under *Test users* can sign in at all
+  (an unlisted account is refused by Google before it ever reaches this app). Use
+  Testing only for trials, add every tester as a Test user, and move to **Production**
+  for anything lasting.
+- [ ] Scope `drive.readonly` is *restricted*: verification is required beyond 100
+  users (and may need a security assessment). Until then users see a warning screen.
+- [ ] Privacy policy page on the verified domain.
+- [ ] For push notifications: the domain verified (Search Console + API console
+  "Domain verification"). A `*.up.railway.app` domain probably cannot be verified —
+  use a custom domain. Without push, folders are re-listed every 6 hours.
+
+**n8n**: MP · Install Template must be the version that substitutes
+`__MP_KNOWLEDGE_KEY__` and `__MP_PLATFORM_URL__` (already published). Upload
+`templates/chat-with-your-files.json`.
+
+**Check it all at once**
+```bash
+curl -s https://<domain>/api/knowledge/status -H "x-schedule-token: $SCHEDULE_TOKEN"
+```
+Returns `ok: true` when pgvector is present, every Google setting is in place and
+the queue is being drained. Otherwise it says which: `google.missing` (names only),
+`database.pgvector`, `tick.lastAgeSeconds` (null = never ticked) and
+`queue.stalled`. `401` means the token is wrong. It never returns a value.
 
 ## Operating it
 
@@ -83,8 +121,8 @@ placeholders (already published). Upload `templates/chat-with-your-files.json`.
 - **A file stuck "Failed"**: the reason is on the Files page; Retry re-queues it.
   After 5 attempts a job is dropped and the file is marked Failed, never left
   spinning.
-- **A source "Needs reconnect"**: the Google connection died (revoked, or unused
-  for 6 months). The user reconnects from the Files page or Connected accounts and
+- **A source "Needs reconnect"**: the Google connection died (revoked, unused for
+  6 months, or — with the OAuth app in Testing — older than 7 days). The user reconnects from the Files page or Connected accounts and
   syncing resumes by itself.
 - **Nothing found though files exist**: check `library` in the search response —
   pending/failed/unsupported counts and `needsReconnect` say why.

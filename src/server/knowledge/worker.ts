@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { processChanges } from "./changes";
+import { recordTick } from "./heartbeat";
 import { renewWatches } from "./watch";
 import { giveUpOnFile, indexFile, syncSource } from "./indexer";
 import { claim, complete, enqueue, fail, type Job } from "./queue";
@@ -39,6 +40,7 @@ export type RunSummary = { ran: number; failed: number; gaveUp: number };
 export async function runKnowledgeJobs({ budgetMs = 50_000, maxJobs = 200 } = {}): Promise<RunSummary> {
   const deadline = Date.now() + budgetMs;
   const summary: RunSummary = { ran: 0, failed: 0, gaveUp: 0 };
+  await recordTick();
   await renewWatches().catch(() => {});
 
   while (summary.ran + summary.failed < maxJobs && Date.now() < deadline) {

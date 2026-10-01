@@ -62,7 +62,7 @@ export function googleRedirectUri(): string {
 }
 
 /**
- * Which of the settings Google sign-in needs are absent, by name. Never values:
+ * Which of the settings Google sign-in needs are absent or unusable, by name. Never values:
  * the answer is safe to log, and to show the person who runs the deployment.
  */
 export function googleMissingConfig(): string[] {
@@ -70,6 +70,11 @@ export function googleMissingConfig(): string[] {
   if (!env.google.clientId) missing.push("GOOGLE_CLIENT_ID");
   if (!env.google.clientSecret) missing.push("GOOGLE_CLIENT_SECRET");
   if (!googleRedirectUri()) missing.push("GOOGLE_REDIRECT_URI");
+  // The refresh token is stored encrypted with this key (lib/secrets.ts), which
+  // insists on exactly 32 bytes as 64 hex characters. A key of any other shape
+  // would only fail at the moment a connection is saved, after the user has
+  // already consented at Google.
+  if (!/^[0-9a-fA-F]{64}$/.test(env.secretsKey)) missing.push("SECRETS_KEY");
   return missing;
 }
 
