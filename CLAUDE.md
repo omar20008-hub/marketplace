@@ -49,5 +49,7 @@ this app owns everything that is displayed or entered by a person. Read
 Railway, project **worthy-bravery**, service **marketplace**, built from the
 `Dockerfile`. **Pre-deploy command: `npm run migrate`.** Environment variables are
 documented in `.env.example` / `.env.production.example`; they are set in Railway,
-not in the repository. Something must call `POST /api/knowledge/tick` about once a
-minute and `POST /api/accounts/keepalive` daily (header `x-schedule-token`).
+not in the repository. Indexing needs a clock: set `KNOWLEDGE_TICK_INTERVAL_SECONDS=60`
+(built-in scheduler, `src/instrumentation.ts`), or run a worker service, or call
+`POST /api/knowledge/tick` every minute (header `x-schedule-token`). Also call
+`POST /api/accounts/keepalive` daily.
