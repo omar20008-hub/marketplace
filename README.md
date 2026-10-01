@@ -452,10 +452,15 @@ sign-up flow**, and `db:seed` refuses to run in production, so a fresh database
 comes up with nobody in it and no way in.
 
 1. **A database, then the schema.** Point `DATABASE_URL` at it and run
-   `npm run release` (`prisma migrate deploy`). This runs from a checkout
-   against the production database rather than from inside the container: two
-   instances starting at once would race, and a rollback would leave the schema
-   ahead of the code. It is also why the image carries no Prisma CLI.
+   `npm run migrate` (`prisma migrate deploy`). Run it as a release step *before*
+   the new containers start, not at container start: two instances starting at
+   once would race, and a rollback would leave the schema ahead of the code. On
+   Railway that is the service's **Pre-deploy command**, set to `npm run migrate`.
+   The production image carries the Prisma CLI (pinned in `package.json` to the
+   same version as `@prisma/client`) so that command works inside it; from a
+   checkout, `npm run migrate` does the same. A failing Pre-deploy stops the
+   deploy — which is the point: code that expects a column must not go live
+   before the column exists. (`npm run release` is the old name, kept as an alias.)
 2. **The environment.** Copy `.env.production.example` into the host's settings.
    Only `DATABASE_URL`, `AUTH_SECRET` and `SECRETS_KEY` are mandatory — the rest
    default to empty, and empty is a safe answer for each of them. Back up

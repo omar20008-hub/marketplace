@@ -55,6 +55,30 @@ ENV SECRETS_KEY="000000000000000000000000000000000000000000000000000000000000000
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
+# ------------------------------------------------------------ migrate tools
+# The Prisma CLI and nothing else, for the release step.
+#
+# Migrations run from this image — Railway's Pre-deploy command is `npm run
+# migrate` — so the image has to carry the CLI that applies them. The standalone
+# output has none (it holds only what the server imports), and without one,
+# `npm exec` would quietly fetch whatever "prisma" is newest on the registry: a
+# different major with different commands, which is how a deploy ended up asking
+# prisma 8 to run a `migrate` it does not have.
+#
+# The versions are read from package.json rather than repeated here, so the CLI
+# that applies a migration is exactly the one the app was built with. Install
+# scripts must run: that is where the schema engine binary is downloaded.
+FROM node:22-alpine AS migrate-tools
+RUN apk add --no-cache openssl
+WORKDIR /tools
+COPY package.json /tmp/package.json
+RUN set -e; \
+    PRISMA="$(node -p "require('/tmp/package.json').dependencies.prisma")"; \
+    DOTENV="$(node -p "require('/tmp/package.json').dependencies.dotenv")"; \
+    npm init -y > /dev/null; \
+    npm install --omit=dev --no-audit --no-fund "prisma@${PRISMA}" "dotenv@${DOTENV}"; \
+    ./node_modules/.bin/prisma --version
+
 # ------------------------------------------------------------------- run
 FROM node:22-alpine AS runner
 WORKDIR /app
@@ -63,6 +87,9 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
+
+# The schema engine on Alpine links against OpenSSL, which the base image omits.
+RUN apk add --no-cache openssl
 
 # Not root. A remote-code bug in a dependency is a much smaller event when the
 # process that hits it cannot write to the image it is running from.
@@ -79,6 +106,14 @@ RUN addgroup -g 1001 -S nodejs && adduser -u 1001 -S nextjs -G nodejs
 COPY --from=build --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=build --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=build --chown=nextjs:nodejs /app/public ./public
+
+# What `npm run migrate` needs: the CLI (with its schema engine), the config that
+# points it at DATABASE_URL, and the migrations. package.json, with the script, is
+# already here — standalone copies it. node_modules is merged into the traced one;
+# the two never share a package at different versions (both come from the same pins).
+COPY --from=migrate-tools --chown=nextjs:nodejs /tools/node_modules ./node_modules
+COPY --from=build --chown=nextjs:nodejs /app/prisma.config.ts ./prisma.config.ts
+COPY --from=build --chown=nextjs:nodejs /app/prisma ./prisma
 
 # `next build` copies the project's .env into .next/standalone, and server.js
 # loads it — so a .env in the build context would arrive here as a file that
@@ -98,7 +133,8 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 # Migrations are deliberately not run here. Two instances starting at once would
-# race, and a rollback would leave the schema ahead of the code. `prisma migrate
-# deploy` belongs in the release step that precedes the new containers — the
+# race, and a rollback would leave the schema ahead of the code. They run in the
+# release step that precedes the new containers — Railway's Pre-deploy command,
+# `npm run migrate` (= `prisma migrate deploy`), which this image can now do. The
 # README's deployment section says so at greater length.
 CMD ["node", "server.js"]
