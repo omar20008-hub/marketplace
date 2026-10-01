@@ -11,6 +11,19 @@ export type JobKind = "SYNC_SOURCE" | "SYNC_CHANGES" | "INDEX_FILE";
 export type Job = { id: string; kind: JobKind; targetId: string; attempts: number };
 
 export const MAX_ATTEMPTS = 5;
+/**
+ * A rate limit is not the file's fault and passes with time, so it gets more, and
+ * longer, chances than an ordinary failure: 12 tries spread over many hours rather
+ * than 5 inside an hour (which is shorter than the quota windows it is waiting out).
+ */
+export const MAX_RATE_LIMIT_ATTEMPTS = 12;
+const MAX_RATE_LIMIT_DELAY_SECONDS = 3600;
+
+export type RetryInfo = { rateLimited?: boolean; retryAfterSeconds?: number };
+
+export function maxAttemptsFor(info: RetryInfo = {}): number {
+  return info.rateLimited ? MAX_RATE_LIMIT_ATTEMPTS : MAX_ATTEMPTS;
+}
 const LEASE_MINUTES = 10;
 
 /**
@@ -56,18 +69,21 @@ export async function complete(job: Job) {
     DELETE FROM "KnowledgeJob" WHERE id = ${job.id} AND NOT EXISTS (SELECT 1 FROM again)`;
 }
 
-/** How long a job that has failed `attempts` times waits before its next try: 30s, 2m, 8m, 32m. */
-export function retryDelaySeconds(attempts: number): number {
-  return 30 * 4 ** (attempts - 1);
+/** How long a job that has failed `attempts` times waits before its next try: 30s, 2m, 8m, 32m (or, for a rate limit, 1m doubling to an hour). */
+export function retryDelaySeconds(attempts: number, info: RetryInfo = {}): number {
+  if (!info.rateLimited) return 30 * 4 ** (attempts - 1);
+  // 1m, 2m, 4m, ... up to an hour, never sooner than the API asked for.
+  const backoff = Math.min(MAX_RATE_LIMIT_DELAY_SECONDS, 60 * 2 ** (attempts - 1));
+  return Math.min(MAX_RATE_LIMIT_DELAY_SECONDS, Math.max(backoff, info.retryAfterSeconds ?? 0));
 }
 
 /** Failed: back off and retry, or drop it once it has had its chances. Returns true when it gave up. */
-export async function fail(job: Job, message: string): Promise<boolean> {
-  if (job.attempts >= MAX_ATTEMPTS) {
+export async function fail(job: Job, message: string, info: RetryInfo = {}): Promise<boolean> {
+  if (job.attempts >= maxAttemptsFor(info)) {
     await prisma.knowledgeJob.deleteMany({ where: { id: job.id } });
     return true;
   }
-  const delay = retryDelaySeconds(job.attempts);
+  const delay = retryDelaySeconds(job.attempts, info);
   await prisma.$executeRaw`
     UPDATE "KnowledgeJob"
     SET "leasedUntil" = NULL, "lastError" = ${message.slice(0, 500)},

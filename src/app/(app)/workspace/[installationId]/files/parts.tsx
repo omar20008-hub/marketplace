@@ -24,7 +24,15 @@ export function AutoRefresh({ active }: { active: boolean }) {
   return null;
 }
 
-export function SourceStatus({ status, busy }: { status: string; busy: boolean }) {
+export function SourceStatus({
+  status,
+  busy,
+  failed = 0,
+}: {
+  status: string;
+  busy: boolean;
+  failed?: number;
+}) {
   if (status === "NEEDS_RECONNECT") return <Badge tone="blocked">Needs reconnect</Badge>;
   if (status === "PAUSED") return <Badge tone="neutral">Paused</Badge>;
   if (busy) {
@@ -34,6 +42,8 @@ export function SourceStatus({ status, busy }: { status: string; busy: boolean }
       </Badge>
     );
   }
+  // Nothing is in flight, but "up to date" is not the whole truth with files that failed.
+  if (failed > 0) return <Badge tone="partial">{failed} failed</Badge>;
   return <Badge tone="ready">Up to date</Badge>;
 }
 

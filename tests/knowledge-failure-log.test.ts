@@ -103,7 +103,7 @@ describe("logName", () => {
 
 describe("the retry delay", () => {
   it("backs off 30s, 2m, 8m, 32m", () => {
-    expect([1, 2, 3, 4].map(retryDelaySeconds)).toEqual([30, 120, 480, 1920]);
+    expect([1, 2, 3, 4].map((n) => retryDelaySeconds(n))).toEqual([30, 120, 480, 1920]);
   });
 });
 
@@ -161,7 +161,7 @@ describe("runKnowledgeJobs on a failing file", () => {
 
     expect(summary).toMatchObject({ ran: 0, failed: 1, gaveUp: 0, failedByType: { embeddings_rate_limit: 1 } });
     expect(lines).toEqual([
-      "knowledge job failed: kind=INDEX_FILE type=embeddings_rate_limit attempt=1/5 retry_in=30s",
+      "knowledge job failed: kind=INDEX_FILE type=embeddings_rate_limit attempt=1/12 retry_in=60s",
       "knowledge job file: دليل منهجية.pdf",
     ]);
     expect(lines.join("\n")).not.toContain(SECRET);

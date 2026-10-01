@@ -10,7 +10,16 @@ import { env } from "./env";
  */
 
 export const EMBEDDING_DIMENSIONS = 768;
-const BATCH = 50;
+const BATCH = 25;
+
+/** Longest a single embedding call will itself wait out a per-minute limit, in total, before handing the wait to the job queue. */
+const MAX_INLINE_WAIT_SECONDS = 25;
+const MAX_INLINE_RETRIES = 3;
+
+/** Overridable so tests need not really wait. */
+export const embeddingsRuntime = {
+  sleep: (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+};
 
 export type EmbedTask = "document" | "query";
 
@@ -19,10 +28,43 @@ export class EmbeddingError extends Error {
     message: string,
     /** Rate limits and 5xx are worth retrying; a bad key or a bad request is not. */
     readonly retryable: boolean,
+    /** For a 429: how long the API said to wait, and whether it is a per-minute or a per-day limit. */
+    readonly limit?: { retryAfterSeconds?: number; quota?: "minute" | "day" },
   ) {
     super(message);
     this.name = "EmbeddingError";
   }
+}
+
+/**
+ * What Gemini says about a 429: how long to wait (the Retry-After header, or the
+ * RetryInfo detail in the body, "34s") and which quota ran out. The body is read
+ * for those two facts only and is never put in an error message.
+ */
+export async function readRateLimit(
+  response: Response,
+): Promise<{ retryAfterSeconds?: number; quota?: "minute" | "day" }> {
+  let retryAfterSeconds: number | undefined;
+  const header = Number(response.headers.get("retry-after"));
+  if (Number.isFinite(header) && header > 0) retryAfterSeconds = Math.ceil(header);
+
+  let quota: "minute" | "day" | undefined;
+  try {
+    const body = JSON.parse((await response.text()).slice(0, 20_000)) as {
+      error?: { details?: { "@type"?: string; retryDelay?: string; violations?: { quotaId?: string }[] }[] };
+    };
+    for (const detail of body.error?.details ?? []) {
+      const delay = /^(\d+(?:\.\d+)?)s$/.exec(detail.retryDelay ?? "");
+      if (delay && retryAfterSeconds === undefined) retryAfterSeconds = Math.ceil(Number(delay[1]));
+      for (const violation of detail.violations ?? []) {
+        if (/PerDay/i.test(violation.quotaId ?? "")) quota = "day";
+        else if (!quota && /PerMinute/i.test(violation.quotaId ?? "")) quota = "minute";
+      }
+    }
+  } catch {
+    // Not JSON, or not the shape we know: the status alone is still a rate limit.
+  }
+  return { retryAfterSeconds, quota };
 }
 
 function normalise(vector: number[]): number[] {
@@ -72,7 +114,8 @@ async function geminiBatch(texts: string[], task: EmbedTask): Promise<number[][]
 
   if (!response.ok) {
     const retryable = response.status === 429 || response.status >= 500;
-    throw new EmbeddingError(`Embedding API answered ${response.status}.`, retryable);
+    const limit = response.status === 429 ? await readRateLimit(response) : undefined;
+    throw new EmbeddingError(`Embedding API answered ${response.status}.`, retryable, limit);
   }
   const body = (await response.json()) as { embeddings?: { values: number[] }[] };
   if (body.embeddings?.length !== texts.length) {
@@ -85,8 +128,32 @@ async function geminiBatch(texts: string[], task: EmbedTask): Promise<number[][]
 export async function embedTexts(texts: string[], task: EmbedTask): Promise<number[][]> {
   if (env.embeddings.driver === "fake") return texts.map(fakeEmbedding);
   const out: number[][] = [];
+  let waited = 0;
   for (let i = 0; i < texts.length; i += BATCH) {
-    out.push(...(await geminiBatch(texts.slice(i, i + BATCH), task)));
+    const batch = texts.slice(i, i + BATCH);
+    for (let attempt = 0; ; attempt++) {
+      try {
+        out.push(...(await geminiBatch(batch, task)));
+        break;
+      } catch (error) {
+        // A per-minute limit usually clears in seconds: wait it out here, within
+        // reason, so a big file is not thrown back to the queue (and restarted)
+        // for a pause that short. A daily limit, or a long wait, is the queue's job.
+        const limit = error instanceof EmbeddingError ? error.limit : undefined;
+        const wait = limit?.retryAfterSeconds ?? 5 * (attempt + 1);
+        if (
+          !(error instanceof EmbeddingError) ||
+          !limit ||
+          limit.quota === "day" ||
+          attempt >= MAX_INLINE_RETRIES ||
+          waited + wait > MAX_INLINE_WAIT_SECONDS
+        ) {
+          throw error;
+        }
+        waited += wait;
+        await embeddingsRuntime.sleep(wait * 1000);
+      }
+    }
   }
   return out;
 }
