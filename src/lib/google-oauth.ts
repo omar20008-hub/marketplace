@@ -79,8 +79,7 @@ export function googleConfigured(): boolean {
 
 /** What the user is told when a connect attempt comes back with ?connect_error=. */
 export const CONNECT_ERRORS: Record<string, string> = {
-  not_configured:
-    "Google sign-in is not fully set up on the server yet. Ask the platform administrator to finish the Google configuration.",
+  not_configured: "Google sign-in is not set up on the server yet.",
   unavailable: "Google sign-in could not be started. Try again in a moment.",
   denied: "Google access was declined, so nothing was connected.",
   state: "That sign-in link expired or was not started here. Try connecting again.",
@@ -93,20 +92,21 @@ export const CONNECT_ERRORS: Record<string, string> = {
 };
 
 /**
- * The banner for a failed connect attempt. Anyone gets the plain message; only
- * an administrator — who can do something about it — is also told which settings
- * are missing (names only, and only if they look like setting names).
+ * The banner for a failed connect attempt.
+ *
+ * For "not configured" it names the settings that are missing, worked out here
+ * from the server's own environment at the moment the page renders — not read
+ * back from the URL, which anyone can edit. Names only: the point is to say what
+ * to set, and a value never leaves the environment it was set in.
  */
-export function connectErrorText(
-  code: string | undefined,
-  missing: string | undefined,
-  isAdmin: boolean,
-): string {
-  const base = CONNECT_ERRORS[code ?? ""] ?? CONNECT_ERRORS.google;
-  if (code === "not_configured" && isAdmin && missing && /^[A-Z_]+(,[A-Z_]+)*$/.test(missing)) {
-    return `${base} Missing on the server: ${missing.split(",").join(", ")}.`;
+export function connectErrorText(code: string | undefined): string {
+  if (code === "not_configured") {
+    const missing = googleMissingConfig();
+    if (missing.length > 0) {
+      return `Google sign-in is not set up on the server yet. Missing: ${missing.join(", ")}.`;
+    }
   }
-  return base;
+  return CONNECT_ERRORS[code ?? ""] ?? CONNECT_ERRORS.google;
 }
 
 export function pkcePair() {

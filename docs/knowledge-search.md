@@ -47,11 +47,12 @@ n8n instance ──Bearer kb_…──▶ /api/knowledge/search ◀── Knowle
 **Google sign-in settings — check these first.** Three must be present:
 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `GOOGLE_REDIRECT_URI` (or
 `PUBLIC_URL` instead of the last, which then derives
-`<PUBLIC_URL>/api/oauth/google/callback`). If any is missing, *Connect* returns the
-person to where they were with "Google sign-in is not fully set up on the server
-yet"; an administrator also sees `Missing on the server: <names>`, and the server
-log has the line `Google sign-in is not configured; missing settings: <names>`
-(names only, never values). Redirects are built from `PUBLIC_URL` / the origin of
+`<PUBLIC_URL>/api/oauth/google/callback`). If any is missing, *Connect* returns the person to where they were with
+"Google sign-in is not set up on the server yet. Missing: <names>." (worked out
+from the server's environment when the page renders, so it cannot be spoofed
+through the URL), and the server log has the line `Google sign-in is not
+configured; missing settings: <names>`. Names only, never values.
+Redirects are built from `PUBLIC_URL` / the origin of
 `GOOGLE_REDIRECT_URI`, then the proxy's `x-forwarded-host`/`x-forwarded-proto`, and
 only last from the request itself — behind a proxy the request says
 `0.0.0.0:<port>`, which is not an address a browser can reach.

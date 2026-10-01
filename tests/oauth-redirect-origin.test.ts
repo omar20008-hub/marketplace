@@ -87,7 +87,7 @@ describe("an unconfigured deployment", () => {
     expect(location.origin).toBe("https://app.example.test");
     expect(location.pathname).toBe("/marketplace/chat/setup");
     expect(location.searchParams.get("connect_error")).toBe("not_configured");
-    expect(location.searchParams.get("connect_missing")).toBe("GOOGLE_CLIENT_SECRET");
+    expect(location.searchParams.has("connect_missing")).toBe(false);
     expect(res.headers.get("set-cookie")).toBeNull();
   });
 
@@ -108,9 +108,6 @@ describe("an unconfigured deployment", () => {
     );
     const location = new URL(res.headers.get("location")!);
     expect(location.origin).toBe("https://marketplace.example.com");
-    expect(location.searchParams.get("connect_missing")).toBe(
-      "GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,GOOGLE_REDIRECT_URI",
-    );
   });
 
   it("is the case that happened: only the redirect URI missing, behind a proxy", async () => {
@@ -121,7 +118,6 @@ describe("an unconfigured deployment", () => {
     const location = new URL(res.headers.get("location")!);
     expect(location.host).not.toContain("0.0.0.0");
     expect(location.origin).toBe("https://marketplace.example.com");
-    expect(location.searchParams.get("connect_missing")).toBe("GOOGLE_REDIRECT_URI");
   });
 
   it("prefers the configured public address over forwarded headers", async () => {
@@ -178,26 +174,54 @@ describe("when starting fails", () => {
 });
 
 describe("connectErrorText", () => {
-  it("tells an administrator which settings are missing, and nobody else", async () => {
+  async function banner(
+    env: Partial<Record<(typeof KEYS)[number], string | null>>,
+    code: string | undefined = "not_configured",
+  ) {
+    for (const key of KEYS) {
+      const value = key in env ? env[key] : saved[key];
+      if (value === null || value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
     vi.resetModules();
     const { connectErrorText } = await import("@/lib/google-oauth");
-    const plain = connectErrorText("not_configured", "GOOGLE_REDIRECT_URI", false);
-    expect(plain).not.toContain("GOOGLE_REDIRECT_URI");
-    expect(connectErrorText("not_configured", "GOOGLE_REDIRECT_URI,GOOGLE_CLIENT_ID", true)).toContain(
-      "GOOGLE_REDIRECT_URI, GOOGLE_CLIENT_ID",
+    return connectErrorText(code);
+  }
+
+  it("names exactly the settings that are missing", async () => {
+    expect(await banner({ GOOGLE_CLIENT_SECRET: null })).toBe(
+      "Google sign-in is not set up on the server yet. Missing: GOOGLE_CLIENT_SECRET.",
+    );
+    expect(await banner({ GOOGLE_CLIENT_ID: null, GOOGLE_REDIRECT_URI: null, PUBLIC_URL: null })).toBe(
+      "Google sign-in is not set up on the server yet. Missing: GOOGLE_CLIENT_ID, GOOGLE_REDIRECT_URI.",
     );
   });
 
-  it("will not echo anything that does not look like setting names", async () => {
-    vi.resetModules();
-    const { connectErrorText } = await import("@/lib/google-oauth");
-    expect(connectErrorText("not_configured", "<img src=x onerror=alert(1)>", true)).not.toContain("<img");
-    expect(connectErrorText("not_configured", "lowercase,names", true)).not.toContain("lowercase");
+  it("does not report the redirect URI as missing when PUBLIC_URL provides it", async () => {
+    const text = await banner({ GOOGLE_CLIENT_SECRET: null, GOOGLE_REDIRECT_URI: null, PUBLIC_URL: "https://pub.example.test" });
+    expect(text).toContain("GOOGLE_CLIENT_SECRET");
+    expect(text).not.toContain("GOOGLE_REDIRECT_URI");
   });
 
-  it("falls back to the generic message for an unknown code", async () => {
-    vi.resetModules();
-    const { connectErrorText, CONNECT_ERRORS } = await import("@/lib/google-oauth");
-    expect(connectErrorText("nope", undefined, true)).toBe(CONNECT_ERRORS.google);
+  it("never contains a setting's value", async () => {
+    const text = await banner({ GOOGLE_CLIENT_ID: null });
+    for (const key of ["GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI"] as const) {
+      expect(text).not.toContain(process.env[key]!);
+    }
+  });
+
+  it("is the plain message if everything is configured by the time the page renders", async () => {
+    expect(await banner({})).toBe("Google sign-in is not set up on the server yet.");
+  });
+
+  it("cannot be made to say anything by the URL — it takes only the code", async () => {
+    const { connectErrorText } = await import("@/lib/google-oauth");
+    expect(connectErrorText.length).toBe(1);
+  });
+
+  it("falls back to the generic message for an unknown or absent code", async () => {
+    const { CONNECT_ERRORS } = await import("@/lib/google-oauth");
+    expect(await banner({}, "nope")).toBe(CONNECT_ERRORS.google);
+    expect(await banner({}, "")).toBe(CONNECT_ERRORS.google);
   });
 });

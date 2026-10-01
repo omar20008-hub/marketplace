@@ -56,14 +56,12 @@ export default async function AccountsPage({
     connect?: string;
     connected?: string;
     connect_error?: string;
-    connect_missing?: string;
   }>;
 }) {
   const {
     connect,
     connected: justConnected,
     connect_error: connectError,
-    connect_missing: connectMissing,
   } = await searchParams;
   const user = await requireUser();
 
@@ -121,7 +119,7 @@ export default async function AccountsPage({
 
       {connectError ? (
         <p role="alert" className="mt-3 text-[13px] text-danger-ink">
-          {connectErrorText(connectError, connectMissing, user.roles.includes("ADMIN"))}
+          {connectErrorText(connectError)}
         </p>
       ) : justConnected ? (
         <p role="status" className="mt-3 text-[13px] text-ready-ink">

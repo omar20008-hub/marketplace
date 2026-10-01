@@ -21,14 +21,12 @@ export default async function SetupPage({
   searchParams: Promise<{
     connected?: string;
     connect_error?: string;
-    connect_missing?: string;
   }>;
 }) {
   const { slug } = await params;
   const {
     connected,
     connect_error: connectError,
-    connect_missing: connectMissing,
   } = await searchParams;
   const user = await requireUser();
 
@@ -124,7 +122,7 @@ export default async function SetupPage({
         connectError
           ? {
               tone: "error",
-              text: connectErrorText(connectError, connectMissing, user.roles.includes("ADMIN")),
+              text: connectErrorText(connectError),
             }
           : connected
             ? { tone: "ok", text: "Connected." }

@@ -26,9 +26,7 @@ export async function GET(request: Request) {
   const missing = googleMissingConfig();
   if (missing.length > 0) {
     console.error(`Google sign-in is not configured; missing settings: ${missing.join(", ")}`);
-    return NextResponse.redirect(
-      appUrl(returnTo, { connect_error: "not_configured", connect_missing: missing.join(",") }, request),
-    );
+    return NextResponse.redirect(appUrl(returnTo, { connect_error: "not_configured" }, request));
   }
 
   let response: NextResponse;
