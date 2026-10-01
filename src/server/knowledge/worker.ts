@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { knowledgeAvailable } from "./availability";
 import { processChanges } from "./changes";
 import { recordTick } from "./heartbeat";
 import { renewWatches } from "./watch";
@@ -67,4 +68,21 @@ export async function runKnowledgeJobs({ budgetMs = 50_000, maxJobs = 200 } = {}
     }
   }
   return summary;
+}
+
+export type TickSummary = RunSummary & { available: boolean; queued: number };
+
+/**
+ * One whole pass, the same whether an outside clock calls the tick endpoint or
+ * the in-process scheduler calls this directly: note that the clock is running,
+ * queue the folders that are due, drain the queue for a while.
+ */
+export async function tickKnowledge({ budgetMs }: { budgetMs?: number } = {}): Promise<TickSummary> {
+  // The clock is running, whether or not there is anything to do with it.
+  await recordTick();
+  if (!(await knowledgeAvailable())) {
+    return { available: false, queued: 0, ran: 0, failed: 0, gaveUp: 0 };
+  }
+  const queued = await enqueueDueSyncs();
+  return { available: true, queued, ...(await runKnowledgeJobs(budgetMs ? { budgetMs } : {})) };
 }

@@ -1,4 +1,5 @@
 import "server-only";
+import { parseTickInterval } from "./tick-interval";
 
 /**
  * Every secret the platform holds is read here and nowhere else, so it is easy
@@ -152,6 +153,13 @@ export const env = {
     process.env.PUBLIC_URL ||
     (process.env.GOOGLE_REDIRECT_URI ? new URL(process.env.GOOGLE_REDIRECT_URI).origin : "")
   ).replace(/\/$/, ""),
+
+  /**
+   * Runs the knowledge indexing tick inside this server process every N seconds
+   * (see server/knowledge/scheduler.ts), so a deployment needs no outside clock.
+   * 0 or unset: off. Needs a long-running server — not a serverless one.
+   */
+  knowledgeTickIntervalSeconds: parseTickInterval(process.env.KNOWLEDGE_TICK_INTERVAL_SECONDS),
 
   /**
    * Turns text into vectors for knowledge search. "gemini" calls Google's

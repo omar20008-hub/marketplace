@@ -55,8 +55,9 @@ check it; the first thing to run is the status call at the end.
   the Google Cloud registration is still required.)
 - [ ] `SECRETS_KEY` — 64 hex characters; the connection's refresh token is stored
   encrypted with it.
-- [ ] `SCHEDULE_TOKEN` — the secret the clock below sends.
+- [ ] `SCHEDULE_TOKEN` — the secret an outside clock (option c) or the status call sends; not needed by the built-in scheduler.
 - [ ] `EMBEDDINGS_DRIVER=gemini` and `GEMINI_API_KEY`.
+- [ ] `KNOWLEDGE_TICK_INTERVAL_SECONDS=60` — turns on the built-in scheduler (see the clock below).
 - [ ] `PUBLIC_URL` — the app's public address (`https://…`, no path), used for every
   redirect and written into installed workflows. Only strictly needed if n8n
   reaches the app at an address other than `GOOGLE_REDIRECT_URI`'s origin.
@@ -70,18 +71,38 @@ origin of `GOOGLE_REDIRECT_URI`, then the proxy's `x-forwarded-host` /
 `x-forwarded-proto`, and only last from the request — behind a proxy the request says
 `0.0.0.0:<port>`, which no browser can reach.
 
-**The clock — without it nothing is ever indexed**
-- [ ] Something calls `POST /api/knowledge/tick` **about once a minute**, with a
-  header named `x-schedule-token` whose value is `SCHEDULE_TOKEN`. Nothing in the app
-  does this itself: a Railway cron service, a GitHub Action, an n8n Schedule Trigger
-  or any external scheduler will do. It drains the queue, renews push channels and
-  re-lists stale folders. (`npm run worker` is the long-running alternative where the
-  source is available; the production image has no worker, so it uses this.)
-- [ ] Also daily: `POST /api/accounts/keepalive`, same header.
-- **How to verify:** in Railway's HTTP logs, a `POST /api/knowledge/tick` with status
-  `200` roughly every minute (a `401` means the token differs from `SCHEDULE_TOKEN`).
-  If it is not running, a user's *Files* page shows "Processing has not started. The
-  scheduled worker … may be stopped" once work has waited two minutes.
+**The clock — without it nothing is ever indexed.** Indexing happens only when
+something drains the queue, and nothing does by default. A deployment is **not
+ready** until one of these three is in place (any one; they can be combined, because
+a pass is safe to run concurrently with another):
+
+- [ ] **(a) Built in — recommended.** Set `KNOWLEDGE_TICK_INTERVAL_SECONDS=60` (any
+  value of 10 or more; unset or `0` means off). The server then runs the tick
+  itself, in-process, once a minute: no HTTP call, no token, no second service.
+  It starts when the production server boots (not during `next build`, not under
+  tests, not in development unless `KNOWLEDGE_TICK_IN_DEV=true`), one pass at a time,
+  and a Postgres advisory lock keeps two replicas — or a pass that overran — from
+  running at once. A failed pass is logged (error kind only) and the next one runs.
+  Needs a server that stays up (Railway: yes; a serverless host: use (c)).
+  *How to verify:* the log has `Knowledge scheduler started: a tick every 60s` at
+  boot and then a line `knowledge tick ok: queued=… ran=… failed=…` every minute;
+  `GET /api/knowledge/status` shows `tick.lastAgeSeconds` under ~70.
+- [ ] **(b) A second Railway service running the worker**, with the same
+  environment as the app and start command `npm run worker` (a long-running loop;
+  it needs the source and `tsx`, which the production image does not carry, so this
+  means a service built from the repository rather than from the app's image).
+  *Verify:* its log prints `queued … ran …` lines when there is work.
+- [ ] **(c) An outside clock** calling `POST /api/knowledge/tick` about once a
+  minute, with a header named `x-schedule-token` whose value is `SCHEDULE_TOKEN`
+  (a cron service, a GitHub Action, an n8n Schedule Trigger). The endpoint's
+  protection is unchanged. *Verify:* in Railway's HTTP logs a `POST
+  /api/knowledge/tick` with status `200` roughly every minute (`401` means the
+  token differs from `SCHEDULE_TOKEN`).
+
+Whichever is used, also call `POST /api/accounts/keepalive` daily (same header,
+outside clock). If none of the three is running, a user's *Files* page shows
+"Processing has not started. The scheduled worker … may be stopped" once work has
+waited two minutes, and `GET /api/knowledge/status` reports `queue.stalled: true`.
 
 **Google Cloud**
 - [ ] OAuth client (Web) with the redirect URI above.
