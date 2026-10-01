@@ -20,11 +20,17 @@ export async function signIn(page: Page, email: string) {
   ]);
 }
 
+/**
+ * Signing out lands on the home page, which is open to guests, or on the sign-in
+ * form — either is "signed out". What matters is that the session is gone, so
+ * the sign-out button is no longer on screen.
+ */
 export async function signOut(page: Page) {
   await Promise.all([
-    page.waitForURL(/\/login/),
+    page.waitForURL((url) => url.pathname === "/" || url.pathname.startsWith("/login")),
     page.click('button[aria-label="Sign out"]'),
   ]);
+  await expect(page.locator('button[aria-label="Sign out"]')).toHaveCount(0);
 }
 
 /**
