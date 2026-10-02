@@ -1,10 +1,11 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { chunkText } from "@/lib/chunking";
-import { DriveError, isReadable, listTree, readFileText, type DriveFile } from "@/lib/drive";
+import { DriveError, listTree, readFileText, skipReason, type DriveFile } from "@/lib/drive";
 import { EmbeddingError, embedTexts, embeddingTag, toVectorLiteral } from "@/lib/embeddings";
 import { GoogleAuthError } from "@/lib/google-oauth";
 import { getGoogleAccessToken } from "@/server/google-account";
+import { embeddingRoom, fits, WAITING_FOR_NEW_DAY } from "./embedding-budget";
 import { knowledgeUsage } from "./limits";
 import { classifyJobError, friendlyJobError } from "./errors";
 import { enqueue } from "./queue";
@@ -19,7 +20,7 @@ export const MAX_FILES_PER_SOURCE = 2000;
 const MAX_CHUNKS_PER_FILE = 3000;
 const INSERT_BATCH = 200;
 
-type Outcome = { again?: boolean };
+type Outcome = { again?: boolean; /** Not a failure: run again after this many seconds, attempt not spent. */ deferSeconds?: number };
 
 /** The connection died. Nothing is retried until the user reconnects, which resumes the source. */
 async function needsReconnect(sourceId: string, error: GoogleAuthError) {
@@ -88,8 +89,9 @@ export async function syncSource(sourceId: string): Promise<Outcome> {
     seen.add(file.id);
     const existing = known.get(file.id);
     const meta = { name: file.name, mimeType: file.mimeType, path: file.path, webUrl: file.webUrl };
+    const skip = skipReason(file.name, file.mimeType);
 
-    if ((!existing || existing.status === "REMOVED") && isReadable(file.mimeType)) {
+    if ((!existing || existing.status === "REMOVED") && !skip) {
       if (budget <= 0) {
         turnedAway++;
         continue;
@@ -103,24 +105,27 @@ export async function syncSource(sourceId: string): Promise<Outcome> {
           sourceId: source.id,
           externalId: file.id,
           revision: file.revision,
-          status: isReadable(file.mimeType) ? "PENDING" : "UNSUPPORTED",
-          error: isReadable(file.mimeType) ? null : "This file type cannot be read yet.",
+          status: skip ? "UNSUPPORTED" : "PENDING",
+          error: skip,
           ...meta,
         },
       });
       if (created.status === "PENDING") toIndex.push(created.id);
+    } else if (skip && !["UNSUPPORTED", "REMOVED"].includes(existing.status)) {
+      // Indexed (or waiting to be) before it was known to be a scratch file: drop it.
+      await markSkipped(existing.id, skip, existing.revision);
     } else if (existing.revision !== file.revision || existing.status === "REMOVED") {
       // Changed (or returned after being removed): read it again from scratch.
       await prisma.knowledgeFile.update({
         where: { id: existing.id },
         data: {
           revision: file.revision,
-          status: isReadable(file.mimeType) ? "PENDING" : "UNSUPPORTED",
-          error: isReadable(file.mimeType) ? null : "This file type cannot be read yet.",
+          status: skip ? "UNSUPPORTED" : "PENDING",
+          error: skip,
           ...meta,
         },
       });
-      if (isReadable(file.mimeType)) toIndex.push(existing.id);
+      if (!skip) toIndex.push(existing.id);
     } else if (
       existing.name !== file.name ||
       existing.path !== file.path ||
@@ -157,6 +162,16 @@ export async function syncSource(sourceId: string): Promise<Outcome> {
   return {};
 }
 
+async function markSkipped(fileId: string, reason: string, revision: string) {
+  await prisma.$transaction([
+    prisma.knowledgeChunk.deleteMany({ where: { fileId } }),
+    prisma.knowledgeFile.update({
+      where: { id: fileId },
+      data: { status: "UNSUPPORTED", error: reason, chunkCount: 0, indexedRevision: revision },
+    }),
+  ]);
+}
+
 async function markRemoved(fileId: string) {
   await prisma.$transaction([
     prisma.knowledgeChunk.deleteMany({ where: { fileId } }),
@@ -173,6 +188,17 @@ export async function indexFile(fileId: string): Promise<Outcome> {
     include: { source: true },
   });
   if (!file || file.status === "REMOVED" || file.source.status !== "ACTIVE") return {};
+
+  const skip = skipReason(file.name, file.mimeType);
+  if (skip) {
+    await markSkipped(file.id, skip, file.revision);
+    return {};
+  }
+
+  // Today's allowance spent: wait for the next day rather than fail against the
+  // provider's own limit. Checked before reading the file, which would be wasted.
+  const room = await embeddingRoom();
+  if (room.limit && room.remaining <= 0) return waitForNewDay(file.id, room.secondsToReset);
 
   // The revision this pass is for. If the file moves on while it runs, the result
   // is still stored — it is not wrong, only stale — and another pass follows.
@@ -204,6 +230,9 @@ export async function indexFile(fileId: string): Promise<Outcome> {
     }
 
     const chunks = chunkText(text.text).slice(0, MAX_CHUNKS_PER_FILE);
+    if (!fits(room, chunks.length)) {
+      return waitForNewDay(file.id, room.secondsToReset);
+    }
     // A short header makes each chunk say where it came from, which helps both
     // the embedding and the model reading it.
     const vectors = await embedTexts(
@@ -265,6 +294,14 @@ export async function indexFile(fileId: string): Promise<Outcome> {
 
   const now = await prisma.knowledgeFile.findUnique({ where: { id: file.id }, select: { revision: true } });
   return { again: now !== null && now.revision !== revision };
+}
+
+async function waitForNewDay(fileId: string, secondsToReset: number): Promise<Outcome> {
+  await prisma.knowledgeFile.update({
+    where: { id: fileId },
+    data: { status: "PENDING", error: WAITING_FOR_NEW_DAY },
+  });
+  return { deferSeconds: secondsToReset + 60 };
 }
 
 /** The worker gave up on a file after its retries. */

@@ -174,6 +174,13 @@ export const env = {
       | "fake",
     apiKey: process.env.GEMINI_API_KEY ?? "",
     model: process.env.EMBEDDINGS_MODEL ?? "gemini-embedding-001",
+    /**
+     * Most texts to embed per day (Google's quota day, which turns over at midnight
+     * Pacific Time). Past it, files wait for the next day instead of failing against
+     * the provider's own limit. 0 or unset: no limit of our own. Set it a little
+     * under the real quota (searches embed too): the free tier allows 1000.
+     */
+    dailyLimit: Math.max(0, Math.floor(Number(process.env.EMBEDDINGS_DAILY_LIMIT)) || 0),
   },
 
   n8n: {

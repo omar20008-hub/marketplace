@@ -77,6 +77,15 @@ export function retryDelaySeconds(attempts: number, info: RetryInfo = {}): numbe
   return Math.min(MAX_RATE_LIMIT_DELAY_SECONDS, Math.max(backoff, info.retryAfterSeconds ?? 0));
 }
 
+/** Not a failure: put it off until later, without spending one of its attempts. */
+export async function defer(job: Job, seconds: number) {
+  await prisma.$executeRaw`
+    UPDATE "KnowledgeJob"
+    SET "leasedUntil" = NULL, rerun = false, attempts = GREATEST(attempts - 1, 0),
+        "runAfter" = now() + make_interval(secs => ${Math.max(60, Math.ceil(seconds))})
+    WHERE id = ${job.id}`;
+}
+
 /** Failed: back off and retry, or drop it once it has had its chances. Returns true when it gave up. */
 export async function fail(job: Job, message: string, info: RetryInfo = {}): Promise<boolean> {
   if (job.attempts >= maxAttemptsFor(info)) {
