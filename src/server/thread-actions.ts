@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { askOrchestrator } from "./run-engine";
+import { handleMemoryCommand, learnAfterResponse, withMemories } from "./memory";
 
 /**
  * A follow-up inside an existing thread. The conversation itself lives in
@@ -28,7 +29,14 @@ export async function followUp(formData: FormData) {
     data: { threadId: thread.id, role: "USER", body },
   });
 
-  const output = await askOrchestrator(user.id, body, thread.id);
+  // "Remember that …" is answered here; everything else goes to the Orchestrator
+  // with what the person has asked to be remembered in front of it. The stored
+  // message stays exactly what they wrote.
+  const command = await handleMemoryCommand(user.id, body);
+  const output =
+    command ??
+    (await askOrchestrator(user.id, await withMemories(user.id, body), thread.id));
+  if (command === null) learnAfterResponse(user.id, body);
 
   await prisma.message.create({
     data: { threadId: thread.id, role: "ASSISTANT", body: output },
