@@ -26,7 +26,7 @@ n8n instance ──Bearer kb_…──▶ /api/knowledge/search ◀── Knowle
 | Indexing | `server/knowledge/indexer.ts`, `lib/drive.ts`, `lib/chunking.ts`, `lib/embeddings.ts` | Docs/Slides/Sheets, text, md, csv, json, PDFs with a text layer. Others are shown as "Skipped" with a reason |
 | Push | `server/knowledge/watch.ts`, `changes.ts`, `api/knowledge/drive-webhook` | Per-source `changes.watch` channel with a secret; a notification only queues a job that reads the change feed and syncs if it touches the folder tree |
 | Safety net | `worker.ts` | Every source is re-listed every 6 h, so a missed notification costs freshness, never correctness |
-| Search | `server/knowledge/search.ts`, `api/knowledge/search` | Vector similarity, scoped by installation id inside the query; returns passages, a numbered `context`, and a `library` summary |
+| Search | `server/knowledge/search.ts`, `api/knowledge/search` | Vector similarity, scoped by installation id inside the query; returns passages, a numbered `context`, a `files` list (every searchable file, so "which files do you have?" is answerable) and a `library` summary |
 | Keys | `server/knowledge/keys.ts` | `kb_…` per installation, only its SHA-256 is stored, new one on every activation, dead when uninstalled |
 | Limits | `server/knowledge/limits.ts`, `Plan.knowledgeSources/Files` | Per user across installations; unreadable and removed files are free |
 | UX | wizard "Your files" step, `/workspace/<id>/files`, `components/app/folder-picker.tsx` | Folder listing served by our own endpoint — no Drive token reaches the browser |

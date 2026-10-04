@@ -10,6 +10,7 @@ import { embedTexts, embeddingTag, toVectorLiteral } from "@/lib/embeddings";
 
 export const DEFAULT_LIMIT = 6;
 export const MAX_LIMIT = 12;
+const MAX_LISTED_FILES = 100;
 
 export type Passage = {
   text: string;
@@ -26,6 +27,8 @@ export type SearchResult = {
     lastSyncedAt: Date | null;
     needsReconnect: boolean;
   };
+  /** The files that can be searched, so "which files do you have?" has an answer that is not a guess from passages. */
+  files: { name: string; path: string | null; url: string | null }[];
   /** The passages laid out with numbered citations, ready to paste into a prompt. */
   context: string;
 };
@@ -82,7 +85,19 @@ export async function searchKnowledge(
     needsReconnect: sources.some((s) => s.status === "NEEDS_RECONNECT"),
   };
 
-  if (counts.ready === 0) return { passages: [], library, context: "" };
+  if (counts.ready === 0) return { passages: [], library, files: [], context: "" };
+
+  const listed = await prisma.knowledgeFile.findMany({
+    where: {
+      sourceId: { in: sourceIds },
+      status: "READY",
+      OR: [{ embeddingModel: null }, { embeddingModel: embeddingTag() }],
+    },
+    orderBy: [{ path: "asc" }, { name: "asc" }],
+    take: MAX_LISTED_FILES,
+    select: { name: true, path: true, webUrl: true },
+  });
+  const files = listed.map((f) => ({ name: f.name, path: f.path, url: f.webUrl }));
 
   const [vector] = await embedTexts([query], "query");
   const rows = await prisma.$queryRaw<
@@ -112,5 +127,5 @@ export async function searchKnowledge(
     })
     .join("\n\n---\n\n");
 
-  return { passages, library, context };
+  return { passages, library, files, context };
 }
