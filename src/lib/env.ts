@@ -183,6 +183,15 @@ export const env = {
     dailyLimit: Math.max(0, Math.floor(Number(process.env.EMBEDDINGS_DAILY_LIMIT)) || 0),
   },
 
+  /**
+   * The model that picks lasting facts out of what a person writes (see
+   * src/server/memory.ts). Uses GEMINI_API_KEY; with no key, nothing is learned
+   * automatically (things a person asks to be remembered are still kept).
+   */
+  memory: {
+    model: process.env.MEMORY_MODEL ?? "gemini-3.1-flash-lite",
+  },
+
   n8n: {
     driver: (process.env.N8N_DRIVER === "live" ? "live" : "mock") as N8nDriver,
     baseUrl: process.env.N8N_BASE_URL ?? "",

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
+  Brain,
   FolderClosed,
   Layers,
   Link2,
@@ -84,6 +85,7 @@ export function Sidebar({
         <span className="size-[7px] rounded-full bg-warn" />
       ) : null,
     },
+    ...(user ? [{ href: "/memory", label: "Memory", icon: <Brain {...iconProps} /> }] : []),
     ...(user?.isCreator
       ? [{ href: "/creator", label: "Creator studio", icon: <SquareCode {...iconProps} /> }]
       : []),

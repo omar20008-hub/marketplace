@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { askOrchestrator, executeRun, fields, titleFor } from "./run-engine";
+import { handleMemoryCommand, learnAfterResponse, withMemories } from "./memory";
 
 /**
  * Opens a thread from whatever the person typed. Whether that is a direct
@@ -42,7 +43,11 @@ export async function startTask(formData: FormData) {
     },
   });
 
-  const output = await askOrchestrator(user.id, chatInput, thread.id);
+  const command = await handleMemoryCommand(user.id, task);
+  const output =
+    command ??
+    (await askOrchestrator(user.id, await withMemories(user.id, chatInput), thread.id));
+  if (command === null) learnAfterResponse(user.id, task);
 
   await prisma.message.create({
     data: { threadId: thread.id, role: "ASSISTANT", body: output },

@@ -51,6 +51,10 @@ model User {
 
   createdAt DateTime @default(now())
 
+  // Whether the assistant may learn lasting facts about this person from what they
+  // write (see src/server/memory.ts). Things they ask it to remember are kept either way.
+  memoryAuto Boolean @default(true)
+
   products      Product[]
   installations Installation[]
   accounts      ConnectedAccount[]
@@ -61,6 +65,7 @@ model User {
   schedules     Schedule[]
   auditLogs     AuditLog[]
   knowledge     KnowledgeSource[]
+  memories      UserMemory[]
 }
 
 // Plans, credits and quotas live only here. No workflow enforces them.
@@ -433,6 +438,25 @@ model Artifact {
 }
 
 // ------------------------------------------------------------ conversation
+
+enum MemorySource {
+  EXPLICIT
+  AUTO
+}
+
+/// A lasting fact about a person, shown to them and deletable by them. The platform
+/// writes these (never n8n) and adds the recent ones to what the Orchestrator reads.
+model UserMemory {
+  id        String       @id @default(cuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content   String
+  source    MemorySource @default(EXPLICIT)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@index([userId, updatedAt])
+}
 
 model Thread {
   id        String   @id @default(cuid())
