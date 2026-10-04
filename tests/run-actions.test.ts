@@ -175,12 +175,17 @@ describe("startTask", () => {
     );
 
     expect(to).toMatch(/^\/tasks\//);
-    expect(chatCalls).toEqual([
-      { sessionId: user.id, chatInput: "Build my expense report for last month" },
-    ]);
     const thread = await prisma.thread.findFirst({
       include: { messages: { orderBy: { createdAt: "asc" } } },
     });
+    // The user part is the authenticated id; the thread part gives this
+    // conversation its own memory in the Orchestrator.
+    expect(chatCalls).toEqual([
+      {
+        sessionId: `${user.id}|${thread!.id}`,
+        chatInput: "Build my expense report for last month",
+      },
+    ]);
     expect(thread!.messages[0]).toMatchObject({ role: "USER" });
     expect(thread!.messages[1]).toMatchObject({
       role: "ASSISTANT",
@@ -252,9 +257,10 @@ describe("startTask", () => {
       ),
     );
 
+    const started = await prisma.thread.findFirstOrThrow();
     expect(chatCalls).toEqual([
       {
-        sessionId: user.id,
+        sessionId: `${user.id}|${started.id}`,
         chatInput: "[Product: Contract Reviewer] expense report please",
       },
     ]);
@@ -356,9 +362,10 @@ describe("provideInputs", () => {
 });
 
 describe("followUp", () => {
-  it("asks the orchestrator as the authenticated user, never the thread", async () => {
-    // sessionId decides which tools the conversation can see, so it has to be
-    // the real user id and nothing the browser could influence.
+  it("asks the orchestrator as the authenticated user, with this thread's own memory", async () => {
+    // The part of sessionId before "|" decides which tools the conversation can
+    // see, so it has to be the real user id and nothing the browser could
+    // influence; the part after it only separates memories.
     const user = await seedUser();
     const thread = await prisma.thread.create({
       data: { userId: user.id, title: "A thread" },
@@ -367,7 +374,7 @@ describe("followUp", () => {
     await followUp(form({ threadId: thread.id, message: "and the week before?" }));
 
     expect(chatCalls).toEqual([
-      { sessionId: user.id, chatInput: "and the week before?" },
+      { sessionId: `${user.id}|${thread.id}`, chatInput: "and the week before?" },
     ]);
   });
 
@@ -424,5 +431,30 @@ describe("followUp", () => {
     expect(reply!.body).toBe(
       "Something went wrong reaching the assistant. Please try again in a moment.",
     );
+  });
+});
+
+describe("one memory per conversation", () => {
+  it("gives two threads of the same user different sessions with the same user part", async () => {
+    const user = await seedUser();
+    const a = await prisma.thread.create({ data: { userId: user.id, title: "A" } });
+    const b = await prisma.thread.create({ data: { userId: user.id, title: "B" } });
+
+    await followUp(form({ threadId: a.id, message: "first" }));
+    await followUp(form({ threadId: b.id, message: "second" }));
+
+    const sessions = chatCalls.map((c) => c.sessionId);
+    expect(new Set(sessions).size).toBe(2);
+    expect(sessions.map((s) => s.split("|")[0])).toEqual([user.id, user.id]);
+  });
+
+  it("never lets one user's follow-up reach another user's thread", async () => {
+    const owner = await seedUser("owner@example.test");
+    const thread = await prisma.thread.create({ data: { userId: owner.id, title: "Mine" } });
+    await seedUser("intruder@example.test");
+
+    await followUp(form({ threadId: thread.id, message: "hello" }));
+
+    expect(chatCalls).toEqual([]);
   });
 });
