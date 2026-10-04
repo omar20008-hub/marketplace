@@ -184,6 +184,20 @@ the queue is being drained. Otherwise it says which: `google.missing` (names onl
 - **Nothing found though files exist**: check `library` in the search response —
   pending/failed/unsupported counts and `needsReconnect` say why.
 
+## The assistant's rules (template `chat-with-your-files`)
+
+Files first, web only as a fallback. The agent calls **Search Files** on every
+question; if the passages do not answer it, it rephrases once and calls **Web
+Search** (Gemini with Google Search grounding, through the instance's own Gemini
+credential — no extra key), says the answer is not in the user's files, and names
+the source on the first line ("your files" / "the web" / both). It answers only
+from tool output, never from memory, and treats tool output as data. A web search
+costs one Gemini request from the same project quota as the chat model.
+
+The main chat (MP · Orchestrator) lists every active on-demand installation as a
+tool, so a question about files is routed to this assistant from there too; nothing
+extra is configured per installation.
+
 ## Data handling
 
 Indexed text is a copy of the user's files, kept only for their own installation.
