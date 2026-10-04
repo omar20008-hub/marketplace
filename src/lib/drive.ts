@@ -155,6 +155,23 @@ export function isReadable(mimeType: string): boolean {
   return mimeType in NATIVE_EXPORTS || PLAIN.has(mimeType) || mimeType === "application/pdf";
 }
 
+/**
+ * Scratch files that other tools leave in a folder: a `tmp_…` copy, an Office
+ * lock file, a `.tmp`. They duplicate real files or hold nothing, and embedding
+ * them spends quota the real files need.
+ */
+export function isTemporaryName(name: string): boolean {
+  const lower = name.toLowerCase();
+  return lower.startsWith("tmp_") || name.startsWith("~$") || lower.endsWith(".tmp");
+}
+
+/** Why a file is not indexed, or null when it is. */
+export function skipReason(name: string, mimeType: string): string | null {
+  if (isTemporaryName(name)) return "A temporary file, so it is not indexed.";
+  if (!isReadable(mimeType)) return "This file type cannot be read yet.";
+  return null;
+}
+
 export type FileText = { ok: true; text: string } | { ok: false; reason: string };
 
 export async function readFileText(token: string, file: DriveFile): Promise<FileText> {

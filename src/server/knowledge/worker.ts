@@ -6,7 +6,7 @@ import { recordTick } from "./heartbeat";
 import { renewWatches } from "./watch";
 import { giveUpOnFile, indexFile, syncSource } from "./indexer";
 import { classifyJobError, friendlyJobError, logName, retryInfoOf } from "./errors";
-import { claim, complete, enqueue, fail, maxAttemptsFor, retryDelaySeconds, type Job, type RetryInfo } from "./queue";
+import { claim, complete, defer, enqueue, fail, maxAttemptsFor, retryDelaySeconds, type Job, type RetryInfo } from "./queue";
 
 /**
  * Runs queued jobs until the queue is empty or the time budget is spent. Called
@@ -88,6 +88,11 @@ export async function runKnowledgeJobs({
     if (!job) break;
     try {
       const outcome = await run(job);
+      const deferSeconds = "deferSeconds" in outcome ? Number(outcome.deferSeconds) || 0 : 0;
+      if (deferSeconds > 0) {
+        await defer(job, deferSeconds);
+        continue;
+      }
       if (outcome.again) await enqueue(job.kind, job.targetId);
       await complete(job);
       summary.ran++;

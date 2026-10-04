@@ -162,6 +162,19 @@ the queue is being drained. Otherwise it says which: `google.missing` (names onl
   attempts.) Requests are sent in batches of 25. A folder with failed files shows
   "N failed" rather than "Up to date". The durable fix is quota: use a paid key, or
   raise the `gemini-embedding-001` limits in Google AI Studio.
+- **A daily allowance of our own** (`EMBEDDINGS_DAILY_LIMIT`, off when unset). The
+  free tier allows about 1000 embedded texts a day, and a large PDF spends hundreds.
+  Set the variable a little under the real quota (searches embed one query each and
+  are not counted) and indexing stops *on purpose* when the day's count is reached:
+  files show "Today's embedding allowance is used up…" and are put off until the quota
+  day turns over (midnight Pacific Time), without using up an attempt — so nothing
+  fails and nothing needs Retry. The count is the chunks written to files indexed
+  since the day began. A file bigger than the whole allowance is let through on a
+  fresh day, so it is not stuck for ever.
+- **Scratch files are not indexed**: names starting `tmp_` or `~$`, or ending `.tmp`
+  (an OCR flow's temporary copy, an Office lock file) are listed as skipped, never
+  embedded, and do not use the plan's file allowance. One that was already indexed
+  is dropped on the next sync.
 - **A file stuck "Failed"**: the reason is on the Files page; Retry re-queues it.
   After 5 attempts a job is dropped and the file is marked Failed, never left
   spinning.
