@@ -215,7 +215,10 @@ export type UninstallOutput =
 // ------------------------------------------------ MP · Orchestrator (64bc…)
 
 export type ChatInput = {
-  /** Must be the real authenticated user id: it decides which tools appear. */
+  /**
+   * `<authenticated user id>` or `<user id>|<thread id>`. The user id (the part
+   * before "|") decides which tools appear; the whole value keys the memory.
+   */
   sessionId: string;
   chatInput: string;
 };

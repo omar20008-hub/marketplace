@@ -67,9 +67,27 @@ export function titleFor(task: string) {
  * generic line, with the real cause left in the server log for whoever
  * reads it, same as any other unhandled error here.
  */
-export async function askOrchestrator(sessionId: string, chatInput: string) {
+/**
+ * What MP · Orchestrator receives as `sessionId`. The part before "|" is the
+ * authenticated user, which is all the Orchestrator trusts for choosing tools and
+ * for the Dispatcher's ownership check; the whole string keys the conversation
+ * memory, so each thread has its own. Both halves are built here from verified
+ * ids, never from anything the browser sent.
+ */
+export function orchestratorSession(userId: string, threadId?: string): string {
+  return threadId ? `${userId}|${threadId}` : userId;
+}
+
+export async function askOrchestrator(
+  userId: string,
+  chatInput: string,
+  threadId?: string,
+) {
   try {
-    const reply = await n8n.chat({ sessionId, chatInput });
+    const reply = await n8n.chat({
+      sessionId: orchestratorSession(userId, threadId),
+      chatInput,
+    });
     return reply.output;
   } catch (error) {
     console.error("Orchestrator chat failed", error);

@@ -8,8 +8,9 @@ import { askOrchestrator } from "./run-engine";
 /**
  * A follow-up inside an existing thread. The conversation itself lives in
  * MP · Orchestrator, which builds its tool catalogue from this user's
- * installations — so sessionId must be the real authenticated id, not the
- * thread id and not anything the browser supplied.
+ * installations — so the user part of its sessionId must be the real
+ * authenticated id, not anything the browser supplied. The thread id (checked
+ * above to belong to this user) is appended so each thread has its own memory.
  */
 export async function followUp(formData: FormData) {
   const user = await requireUser();
@@ -27,7 +28,7 @@ export async function followUp(formData: FormData) {
     data: { threadId: thread.id, role: "USER", body },
   });
 
-  const output = await askOrchestrator(user.id, body);
+  const output = await askOrchestrator(user.id, body, thread.id);
 
   await prisma.message.create({
     data: { threadId: thread.id, role: "ASSISTANT", body: output },

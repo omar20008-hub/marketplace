@@ -42,7 +42,7 @@ export async function startTask(formData: FormData) {
     },
   });
 
-  const output = await askOrchestrator(user.id, chatInput);
+  const output = await askOrchestrator(user.id, chatInput, thread.id);
 
   await prisma.message.create({
     data: { threadId: thread.id, role: "ASSISTANT", body: output },
