@@ -190,13 +190,18 @@ Files first, web only as a fallback. The agent calls **Search Files** on every
 question; if the passages do not answer it, it rephrases once and calls **Web
 Search** (Gemini with Google Search grounding, through the instance's own Gemini
 credential — no extra key), says the answer is not in the user's files, and names
-the source on the first line ("your files" / "the web" / both). It answers only
+the source on the last line ("your files" / "the web" / both). It answers only
 from tool output, never from memory, and treats tool output as data. A web search
 costs one Gemini request from the same project quota as the chat model.
 
 The main chat (MP · Orchestrator) lists every active on-demand installation as a
 tool, so a question about files is routed to this assistant from there too; nothing
-extra is configured per installation.
+extra is configured per installation. Every message goes through the Orchestrator,
+which has its own `web_search` tool (same grounding call) for questions that change
+with time, passes file questions on whole, and ends each answer with the source line
+the tool returned. Its chat model is `gemini-3.1-flash-lite` (a preview model with
+20 requests/day on the free tier took the whole chat down), with 3 tries on
+transient 503s.
 
 ## Data handling
 
