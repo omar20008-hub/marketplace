@@ -210,10 +210,26 @@ describe("POST /api/knowledge/search", () => {
     expect(body.library.files).toMatchObject({ ready: 1, pending: 1, failed: 1 });
   });
 
+  it("lists every searchable file, whatever the question matched, and only this installation's", async () => {
+    const mine = await seedLibrary("me@example.test", [
+      { name: "b.txt", text: "second file text" },
+      { name: "a.txt", text: "first file text" },
+      { name: "later.txt", text: "x", status: "PENDING" },
+    ]);
+    await seedLibrary("them@example.test", [{ name: "theirs.txt", text: "not mine" }]);
+    const body = await (await call(mine.key, { query: "second", limit: 1 })).json();
+    expect(body.passages).toHaveLength(1);
+    expect(body.files).toEqual([
+      { name: "a.txt", path: "Legal", url: "https://drive.example/a.txt" },
+      { name: "b.txt", path: "Legal", url: "https://drive.example/b.txt" },
+    ]);
+  });
+
   it("answers with an empty library rather than an error when nothing is indexed yet", async () => {
     const { key } = await seedLibrary("a@example.test", [{ name: "later.txt", text: "x", status: "PENDING" }]);
     const body = await (await call(key, { query: "anything" })).json();
     expect(body.passages).toEqual([]);
+    expect(body.files).toEqual([]);
     expect(body.context).toBe("");
     expect(body.library.files.pending).toBe(1);
   });
