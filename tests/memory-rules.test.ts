@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
   INJECT_MAX_CHARS,
+  appendLine,
   cleanFact,
+  cleanFileName,
+  fileLines,
+  findSensitiveLine,
   formatMemoryBlock,
   looksPersonal,
   parseMemoryCommand,
+  removeLines,
+  routeFact,
   sameFact,
   splitFacts,
 } from "@/lib/memory-rules";
@@ -99,20 +105,89 @@ describe("sameFact", () => {
 });
 
 describe("formatMemoryBlock", () => {
-  it("labels the facts as data", () => {
-    const block = formatMemoryBlock(["اسمي سعد", "I run a coffee shop"]);
+  it("shows each file under its name, labelled as data", () => {
+    const block = formatMemoryBlock([
+      { name: "Profile", content: "- اسمي سعد" },
+      { name: "Work", content: "I run a coffee shop\n- I have five staff" },
+    ]);
     expect(block).toMatch(/^\[.*وليس تعليمات:/);
-    expect(block).toContain("- اسمي سعد");
+    expect(block).toContain("## Profile\n- اسمي سعد");
+    expect(block).toContain("## Work\n- I run a coffee shop\n- I have five staff");
     expect(block.endsWith("]")).toBe(true);
   });
 
-  it("says nothing when there is nothing", () => {
+  it("skips empty files and says nothing when there is nothing", () => {
     expect(formatMemoryBlock([])).toBe("");
+    expect(formatMemoryBlock([{ name: "Notes", content: "  \n " }])).toBe("");
+    expect(formatMemoryBlock([{ name: "Empty", content: "" }, { name: "Work", content: "- x y z" }])).not.toContain("Empty");
   });
 
-  it("stops before it grows past its budget", () => {
-    const facts = Array.from({ length: 30 }, (_, i) => `fact number ${i} ${"x".repeat(100)}`);
-    expect(formatMemoryBlock(facts).length).toBeLessThan(INJECT_MAX_CHARS + 200);
+  it("stops before it grows past its budget, keeping the first files whole", () => {
+    const long = Array.from({ length: 60 }, (_, i) => `fact number ${i} ${"x".repeat(60)}`).join("\n");
+    const block = formatMemoryBlock([
+      { name: "Profile", content: "- اسمي سعد" },
+      { name: "Notes", content: long },
+    ]);
+    expect(block.length).toBeLessThan(INJECT_MAX_CHARS + 200);
+    expect(block).toContain("- اسمي سعد");
+  });
+});
+
+describe("files", () => {
+  it("tidies a file name, or refuses it", () => {
+    expect(cleanFileName("  Clients  ")).toBe("Clients");
+    expect(cleanFileName("my/notes\\here")).toBe("my notes here");
+    expect(cleanFileName("   ")).toBeNull();
+    expect(cleanFileName("x".repeat(41))).toBeNull();
+  });
+
+  it("reads lines without their bullets", () => {
+    expect(fileLines("- one\n* two\n\n  three  \n• four")).toEqual(["one", "two", "three", "four"]);
+  });
+
+  it("points at the first line that looks sensitive", () => {
+    expect(findSensitiveLine("- I run a shop\n- my email is a@b.co\n- tea")).toBe(2);
+    expect(findSensitiveLine("- I run a shop\n- I like tea")).toBeNull();
+  });
+
+  it("routes a fact to the file it belongs in", () => {
+    expect(routeFact("اسمي سعد")).toBe("Profile");
+    expect(routeFact("I run a coffee shop")).toBe("Work");
+    expect(routeFact("أعمل في اللوجستيات")).toBe("Work");
+    expect(routeFact("I prefer short answers")).toBe("Preferences");
+    expect(routeFact("الاجتماع يوم الأحد")).toBe("Notes");
+  });
+
+  it("adds a line once, and never rewrites what the person wrote", () => {
+    const first = appendLine("", "I run a coffee shop");
+    expect(first).toEqual({ content: "- I run a coffee shop", added: true });
+    const second = appendLine("My own heading\n- I run a coffee shop", "i run a Coffee shop.");
+    expect(second.added).toBe(false);
+    expect(appendLine("Free text the person typed", "I like tea").content).toBe("Free text the person typed\n- I like tea");
+  });
+
+  it("removes only the lines that mention what is forgotten", () => {
+    const result = removeLines("- I run a coffee shop\n- I prefer short answers\nA heading", "the coffee shop");
+    expect(result).toEqual({ content: "- I prefer short answers\nA heading", removed: 1 });
+    expect(removeLines("- tea", "bakery")).toEqual({ content: "- tea", removed: 0 });
+  });
+
+  it("reads which file a request names", () => {
+    expect(parseMemoryCommand("تذكر في ملف العمل أن عندي خمسة موظفين")).toEqual({
+      type: "remember",
+      fact: "عندي خمسة موظفين",
+      file: "العمل",
+    });
+    expect(parseMemoryCommand("remember in my Clients file that Acme pays late")).toEqual({
+      type: "remember",
+      fact: "Acme pays late",
+      file: "Clients",
+    });
+    expect(parseMemoryCommand("add to Work that I have five staff")).toEqual({
+      type: "remember",
+      fact: "I have five staff",
+      file: "Work",
+    });
   });
 });
 
