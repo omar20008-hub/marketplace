@@ -38,12 +38,24 @@ export function Composer({
   const [pinned, setPinned] = useState<string>("");
   const [picking, setPicking] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
+  const [busy, setBusy] = useState(false);
 
   const pinnedTitle = products.find((p) => p.id === pinned)?.title;
 
   return (
     <div className={clsx("w-full max-w-[720px]", className)}>
-      <form ref={formRef} action={startTask}>
+      <form
+        ref={formRef}
+        action={async (formData) => {
+          if (busy) return;
+          setBusy(true);
+          try {
+            await startTask(formData);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
         <input type="hidden" name="installationId" value={pinned} />
         <div className="rounded-composer border border-line bg-canvas py-4 pr-3 pb-3 pl-5 shadow-[0_4px_24px_rgba(0,0,0,0.05)]">
           <textarea
@@ -55,8 +67,9 @@ export function Composer({
               event.target.style.height = "auto";
               event.target.style.height = `${event.target.scrollHeight}px`;
             }}
+            readOnly={busy}
             onKeyDown={(event) => {
-              if (isSendKey(event) && event.currentTarget.value.trim()) {
+              if (isSendKey(event) && event.currentTarget.value.trim() && !busy) {
                 event.preventDefault();
                 formRef.current?.requestSubmit();
               }
@@ -99,7 +112,8 @@ export function Composer({
                 Schedule
               </Link>
             </div>
-            <SendButton disabled={!text.trim()} />
+            {busy ? <span className="mr-2 text-[13px] text-ink-3">Thinking…</span> : null}
+            <SendButton disabled={!text.trim() || busy} />
           </div>
         </div>
       </form>

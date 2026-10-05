@@ -112,8 +112,9 @@ export function GuestChat({
               event.target.style.height = "auto";
               event.target.style.height = `${event.target.scrollHeight}px`;
             }}
+            readOnly={pending}
             onKeyDown={(event) => {
-              if (isSendKey(event) && event.currentTarget.value.trim()) {
+              if (isSendKey(event) && event.currentTarget.value.trim() && !pending) {
                 event.preventDefault();
                 formRef.current?.requestSubmit();
               }

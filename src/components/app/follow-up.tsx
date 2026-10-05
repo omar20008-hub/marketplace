@@ -27,13 +27,20 @@ function Send({ disabled }: { disabled: boolean }) {
 export function FollowUp({ threadId }: { threadId: string }) {
   const [text, setText] = useState("");
   const formRef = useRef<HTMLFormElement>(null);
+  const [busy, setBusy] = useState(false);
 
   return (
     <form
       ref={formRef}
       action={async (formData) => {
+        if (busy) return;
+        setBusy(true);
         setText("");
-        await followUp(formData);
+        try {
+          await followUp(formData);
+        } finally {
+          setBusy(false);
+        }
       }}
       className="flex items-end gap-2 rounded-composer border border-line bg-canvas py-2.5 pr-2.5 pl-5"
     >
@@ -43,8 +50,9 @@ export function FollowUp({ threadId }: { threadId: string }) {
         rows={1}
         value={text}
         onChange={(event) => setText(event.target.value)}
+        readOnly={busy}
         onKeyDown={(event) => {
-          if (isSendKey(event) && event.currentTarget.value.trim()) {
+          if (isSendKey(event) && event.currentTarget.value.trim() && !busy) {
             event.preventDefault();
             formRef.current?.requestSubmit();
           }
@@ -52,7 +60,8 @@ export function FollowUp({ threadId }: { threadId: string }) {
         placeholder="Ask a follow-up or change the inputs…"
         className="max-h-32 min-h-9 flex-1 resize-none bg-transparent py-1.5 text-[15px] placeholder:text-ink-3 focus:outline-none"
       />
-      <Send disabled={!text.trim()} />
+      {busy ? <span className="pb-2 text-xs text-ink-3">Thinking…</span> : null}
+      <Send disabled={!text.trim() || busy} />
     </form>
   );
 }
