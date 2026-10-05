@@ -152,7 +152,9 @@ export default async function MemoryPage({
         </div>
 
         {selected ? (
-          <div className="flex min-w-0 flex-col gap-4">
+          // Keyed by file: the fields below are uncontrolled (defaultValue), so without a
+          // new key React keeps the previous file's text when you switch files.
+          <div key={selected.id} className="flex min-w-0 flex-col gap-4">
             <Card className="p-4">
               <form action={saveMemoryFileAction} className="flex flex-col gap-3">
                 <input type="hidden" name="id" value={selected.id} />
