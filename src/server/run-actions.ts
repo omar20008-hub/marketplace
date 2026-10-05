@@ -4,8 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { askOrchestrator, executeRun, fields, titleFor } from "./run-engine";
-import { handleMemoryCommand, learnAfterResponse, withMemories } from "./memory";
+import { executeRun, fields, titleFor } from "./run-engine";
+import { answerThread, replyInBackground } from "./thread-reply";
 
 /**
  * Opens a thread from whatever the person typed. Whether that is a direct
@@ -43,15 +43,9 @@ export async function startTask(formData: FormData) {
     },
   });
 
-  const command = await handleMemoryCommand(user.id, task);
-  const output =
-    command ??
-    (await askOrchestrator(user.id, await withMemories(user.id, chatInput), thread.id));
-  if (command === null) learnAfterResponse(user.id, task);
-
-  await prisma.message.create({
-    data: { threadId: thread.id, role: "ASSISTANT", body: output },
-  });
+  // The reply is made after the redirect; the thread page shows the question and
+  // "Thinking…" meanwhile.
+  await replyInBackground(() => answerThread(user.id, thread.id, task, chatInput));
 
   revalidatePath("/", "layout");
   redirect(`/tasks/${thread.id}`);

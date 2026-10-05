@@ -5,6 +5,14 @@ import { requireUser } from "@/lib/auth";
 import { FootNote, Mono } from "@/components/ds";
 import { RunCard, type RunCardData } from "@/components/app/run-card";
 import { FollowUp } from "@/components/app/follow-up";
+import { AwaitingReply } from "@/components/app/awaiting-reply";
+
+/** A reply that has not come after this long is not coming (the server restarted mid-answer); stop showing "Thinking…". */
+const REPLY_GIVE_UP_MS = 3 * 60_000;
+
+function isAwaitingReply(last: { role: string; createdAt: Date } | undefined) {
+  return last?.role === "USER" && Date.now() - last.createdAt.getTime() < REPLY_GIVE_UP_MS;
+}
 
 export async function generateMetadata({
   params,
@@ -46,6 +54,7 @@ export default async function ThreadPage({
 
   const runsById = new Map(thread.runs.map((run) => [run.id, run]));
   const latestRun = thread.runs.at(-1);
+  const waiting = isAwaitingReply(thread.messages.at(-1));
 
   return (
     <div className="flex min-h-full flex-col">
@@ -78,11 +87,12 @@ export default async function ThreadPage({
             </div>
           );
         })}
+        {waiting ? <AwaitingReply /> : null}
       </div>
 
       <div className="sticky bottom-0 border-t border-selected bg-canvas px-5 pt-4 pb-5">
         <div className="mx-auto w-full max-w-[760px]">
-          <FollowUp threadId={thread.id} />
+          <FollowUp threadId={thread.id} waiting={waiting} />
           <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
             <Mono>Model: auto</Mono>
             <FootNote>

@@ -6,7 +6,7 @@ import { ArrowUp } from "lucide-react";
 import clsx from "clsx";
 import { followUp } from "@/server/thread-actions";
 import { isSendKey } from "./send-key";
-import { PendingNote, PendingTextarea } from "./pending";
+import { PendingTextarea } from "./pending";
 
 function Send({ disabled }: { disabled: boolean }) {
   const { pending } = useFormStatus();
@@ -25,7 +25,7 @@ function Send({ disabled }: { disabled: boolean }) {
   );
 }
 
-export function FollowUp({ threadId }: { threadId: string }) {
+export function FollowUp({ threadId, waiting = false }: { threadId: string; waiting?: boolean }) {
   const [text, setText] = useState("");
   const formRef = useRef<HTMLFormElement>(null);
   const sending = useRef(false);
@@ -52,6 +52,7 @@ export function FollowUp({ threadId }: { threadId: string }) {
       <input type="hidden" name="threadId" value={threadId} />
       <PendingTextarea
         name="message"
+        readOnly={waiting}
         rows={1}
         value={text}
         onChange={(event) => setText(event.target.value)}
@@ -64,8 +65,7 @@ export function FollowUp({ threadId }: { threadId: string }) {
         placeholder="Ask a follow-up or change the inputs…"
         className="max-h-32 min-h-9 flex-1 resize-none bg-transparent py-1.5 text-[15px] placeholder:text-ink-3 focus:outline-none"
       />
-      <PendingNote className="pb-2 text-xs text-ink-3" />
-      <Send disabled={!text.trim()} />
+      <Send disabled={!text.trim() || waiting} />
     </form>
   );
 }
