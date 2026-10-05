@@ -6,6 +6,7 @@ import {
   looksPersonal,
   parseMemoryCommand,
   sameFact,
+  splitFacts,
 } from "@/lib/memory-rules";
 
 /**
@@ -112,5 +113,22 @@ describe("formatMemoryBlock", () => {
   it("stops before it grows past its budget", () => {
     const facts = Array.from({ length: 30 }, (_, i) => `fact number ${i} ${"x".repeat(100)}`);
     expect(formatMemoryBlock(facts).length).toBeLessThan(INJECT_MAX_CHARS + 200);
+  });
+});
+
+describe("splitFacts", () => {
+  it("splits at a new statement about the person, in Arabic and English", () => {
+    expect(splitFacts("اسمي سعد وأعمل في مقهى")).toEqual(["اسمي سعد", "أعمل في مقهى"]);
+    expect(splitFacts("اسمي سعد وعندي مقهى في الرياض")).toEqual(["اسمي سعد", "عندي مقهى في الرياض"]);
+    expect(splitFacts("I run a coffee shop and I prefer short answers")).toEqual([
+      "I run a coffee shop",
+      "I prefer short answers",
+    ]);
+    expect(splitFacts("I like tea; my team has five people")).toEqual(["I like tea", "my team has five people"]);
+  });
+
+  it("leaves a list alone", () => {
+    expect(splitFacts("أحب الشاي والقهوة")).toEqual(["أحب الشاي والقهوة"]);
+    expect(splitFacts("I like tea and coffee")).toEqual(["I like tea and coffee"]);
   });
 });

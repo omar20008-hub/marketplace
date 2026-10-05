@@ -150,6 +150,27 @@ describe("handleMemoryCommand", () => {
     expect((await prisma.userMemory.findMany()).map((m) => m.source)).toEqual(["EXPLICIT", "EXPLICIT"]);
   });
 
+  it("keeps each fact in a request on its own, so forgetting one leaves the others", async () => {
+    const user = await seedUser();
+    const reply = await memory.handleMemoryCommand(user.id, "تذكر أن اسمي سعد وأعمل في مقهى");
+    expect(reply).toMatch(/«اسمي سعد» و«أعمل في مقهى»/);
+    expect(await prisma.userMemory.count()).toBe(2);
+
+    await memory.handleMemoryCommand(user.id, "انس أن اسمي سعد");
+    expect((await prisma.userMemory.findMany()).map((m) => m.content)).toEqual(["أعمل في مقهى"]);
+  });
+
+  it("saves the part that is fine and says it skipped the rest", async () => {
+    const user = await seedUser();
+    const reply = await memory.handleMemoryCommand(
+      user.id,
+      "Remember that I run a coffee shop and my email is a@b.co",
+    );
+    expect(reply).toMatch(/I will remember: "I run a coffee shop"\./);
+    expect(reply).toMatch(/did not save part of it/);
+    expect(await prisma.userMemory.count()).toBe(1);
+  });
+
   it("says why it will not keep something sensitive", async () => {
     const user = await seedUser();
     const reply = await memory.handleMemoryCommand(user.id, "Remember that my password is hunter2");
@@ -262,11 +283,12 @@ describe("the Memory page actions", () => {
     const mine = await prisma.userMemory.findFirstOrThrow({ where: { userId: owner.id } });
 
     await seedUser("intruder@example.test");
-    await actions.deleteMemoryAction(form({ id: mine.id }));
+    await destination(() => actions.deleteMemoryAction(form({ id: mine.id })));
     expect(await prisma.userMemory.count()).toBe(1);
 
     viewer.current = owner;
-    await actions.deleteMemoryAction(form({ id: mine.id }));
+    // Back to the bare page, so "Saved." from the earlier note does not linger.
+    expect(await destination(() => actions.deleteMemoryAction(form({ id: mine.id })))).toBe("/memory");
     expect(await prisma.userMemory.count()).toBe(0);
   });
 
@@ -283,9 +305,9 @@ describe("the Memory page actions", () => {
 
   it("switches learning on and off", async () => {
     const owner = await seedUser();
-    await actions.setAutoMemoryAction(form({}));
+    expect(await destination(() => actions.setAutoMemoryAction(form({})))).toBe("/memory");
     expect((await prisma.user.findUniqueOrThrow({ where: { id: owner.id } })).memoryAuto).toBe(false);
-    await actions.setAutoMemoryAction(form({ auto: "on" }));
+    await destination(() => actions.setAutoMemoryAction(form({ auto: "on" })));
     expect((await prisma.user.findUniqueOrThrow({ where: { id: owner.id } })).memoryAuto).toBe(true);
   });
 });

@@ -4,6 +4,7 @@ import clsx from "clsx";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { ArrowUp, Sparkles } from "lucide-react";
+import { isSendKey } from "./send-key";
 
 type Message = { role: "USER" | "ASSISTANT"; body: string };
 
@@ -112,7 +113,7 @@ export function GuestChat({
               event.target.style.height = `${event.target.scrollHeight}px`;
             }}
             onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey && text.trim()) {
+              if (isSendKey(event) && event.currentTarget.value.trim()) {
                 event.preventDefault();
                 formRef.current?.requestSubmit();
               }

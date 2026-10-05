@@ -6,6 +6,7 @@ import { useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { ArrowUp, CalendarClock, Grid2x2, Sparkles } from "lucide-react";
 import { startTask } from "@/server/run-actions";
+import { isSendKey } from "./send-key";
 
 function SendButton({ disabled }: { disabled: boolean }) {
   const { pending } = useFormStatus();
@@ -55,7 +56,7 @@ export function Composer({
               event.target.style.height = `${event.target.scrollHeight}px`;
             }}
             onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey && text.trim()) {
+              if (isSendKey(event) && event.currentTarget.value.trim()) {
                 event.preventDefault();
                 formRef.current?.requestSubmit();
               }
