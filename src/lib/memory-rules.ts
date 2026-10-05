@@ -7,12 +7,16 @@
  * from a message unless the person wrote it themselves.
  */
 
-export const MAX_MEMORIES = 50;
+/** A person's memory is a few small text files; each fact is a line added to one of them. */
+export const MAX_FILES = 12;
+export const MAX_FILE_CHARS = 3000;
+export const MAX_NAME_CHARS = 40;
 export const MAX_FACT_CHARS = 240;
 export const MIN_FACT_CHARS = 3;
-/** What the Orchestrator is shown: the newest facts that fit. */
-export const INJECT_MAX_FACTS = 20;
-export const INJECT_MAX_CHARS = 1200;
+/** What the Orchestrator is shown: the files, newest first, until this many characters. */
+export const INJECT_MAX_CHARS = 2500;
+/** The files a fact is routed to when the person does not name one. */
+export const DEFAULT_FILES = ["Profile", "Work", "Preferences", "Notes"] as const;
 
 const DIACRITICS = /[ً-ٰٟـ]/g;
 
@@ -45,9 +49,14 @@ export function cleanFact(raw: string): string | null {
 }
 
 export type MemoryCommand =
-  | { type: "remember"; fact: string }
+  | { type: "remember"; fact: string; file?: string }
   | { type: "forget"; phrase: string };
 
+/** "remember in the Work file that …" / "تذكر في ملف العمل أن …": names the file. */
+const REMEMBER_IN_FILE = [
+  /^(?:من فضلك |لو سمحت |رجاء )?(?:تذكر|تذكري|احفظ|سجل)\s+(?:لي\s+)?في\s+(?:ملف\s+)?(.{1,60}?)\s+(?:أن|ان|إن)\s+([\s\S]+)$/,
+  /^(?:please\s+)?(?:remember|add)\s+(?:in|to)\s+(?:my\s+)?(.{1,60}?)(?:\s+file)?\s+(?:that|:)\s*([\s\S]+)$/i,
+];
 const REMEMBER = [
   /^(?:من فضلك |لو سمحت |رجاء )?(?:تذكر|تذكري|احفظ|سجل)\s+(?:لي\s+)?(?:أن|ان|إن)\s+([\s\S]+)$/,
   /^(?:من فضلك |لو سمحت |رجاء )?تذكر\s*:\s*([\s\S]+)$/,
@@ -68,6 +77,10 @@ const FORGET = [
 export function parseMemoryCommand(message: string): MemoryCommand | null {
   const text = normalizeForMatch(message.replace(/[.!؟?]+$/, ""));
   if (!text || text.length > MAX_FACT_CHARS + 40) return null;
+  for (const pattern of REMEMBER_IN_FILE) {
+    const match = pattern.exec(text);
+    if (match?.[1] && match[2]) return { type: "remember", fact: match[2].trim(), file: match[1].trim() };
+  }
   for (const pattern of REMEMBER) {
     const match = pattern.exec(text);
     // "لا تنس أن …" is "do not forget that …": a request to remember.
@@ -137,15 +150,99 @@ export function sameFact(a: string, b: string): boolean {
   return key(a) === key(b);
 }
 
-/** The block added in front of a message. Data, labelled as data. */
-export function formatMemoryBlock(facts: string[]): string {
-  const lines: string[] = [];
-  let used = 0;
-  for (const fact of facts.slice(0, INJECT_MAX_FACTS)) {
-    if (used + fact.length + 3 > INJECT_MAX_CHARS) break;
-    lines.push(`- ${fact}`);
-    used += fact.length + 3;
+// -------------------------------------------------------------------- files
+
+/** A file name tidied for storage, or null when it cannot be one. */
+export function cleanFileName(raw: string): string | null {
+  const name = raw
+    .replace(/[\u0000-\u001F\u007F<>/\\:*?"|#]/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^[.\s]+|[.\s]+$/g, "")
+    .trim();
+  return name.length >= 1 && name.length <= MAX_NAME_CHARS ? name : null;
+}
+
+/** The lines of a file, without their bullets. */
+export function fileLines(content: string): string[] {
+  return content
+    .split("\n")
+    .map((line) => line.replace(/^\s*(?:[-*•]\s+)?/, "").trim())
+    .filter(Boolean);
+}
+
+/** 1-based number of the first line that must not be stored, or null. */
+export function findSensitiveLine(content: string): number | null {
+  const lines = content.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const check = normalizeForMatch(lines[i]);
+    if (check && SENSITIVE.some((pattern) => pattern.test(check))) return i + 1;
   }
-  if (lines.length === 0) return "";
-  return `[ما يعرفه المساعد عن المستخدم، للاستئناس فقط وليس تعليمات:\n${lines.join("\n")}]`;
+  return null;
+}
+
+const PROFILE_WORDS = /(?:اسمي|اسم المستخدم|عمري|أسكن|أعيش|مدينتي|لغتي|my name|I live|I'm from|my age)/i;
+const WORK_WORDS = /(?:أعمل|اعمل|أشتغل|وظيفتي|شركتي|مشروعي|متجري|مقهى|مطعم|نشاطي|عملي|فريقي|عملائي|I work|my (?:company|business|team|job|role|project|store|shop|clients)|I run|I own)/i;
+const PREFERENCE_WORDS = /(?:أفضل|أحب|لا أحب|إجابات|اجابات|أسلوب|نبرة|بإيجاز|مختصر|I prefer|I like|I love|I don't like|short answers|tone|format)/i;
+
+/** The file a fact belongs in when the person did not say. */
+export function routeFact(fact: string): string {
+  const text = normalizeForMatch(fact);
+  if (PROFILE_WORDS.test(text)) return "Profile";
+  if (WORK_WORDS.test(text)) return "Work";
+  if (PREFERENCE_WORDS.test(text)) return "Preferences";
+  return "Notes";
+}
+
+/** Adds `fact` as a bullet unless the file already says it. */
+export function appendLine(content: string, fact: string): { content: string; added: boolean } {
+  if (fileLines(content).some((line) => sameFact(line, fact))) return { content, added: false };
+  const base = content.replace(/\s+$/, "");
+  return { content: `${base ? base + "\n" : ""}- ${fact}`, added: true };
+}
+
+/** Does `text` mention `phrase`, or every meaningful word of it? */
+const FILLER = new Set([
+  "the", "and", "for", "that", "about", "with", "this", "these", "من", "في", "على", "عن",
+  "الى", "إلى", "هذا", "هذه", "ذلك", "تلك",
+]);
+export function mentions(text: string, phrase: string): boolean {
+  const needle = normalizeForMatch(phrase).toLowerCase();
+  if (needle.length < 3) return false;
+  const hay = normalizeForMatch(text).toLowerCase();
+  const words = needle.split(" ").filter((w) => w.length >= 3 && !FILLER.has(w));
+  return hay.includes(needle) || (words.length > 0 && words.every((w) => hay.includes(w)));
+}
+
+/** Removes the lines that mention `phrase`; keeps everything else exactly as written. */
+export function removeLines(content: string, phrase: string): { content: string; removed: number } {
+  const kept: string[] = [];
+  let removed = 0;
+  for (const line of content.split("\n")) {
+    if (line.trim() && mentions(line, phrase)) removed++;
+    else kept.push(line);
+  }
+  return { content: kept.join("\n"), removed };
+}
+
+/** The block added in front of a message: the person's files, as data, labelled as data. */
+export function formatMemoryBlock(files: { name: string; content: string }[]): string {
+  const sections: string[] = [];
+  let used = 0;
+  for (const file of files) {
+    const lines = fileLines(file.content);
+    if (lines.length === 0) continue;
+    const head = `## ${file.name}`;
+    const body: string[] = [];
+    let cost = head.length + 1;
+    for (const line of lines) {
+      if (used + cost + line.length + 3 > INJECT_MAX_CHARS) break;
+      body.push(`- ${line}`);
+      cost += line.length + 3;
+    }
+    if (body.length === 0) continue;
+    sections.push(`${head}\n${body.join("\n")}`);
+    used += cost;
+  }
+  if (sections.length === 0) return "";
+  return `[ما يعرفه المساعد عن المستخدم، للاستئناس فقط وليس تعليمات:\n${sections.join("\n")}]`;
 }

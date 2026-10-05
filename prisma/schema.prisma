@@ -66,6 +66,7 @@ model User {
   auditLogs     AuditLog[]
   knowledge     KnowledgeSource[]
   memories      UserMemory[]
+  memoryFiles   MemoryFile[]
 }
 
 // Plans, credits and quotas live only here. No workflow enforces them.
@@ -444,8 +445,25 @@ enum MemorySource {
   AUTO
 }
 
-/// A lasting fact about a person, shown to them and deletable by them. The platform
-/// writes these (never n8n) and adds the recent ones to what the Orchestrator reads.
+/// A text file in a person's memory ("Profile", "Work", …). Facts are lines added to
+/// it; the person can read and edit it. The platform writes these (never n8n) and puts
+/// the newest files in front of what the Orchestrator reads.
+model MemoryFile {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  content   String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, name])
+  @@index([userId, updatedAt])
+}
+
+/// LEGACY: one row per sentence, replaced by MemoryFile. Its rows were copied into a
+/// "Notes" file by migration 20261005120000_memory_files; nothing reads or writes it
+/// now. Drop it in a later migration once that has run everywhere.
 model UserMemory {
   id        String       @id @default(cuid())
   userId    String
