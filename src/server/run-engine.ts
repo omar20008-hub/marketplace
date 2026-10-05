@@ -78,20 +78,34 @@ export function orchestratorSession(userId: string, threadId?: string): string {
   return threadId ? `${userId}|${threadId}` : userId;
 }
 
+/**
+ * The model behind the Orchestrator answers "503, high demand" in bursts that last a
+ * few seconds (n8n already retries inside the call). One more try from here, after a
+ * pause, turns most of those into an answer instead of an apology.
+ */
+export const orchestratorRuntime = {
+  retries: 1,
+  retryDelayMs: 4000,
+  sleep: (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+};
+
 export async function askOrchestrator(
   userId: string,
   chatInput: string,
   threadId?: string,
 ) {
-  try {
-    const reply = await n8n.chat({
-      sessionId: orchestratorSession(userId, threadId),
-      chatInput,
-    });
-    return reply.output;
-  } catch (error) {
-    console.error("Orchestrator chat failed", error);
-    return "Something went wrong reaching the assistant. Please try again in a moment.";
+  const sessionId = orchestratorSession(userId, threadId);
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const reply = await n8n.chat({ sessionId, chatInput });
+      return reply.output;
+    } catch (error) {
+      console.error("Orchestrator chat failed", error);
+      if (attempt >= orchestratorRuntime.retries) {
+        return "Something went wrong reaching the assistant. Please try again in a moment.";
+      }
+      await orchestratorRuntime.sleep(orchestratorRuntime.retryDelayMs);
+    }
   }
 }
 

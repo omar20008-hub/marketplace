@@ -37,7 +37,7 @@ vi.mock("next/navigation", () => ({
 /** Records what the orchestrator was asked, so the session id can be checked. */
 const chatCalls: { sessionId: string; chatInput: string }[] = [];
 /** Set per-test to make the next chat() call reject, the way a timeout or a 5xx would. */
-const chatFailure = vi.hoisted(() => ({ next: null as Error | null }));
+const chatFailure = vi.hoisted(() => ({ next: null as Error | null, times: 0 }));
 vi.mock("@/lib/n8n", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/n8n")>();
   return {
@@ -48,7 +48,7 @@ vi.mock("@/lib/n8n", async (importOriginal) => {
         chatCalls.push(input);
         if (chatFailure.next) {
           const error = chatFailure.next;
-          chatFailure.next = null;
+          if (--chatFailure.times <= 0) chatFailure.next = null;
           throw error;
         }
         return { output: `answered ${input.chatInput}` };
@@ -62,6 +62,8 @@ const { provideInputs, runFromWorkspace, startTask } = await import(
   "@/server/run-actions"
 );
 const { followUp } = await import("@/server/thread-actions");
+const { orchestratorRuntime } = await import("@/server/run-engine");
+orchestratorRuntime.retryDelayMs = 0;
 
 const PLAN_ID = "test-plan-run-actions";
 
@@ -279,6 +281,7 @@ describe("startTask", () => {
   it("shows a generic message, not a crash or a made-up match, when the orchestrator is unreachable", async () => {
     await seedUser();
     chatFailure.next = new Error("n8n replied 503");
+    chatFailure.times = 2;
 
     await destinationOf(() => startTask(form({ task: "anything" })));
 
@@ -424,6 +427,7 @@ describe("followUp", () => {
       data: { userId: user.id, title: "A thread" },
     });
     chatFailure.next = new Error("fetch failed");
+    chatFailure.times = 2; // the first try and the retry
 
     await followUp(form({ threadId: thread.id, message: "hi" }));
 
@@ -431,6 +435,22 @@ describe("followUp", () => {
     expect(reply!.body).toBe(
       "Something went wrong reaching the assistant. Please try again in a moment.",
     );
+    expect(chatCalls).toHaveLength(2);
+  });
+
+  it("tries once more after a failure and shows the answer if that works", async () => {
+    const user = await seedUser();
+    const thread = await prisma.thread.create({
+      data: { userId: user.id, title: "A thread" },
+    });
+    chatFailure.next = new Error("503 high demand");
+    chatFailure.times = 1;
+
+    await followUp(form({ threadId: thread.id, message: "hi" }));
+
+    const reply = await prisma.message.findFirst({ where: { role: "ASSISTANT" } });
+    expect(reply!.body).toBe("answered hi");
+    expect(chatCalls).toHaveLength(2);
   });
 });
 

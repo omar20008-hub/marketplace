@@ -57,7 +57,11 @@ const REMEMBER_IN_FILE = [
   /^(?:من فضلك |لو سمحت |رجاء )?(?:تذكر|تذكري|احفظ|سجل)\s+(?:لي\s+)?في\s+(?:ملف\s+)?(.{1,60}?)\s+(?:أن|ان|إن)\s+([\s\S]+)$/,
   /^(?:please\s+)?(?:remember|add)\s+(?:in|to)\s+(?:my\s+)?(.{1,60}?)(?:\s+file)?\s+(?:that|:)\s*([\s\S]+)$/i,
 ];
+// "أنني / أني" (that I) is one word, so it is not caught by "أن" followed by a space;
+// the fact is what follows it, already in the first person.
+const THAT_I = "(?:أنني|انني|إنني|أني|اني|إني)";
 const REMEMBER = [
+  new RegExp(`^(?:من فضلك |لو سمحت |رجاء )?(?:تذكر|تذكري|احفظ|سجل)\\s+(?:لي\\s+)?${THAT_I}\\s+([\\s\\S]+)$`),
   /^(?:من فضلك |لو سمحت |رجاء )?(?:تذكر|تذكري|احفظ|سجل)\s+(?:لي\s+)?(?:أن|ان|إن)\s+([\s\S]+)$/,
   /^(?:من فضلك |لو سمحت |رجاء )?تذكر\s*:\s*([\s\S]+)$/,
   /^(?:please\s+)?remember\s+(?:that\s+)?([\s\S]+)$/i,
