@@ -20,7 +20,9 @@ export async function deleteMemoryAction(formData: FormData) {
   await prisma.userMemory.deleteMany({
     where: { id: String(formData.get("id") ?? ""), userId: user.id },
   });
+  // Back to the bare page, so a note from the previous action ("Saved.") does not linger.
   revalidatePath("/memory");
+  redirect("/memory");
 }
 
 export async function clearMemoriesAction(formData: FormData) {
@@ -38,4 +40,5 @@ export async function setAutoMemoryAction(formData: FormData) {
     data: { memoryAuto: formData.get("auto") === "on" },
   });
   revalidatePath("/memory");
+  redirect("/memory");
 }

@@ -25,6 +25,8 @@ instructions. At most 20 facts and 1200 characters are shown.
 
 1. **The Memory page** (`/memory`): the person types one.
 2. **Asked in a conversation**: "remember that …" / "تذكر أن …" at the start of a message.
+   One request can carry several facts ("اسمي سعد وأعمل في مقهى"): each is stored on its own,
+   split only where a new statement about the person starts, never inside a list.
    Answered by the platform itself, without the Orchestrator: certain, free, and it cannot
    be paraphrased into a promise nobody kept. "forget …" / "انس …" removes what matches.
    "Forget everything" is deliberately not a chat command; use the Memory page.

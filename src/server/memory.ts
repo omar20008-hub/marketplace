@@ -11,6 +11,7 @@ import {
   normalizeForMatch,
   parseMemoryCommand,
   sameFact,
+  splitFacts,
 } from "@/lib/memory-rules";
 
 /**
@@ -118,13 +119,23 @@ export async function handleMemoryCommand(
   const ar = isArabic(message);
 
   if (command.type === "remember") {
-    const result = await addMemory(userId, command.fact, "EXPLICIT");
-    if (result.ok) {
-      return ar
-        ? `تم، سأتذكر: «${result.content}». يمكنك مراجعة ما أعرفه عنك أو حذفه من صفحة Memory.`
-        : `Done, I will remember: "${result.content}". You can review or delete what I know on the Memory page.`;
+    const saved: string[] = [];
+    let refused = 0;
+    let full = false;
+    for (const part of splitFacts(command.fact)) {
+      const result = await addMemory(userId, part, "EXPLICIT");
+      if (result.ok) saved.push(result.content);
+      else if (result.reason === "full") full = true;
+      else refused++;
     }
-    if (result.reason === "full") {
+    if (saved.length > 0) {
+      const list = saved.map((fact) => (ar ? `«${fact}»` : `"${fact}"`)).join(ar ? " و" : ", ");
+      const partial = refused + (full ? 1 : 0) > 0;
+      return ar
+        ? `تم، سأتذكر: ${list}.${partial ? " لم أحفظ جزءاً منها لأنه غير صالح أو يتضمن بيانات حساسة، أو لأن ذاكرتك ممتلئة." : ""} يمكنك مراجعة ما أعرفه عنك أو حذفه من صفحة Memory.`
+        : `Done, I will remember: ${list}.${partial ? " I did not save part of it: it was invalid, looked sensitive, or your memory is full." : ""} You can review or delete what I know on the Memory page.`;
+    }
+    if (full) {
       return ar
         ? `ذاكرتك ممتلئة (${MAX_MEMORIES} معلومة كتبتها بنفسك). احذف بعضها من صفحة Memory ثم أعد المحاولة.`
         : `Your memory is full (${MAX_MEMORIES} things you wrote yourself). Delete some on the Memory page and try again.`;

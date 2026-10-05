@@ -85,6 +85,29 @@ export function parseMemoryCommand(message: string): MemoryCommand | null {
 }
 
 /**
+ * One "remember that …" often carries several facts: "اسمي سعد وأعمل في مقهى". Each is
+ * stored on its own, so forgetting one does not take the others with it. Split only
+ * where a new statement about the person clearly starts ("و" before a first-person verb
+ * or noun, ", and I …", ";"), never at a plain "and" inside a list.
+ */
+const ARABIC_NEW_STATEMENT = new RegExp(
+  "\\s+و(?=(?:أ|ا)(?:عمل|شتغل|سكن|عيش|حب|فضل|دير|ملك|درس|تحدث|ستخدم)|عندي|لدي|شركتي|مشروعي|متجري|وظيفتي|نشاطي|اسمي|لغتي)",
+  "u",
+);
+const SEPARATORS = new RegExp(
+  `${ARABIC_NEW_STATEMENT.source}|\\s*[;؛]\\s*|,?\\s+and\\s+(?=(?:I|my|I'm)\\s)`,
+  "iu",
+);
+
+export function splitFacts(fact: string): string[] {
+  const parts = fact
+    .split(SEPARATORS)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return parts.length > 0 ? parts.slice(0, 5) : [fact];
+}
+
+/**
  * Whether a message is worth asking a model about at all. A cheap first pass: most
  * messages ("summarise this file") say nothing lasting about the person, and every
  * model call comes out of the same free quota as the chat.

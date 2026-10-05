@@ -5,6 +5,7 @@ import { useFormStatus } from "react-dom";
 import { ArrowUp } from "lucide-react";
 import clsx from "clsx";
 import { followUp } from "@/server/thread-actions";
+import { isSendKey } from "./send-key";
 
 function Send({ disabled }: { disabled: boolean }) {
   const { pending } = useFormStatus();
@@ -43,7 +44,7 @@ export function FollowUp({ threadId }: { threadId: string }) {
         value={text}
         onChange={(event) => setText(event.target.value)}
         onKeyDown={(event) => {
-          if (event.key === "Enter" && !event.shiftKey && text.trim()) {
+          if (isSendKey(event) && event.currentTarget.value.trim()) {
             event.preventDefault();
             formRef.current?.requestSubmit();
           }
