@@ -7,6 +7,7 @@ import { useFormStatus } from "react-dom";
 import { ArrowUp, CalendarClock, Grid2x2, Sparkles } from "lucide-react";
 import { startTask } from "@/server/run-actions";
 import { isSendKey } from "./send-key";
+import { PendingNote, PendingTextarea } from "./pending";
 
 function SendButton({ disabled }: { disabled: boolean }) {
   const { pending } = useFormStatus();
@@ -38,7 +39,7 @@ export function Composer({
   const [pinned, setPinned] = useState<string>("");
   const [picking, setPicking] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
-  const [busy, setBusy] = useState(false);
+  const sending = useRef(false);
 
   const pinnedTitle = products.find((p) => p.id === pinned)?.title;
 
@@ -46,19 +47,23 @@ export function Composer({
     <div className={clsx("w-full max-w-[720px]", className)}>
       <form
         ref={formRef}
+        // A second submit while one is in flight is dropped here, synchronously: the
+        // action itself would only queue it behind the first.
+        onSubmit={(event) => {
+          if (sending.current) event.preventDefault();
+          else sending.current = true;
+        }}
         action={async (formData) => {
-          if (busy) return;
-          setBusy(true);
           try {
             await startTask(formData);
           } finally {
-            setBusy(false);
+            sending.current = false;
           }
         }}
       >
         <input type="hidden" name="installationId" value={pinned} />
         <div className="rounded-composer border border-line bg-canvas py-4 pr-3 pb-3 pl-5 shadow-[0_4px_24px_rgba(0,0,0,0.05)]">
-          <textarea
+          <PendingTextarea
             name="task"
             rows={1}
             value={text}
@@ -67,9 +72,8 @@ export function Composer({
               event.target.style.height = "auto";
               event.target.style.height = `${event.target.scrollHeight}px`;
             }}
-            readOnly={busy}
             onKeyDown={(event) => {
-              if (isSendKey(event) && event.currentTarget.value.trim() && !busy) {
+              if (isSendKey(event) && event.currentTarget.value.trim() ) {
                 event.preventDefault();
                 formRef.current?.requestSubmit();
               }
@@ -112,8 +116,8 @@ export function Composer({
                 Schedule
               </Link>
             </div>
-            {busy ? <span className="mr-2 text-[13px] text-ink-3">Thinking…</span> : null}
-            <SendButton disabled={!text.trim() || busy} />
+            <PendingNote className="mr-2 text-[13px] text-ink-3" />
+            <SendButton disabled={!text.trim()} />
           </div>
         </div>
       </form>
