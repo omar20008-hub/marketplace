@@ -83,6 +83,18 @@ describe("embedTexts against Gemini", () => {
     expect(sleeps).toEqual([4000]);
   });
 
+  it("waits less for a question's embedding than for a file's, since a person is waiting", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => limited({ "retry-after": "12" })));
+    const error = await embedTexts(["q"], "query").catch((e) => e);
+    expect(error).toBeInstanceOf(EmbeddingError);
+    expect(sleeps).toEqual([]);
+
+    const replies = [limited({ "retry-after": "12" }), ok(1)];
+    vi.stubGlobal("fetch", vi.fn(async () => replies.shift()!));
+    expect(await embedTexts(["d"], "document")).toHaveLength(1);
+    expect(sleeps).toEqual([12000]);
+  });
+
   it("gives up inside the call on a daily limit, with the quota named, and does not wait", async () => {
     vi.stubGlobal("fetch", vi.fn(async () =>
       limited({}, { error: { details: [{ violations: [{ quotaId: "EmbedContentRequestsPerDayPerProjectPerModel" }] }] } }),

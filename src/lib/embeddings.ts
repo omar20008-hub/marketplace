@@ -15,6 +15,8 @@ const BATCH = 25;
 /** Longest a single embedding call will itself wait out a per-minute limit, in total, before handing the wait to the job queue. */
 const MAX_INLINE_WAIT_SECONDS = 25;
 const MAX_INLINE_RETRIES = 3;
+/** A person is waiting on a question's embedding, so it waits far less than an indexing job does. */
+const MAX_QUERY_WAIT_SECONDS = 8;
 
 /** Overridable so tests need not really wait. */
 export const embeddingsRuntime = {
@@ -129,6 +131,7 @@ export async function embedTexts(texts: string[], task: EmbedTask): Promise<numb
   if (env.embeddings.driver === "fake") return texts.map(fakeEmbedding);
   const out: number[][] = [];
   let waited = 0;
+  const maxWait = task === "query" ? MAX_QUERY_WAIT_SECONDS : MAX_INLINE_WAIT_SECONDS;
   for (let i = 0; i < texts.length; i += BATCH) {
     const batch = texts.slice(i, i + BATCH);
     for (let attempt = 0; ; attempt++) {
@@ -146,7 +149,7 @@ export async function embedTexts(texts: string[], task: EmbedTask): Promise<numb
           !limit ||
           limit.quota === "day" ||
           attempt >= MAX_INLINE_RETRIES ||
-          waited + wait > MAX_INLINE_WAIT_SECONDS
+          waited + wait > maxWait
         ) {
           throw error;
         }

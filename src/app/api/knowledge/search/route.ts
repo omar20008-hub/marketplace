@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { EmbeddingError } from "@/lib/embeddings";
 import { hit } from "@/lib/rate-limit";
 import { knowledgeAvailable } from "@/server/knowledge/availability";
 import { installationForKey } from "@/server/knowledge/keys";
@@ -42,12 +43,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Knowledge search is not available" }, { status: 503 });
   }
 
-  const result = await searchKnowledge(
-    installation.id,
-    query,
-    typeof body.limit === "number" ? body.limit : undefined,
-  );
-  return NextResponse.json(result);
+  try {
+    const result = await searchKnowledge(
+      installation.id,
+      query,
+      typeof body.limit === "number" ? body.limit : undefined,
+    );
+    return NextResponse.json(result);
+  } catch (error) {
+    // The embedding service is rate-limited or down: say so briefly rather than
+    // holding the caller (a person is waiting) or failing with a bare 500.
+    if (error instanceof EmbeddingError && error.retryable) {
+      return NextResponse.json(
+        { error: "Search is busy, try again in a minute" },
+        { status: 503, headers: { "retry-after": String(error.limit?.retryAfterSeconds ?? 30) } },
+      );
+    }
+    throw error;
+  }
 }
 
 export const dynamic = "force-dynamic";
