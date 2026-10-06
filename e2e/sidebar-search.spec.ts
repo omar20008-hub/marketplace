@@ -67,7 +67,13 @@ test("no control is on screen that does nothing when clicked", async ({ page }) 
   await signIn(page, ACCOUNTS.nora.email);
 
   await page.goto("/");
-  await expect(page.getByRole("button", { name: "Attach" })).toHaveCount(0);
+  // Attaching an image is a real feature now (JPEG/PNG for a post), so the control
+  // may be on screen — but only because it does something: it opens the file picker.
+  const attach = page.getByRole("button", { name: "Attach" });
+  await expect(attach).toHaveCount(1);
+  const chooser = page.waitForEvent("filechooser");
+  await attach.click();
+  expect((await chooser).isMultiple()).toBe(true);
   await expect(page.getByRole("button", { name: "Dictate" })).toHaveCount(0);
 
   await page.goto("/marketplace");
