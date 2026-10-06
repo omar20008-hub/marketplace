@@ -264,6 +264,12 @@ export async function indexFile(fileId: string): Promise<Outcome> {
         // the embedding and the model reading it.
         vectors = await embedTexts(slice.map((chunk) => `${file.name}\n\n${chunk}`), "document");
       } catch (error) {
+        // The provider's *daily* quota is spent: nothing will pass until it turns over
+        // at midnight Pacific, so wait for that on purpose (what is stored stays)
+        // instead of knocking again every few minutes and failing the file in the end.
+        if (error instanceof EmbeddingError && error.limit?.quota === "day") {
+          return waitForNewDay(file.id, room.secondsToReset);
+        }
         // Stopped by a rate limit part-way: what is stored stays, and the next pass
         // resumes. That is progress, not a failure, so it does not spend an attempt.
         if (error instanceof EmbeddingError && error.retryable && storedThisPass > 0) {

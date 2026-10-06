@@ -19,7 +19,7 @@ vi.mock("@/server/google-account", () => ({
 }));
 
 /** Which call of embedTexts should be refused with a rate limit (1-based); 0 = none. */
-const limit = vi.hoisted(() => ({ failOnCall: 0, calls: 0, embedded: [] as string[] }));
+const limit = vi.hoisted(() => ({ failOnCall: 0, calls: 0, embedded: [] as string[], quota: "minute" as "minute" | "day" }));
 vi.mock("@/lib/embeddings", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/embeddings")>();
   return {
@@ -27,7 +27,7 @@ vi.mock("@/lib/embeddings", async (importOriginal) => {
     embedTexts: vi.fn(async (texts: string[], task: "document" | "query") => {
       limit.calls++;
       if (limit.failOnCall && limit.calls === limit.failOnCall) {
-        throw new actual.EmbeddingError("Embedding API answered 429.", true, { retryAfterSeconds: 45, quota: "minute" });
+        throw new actual.EmbeddingError("Embedding API answered 429.", true, { retryAfterSeconds: 45, quota: limit.quota });
       }
       limit.embedded.push(...texts);
       return actual.embedTexts(texts, task);
@@ -80,6 +80,7 @@ beforeEach(async () => {
   limit.failOnCall = 0;
   limit.calls = 0;
   limit.embedded = [];
+  limit.quota = "minute";
 });
 afterAll(async () => {
   await wipe();
@@ -133,6 +134,24 @@ describe("indexing a file that is rate-limited part-way", () => {
     limit.failOnCall = 1;
     await expect(indexFile(file.id)).rejects.toThrow(/429/);
     expect((await prisma.knowledgeFile.findUniqueOrThrow({ where: { id: file.id } })).status).toBe("PENDING");
+  });
+
+  it("waits for the next quota day, keeping what it has, when the provider's daily quota is spent", async () => {
+    const file = await seedFile();
+    limit.quota = "day";
+    limit.failOnCall = 1; // refused at once: no progress, and a daily limit
+    const outcome = await indexFile(file.id);
+    expect(outcome.deferSeconds).toBeGreaterThan(60); // until midnight Pacific, not a minute
+    const row = await prisma.knowledgeFile.findUniqueOrThrow({ where: { id: file.id } });
+    expect(row.status).toBe("PENDING");
+    expect(row.error).toMatch(/allowance is used up/);
+
+    // Part-way: stored chunks stay, and the wait is the same.
+    limit.calls = 0;
+    limit.failOnCall = 2;
+    const again = await indexFile(file.id);
+    expect(again.deferSeconds).toBeGreaterThan(60);
+    expect(await prisma.knowledgeChunk.count({ where: { fileId: file.id } })).toBe(25);
   });
 
   it("does not show a half-indexed file to search", async () => {

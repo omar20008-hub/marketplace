@@ -175,7 +175,11 @@ the queue is being drained. Otherwise it says which: `google.missing` (names onl
   count>`, and the job is *deferred* — no attempt is spent — for the time the API asked.
   The next pass embeds only the rest. A changed file, or a changed text, starts over.
   Before this, a large PDF was embedded from its first chunk on every retry, never
-  got past the per-minute limit, and spent the daily quota on repeats.
+  got past the per-minute limit, and spent the daily quota on repeats. When the
+  provider says its *daily* quota is spent (`quotaId` …PerDay), the file waits for the
+  next quota day (midnight Pacific) with the "allowance is used up" message instead of
+  retrying every few minutes; a file bigger than the whole day's allowance is finished
+  over several days.
 - **A daily allowance of our own** (`EMBEDDINGS_DAILY_LIMIT`, off when unset). The
   free tier allows about 1000 embedded texts a day, and a large PDF spends hundreds.
   Set the variable a little under the real quota (searches embed one query each and
