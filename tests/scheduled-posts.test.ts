@@ -60,9 +60,8 @@ async function seedInstallation(email: string) {
         { name: "caption", label: "Caption", type: "string" },
         { name: "networks", label: "Networks", type: "string" },
         { name: "scheduledAt", label: "When", type: "string" },
-        { name: "mediaUrl", label: "Image", type: "string", required: false },
-        { name: "pageId", label: "Page", type: "string", required: false },
-        { name: "postId", label: "Post", type: "string", required: false },
+        { name: "mediaUrl", label: "Image", type: "string" },
+        { name: "postId", label: "Post", type: "string" },
       ] as never,
     },
   });
@@ -121,6 +120,17 @@ describe("parsePostInput", () => {
     const parsed = parsePostInput(body, NOW);
     expect(parsed.ok).toBe(false);
     if (!parsed.ok) expect(parsed.error).toMatch(reason);
+  });
+
+  it("reads the word none as no image", () => {
+    expect(parsePostInput({ ...valid, networks: "facebook", mediaUrl: "none" }, NOW)).toMatchObject({
+      ok: true,
+      value: { mediaUrl: null },
+    });
+    expect(parsePostInput({ ...valid, mediaUrl: "None" }, NOW)).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/Instagram/),
+    });
   });
 
   it("lets a Facebook-only post go without an image", () => {
@@ -205,6 +215,16 @@ describe("runDuePosts", () => {
     expect(received).toMatchObject({ postId: post.id, networks: "facebook,instagram", caption: "Hello" });
   });
 
+  it("sends every declared input, with the word none for a post without an image", async () => {
+    const { installation } = await seedInstallation("a@example.test");
+    const post = await make(installation.id, new Date("2026-10-10T07:59:00Z"));
+    await runDuePosts({ now: NOW });
+    // The mock enforces the real dispatcher's rule: a missing or empty declared input is "incomplete".
+    const row = await prisma.scheduledPost.findUnique({ where: { id: post.id } });
+    expect(row?.status).toBe("PUBLISHED");
+    expect(JSON.parse(row?.result ?? "{}").received).toMatchObject({ mediaUrl: "none", postId: post.id });
+  });
+
   it("does not publish a cancelled post", async () => {
     const { installation } = await seedInstallation("a@example.test");
     const post = await make(installation.id, new Date("2026-10-10T07:59:00Z"));
@@ -256,7 +276,7 @@ describe("the template", () => {
       invocationMode: "on_demand",
       requiredCredentials: "facebookGraphApi",
       credentialDurability: "durable",
-      inputFields: "caption,networks,scheduledAt,mediaUrl,pageId,postId",
+      inputFields: "caption,networks,scheduledAt,mediaUrl,postId",
     });
   });
 
