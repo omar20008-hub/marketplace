@@ -18,10 +18,34 @@ const MAX_INLINE_RETRIES = 3;
 /** A person is waiting on a question's embedding, so it waits far less than an indexing job does. */
 const MAX_QUERY_WAIT_SECONDS = 8;
 
+/**
+ * Smallest batch worth shrinking to (8 chunks of ~1,350 characters stay well under
+ * the 30K-tokens-a-minute allowance even at a token per character, so a refusal of
+ * a batch this small is a busy window, to be waited out), and how long a shrunken
+ * size is kept before the full one is tried again.
+ */
+const MIN_BATCH = 8;
+const RESTORE_BATCH_AFTER_MS = 30 * 60_000;
+
 /** Overridable so tests need not really wait. */
 export const embeddingsRuntime = {
   sleep: (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+  /**
+   * How many texts go in one request right now. It starts at BATCH and is halved
+   * when a request is refused by a per-minute limit: the free tier also caps input
+   * *tokens* per minute, and a request that alone carries more than that allowance
+   * is refused however long it waits. (Dense text, such as Arabic or OCR output,
+   * gets there with 25 chunks.) It goes back up after a quiet half hour.
+   */
+  batchLimit: BATCH,
+  limitedAt: 0,
 };
+
+function currentBatchSize(): number {
+  const rt = embeddingsRuntime;
+  if (rt.batchLimit < BATCH && Date.now() - rt.limitedAt > RESTORE_BATCH_AFTER_MS) rt.batchLimit = BATCH;
+  return rt.batchLimit;
+}
 
 export type EmbedTask = "document" | "query";
 
@@ -132,30 +156,40 @@ export async function embedTexts(texts: string[], task: EmbedTask): Promise<numb
   const out: number[][] = [];
   let waited = 0;
   const maxWait = task === "query" ? MAX_QUERY_WAIT_SECONDS : MAX_INLINE_WAIT_SECONDS;
-  for (let i = 0; i < texts.length; i += BATCH) {
-    const batch = texts.slice(i, i + BATCH);
-    for (let attempt = 0; ; attempt++) {
-      try {
-        out.push(...(await geminiBatch(batch, task)));
-        break;
-      } catch (error) {
-        // A per-minute limit usually clears in seconds: wait it out here, within
-        // reason, so a big file is not thrown back to the queue (and restarted)
-        // for a pause that short. A daily limit, or a long wait, is the queue's job.
-        const limit = error instanceof EmbeddingError ? error.limit : undefined;
-        const wait = limit?.retryAfterSeconds ?? 5 * (attempt + 1);
-        if (
-          !(error instanceof EmbeddingError) ||
-          !limit ||
-          limit.quota === "day" ||
-          attempt >= MAX_INLINE_RETRIES ||
-          waited + wait > maxWait
-        ) {
-          throw error;
-        }
-        waited += wait;
-        await embeddingsRuntime.sleep(wait * 1000);
+  let i = 0;
+  let attempt = 0;
+  while (i < texts.length) {
+    const batch = texts.slice(i, i + currentBatchSize());
+    try {
+      out.push(...(await geminiBatch(batch, task)));
+      i += batch.length;
+      attempt = 0;
+    } catch (error) {
+      const limit = error instanceof EmbeddingError ? error.limit : undefined;
+      // Refused by a per-minute limit with a batch still big enough to halve: the
+      // request itself may be over the token allowance, which no waiting cures, so
+      // try again at once with a smaller one (and keep using the smaller size).
+      if (error instanceof EmbeddingError && limit && limit.quota !== "day" && batch.length > MIN_BATCH) {
+        embeddingsRuntime.batchLimit = Math.max(MIN_BATCH, Math.floor(batch.length / 2));
+        embeddingsRuntime.limitedAt = Date.now();
+        continue;
       }
+      // A per-minute limit usually clears in seconds: wait it out here, within
+      // reason, so a big file is not thrown back to the queue (and restarted)
+      // for a pause that short. A daily limit, or a long wait, is the queue's job.
+      const wait = limit?.retryAfterSeconds ?? 5 * (attempt + 1);
+      if (
+        !(error instanceof EmbeddingError) ||
+        !limit ||
+        limit.quota === "day" ||
+        attempt >= MAX_INLINE_RETRIES ||
+        waited + wait > maxWait
+      ) {
+        throw error;
+      }
+      waited += wait;
+      attempt++;
+      await embeddingsRuntime.sleep(wait * 1000);
     }
   }
   return out;

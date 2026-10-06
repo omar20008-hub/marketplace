@@ -162,6 +162,13 @@ the queue is being drained. Otherwise it says which: `google.missing` (names onl
   attempts.) Requests are sent in batches of 25. A folder with failed files shows
   "N failed" rather than "Up to date". The durable fix is quota: use a paid key, or
   raise the `gemini-embedding-001` limits in Google AI Studio.
+  **Requests shrink to fit the token allowance.** The free tier also caps input
+  *tokens* a minute (30K for `gemini-embedding-001`). A request of 25 dense chunks
+  (Arabic, OCR text) can be over that by itself, and is then refused however long it
+  waits — with the day's request count at zero. A per-minute refusal now halves the
+  batch at once (25 → 12 → 8, never below 8) and keeps the smaller size for half an
+  hour. Check AI Studio → Usage → Rate Limit: requests far under the limit with
+  TPM near 30K points here.
   **Indexing resumes instead of restarting.** A file is embedded and stored 25 chunks
   at a time. If a rate limit stops it part-way, the chunks stored so far stay (hidden:
   the file is not READY), `KnowledgeFile.partialRevision` records `<revision>:<chunk
