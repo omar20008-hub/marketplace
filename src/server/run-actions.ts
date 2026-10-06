@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { executeRun, fields, titleFor } from "./run-engine";
+import { describeAttachments, resolveAttachments } from "./media";
 import { answerThread, replyInBackground } from "./thread-reply";
 
 /**
@@ -31,15 +32,25 @@ export async function startTask(formData: FormData) {
       })
     : null;
 
-  const chatInput = pinnedInstallation
-    ? `[Product: ${pinnedInstallation.product.title}] ${task}`
-    : task;
+  // Attached images are re-checked against this user: only links to their own live
+  // uploads survive, and the assistant is told to use exactly those as the image.
+  const attachments = describeAttachments(
+    await resolveAttachments(user.id, formData.getAll("attachment").map(String)),
+  );
+  const shown = attachments.shown ? `${task}\n\n${attachments.shown}` : task;
+
+  const chatInput = [
+    pinnedInstallation ? `[Product: ${pinnedInstallation.product.title}] ${task}` : task,
+    attachments.forAssistant,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 
   const thread = await prisma.thread.create({
     data: {
       userId: user.id,
       title: titleFor(task),
-      messages: { create: [{ role: "USER", body: task }] },
+      messages: { create: [{ role: "USER", body: shown }] },
     },
   });
 

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { purgeExpiredMedia } from "@/server/media";
 import { executeRun } from "@/server/run-engine";
 import { statusLabel } from "@/server/scheduler";
 
@@ -70,6 +71,11 @@ export function parsePostInput(body: unknown, now = new Date()): Parsed {
   if (networks.includes("instagram") && !mediaUrl) {
     return { ok: false, error: "Instagram posts need an image: mediaUrl is required" };
   }
+  // Instagram publishes JPEG only. A link that says it is something else would be
+  // accepted here and rejected by Instagram hours later, with nobody watching.
+  if (networks.includes("instagram") && mediaUrl && /\.(png|gif|webp|bmp|heic)$/i.test(new URL(mediaUrl).pathname)) {
+    return { ok: false, error: "Instagram only accepts JPEG images. Attach a JPEG, or post to Facebook only." };
+  }
 
   const pageId = typeof input.pageId === "string" && input.pageId.trim() ? input.pageId.trim() : null;
   if (pageId && !/^\d{5,32}$/.test(pageId)) {
@@ -121,6 +127,9 @@ export async function runDuePosts({
 }: { now?: Date; limit?: number } = {}): Promise<{ checked: number; outcomes: PostOutcome[] }> {
   // A tick that died after claiming leaves PUBLISHING behind. Whether the post
   // went out is unknowable from here, so say that instead of re-sending it.
+  // Attachments past their 90 days are deleted on the same clock. Never worth failing a tick over.
+  await purgeExpiredMedia(now).catch(() => 0);
+
   await prisma.scheduledPost.updateMany({
     where: { status: "PUBLISHING", claimedAt: { lt: new Date(now.getTime() - STALE_CLAIM_MS) } },
     data: { status: "FAILED", result: "Interrupted while publishing — check the page before posting again." },

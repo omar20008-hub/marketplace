@@ -8,6 +8,7 @@ import { ArrowUp, CalendarClock, Grid2x2, Sparkles } from "lucide-react";
 import { startTask } from "@/server/run-actions";
 import { isSendKey } from "./send-key";
 import { PendingNote, PendingTextarea } from "./pending";
+import { AttachButton, AttachmentList, useAttachments } from "./attachments";
 
 function SendButton({ disabled }: { disabled: boolean }) {
   const { pending } = useFormStatus();
@@ -40,6 +41,7 @@ export function Composer({
   const [picking, setPicking] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const sending = useRef(false);
+  const attachments = useAttachments();
 
   const pinnedTitle = products.find((p) => p.id === pinned)?.title;
 
@@ -56,6 +58,7 @@ export function Composer({
         action={async (formData) => {
           try {
             await startTask(formData);
+            attachments.clear();
           } finally {
             sending.current = false;
           }
@@ -82,16 +85,15 @@ export function Composer({
             className="max-h-48 w-full resize-none bg-transparent text-base leading-7 placeholder:text-ink-3 focus:outline-none"
           />
 
+          <AttachmentList attachments={attachments} />
           <div className="mt-3.5 flex items-center justify-between gap-2">
             {/*
-              The design also draws an attach button and a dictate button here.
-              Neither is rendered: no product declares a file input, so there is
-              nothing for an attachment to become, and dictation has no contract
-              behind it either. A control that does nothing when clicked is
-              worse than one that is not there, so they arrive with the feature
-              rather than ahead of it.
+              The design also draws a dictate button here. It is not rendered:
+              dictation has no contract behind it, and a control that does
+              nothing when clicked is worse than one that is not there.
             */}
             <div className="-ml-2 flex items-center gap-1.5">
+              <AttachButton attachments={attachments} />
               <button
                 type="button"
                 onClick={() => setPicking((open) => !open)}
@@ -117,7 +119,7 @@ export function Composer({
               </Link>
             </div>
             <PendingNote className="mr-2 text-[13px] text-ink-3" />
-            <SendButton disabled={!text.trim()} />
+            <SendButton disabled={!text.trim() || attachments.uploading} />
           </div>
         </div>
       </form>
