@@ -7,6 +7,7 @@ import clsx from "clsx";
 import { followUp } from "@/server/thread-actions";
 import { isSendKey } from "./send-key";
 import { PendingTextarea } from "./pending";
+import { AttachButton, AttachmentList, useAttachments } from "./attachments";
 
 function Send({ disabled }: { disabled: boolean }) {
   const { pending } = useFormStatus();
@@ -29,6 +30,7 @@ export function FollowUp({ threadId, waiting = false }: { threadId: string; wait
   const [text, setText] = useState("");
   const formRef = useRef<HTMLFormElement>(null);
   const sending = useRef(false);
+  const attachments = useAttachments();
 
   return (
     <form
@@ -41,15 +43,18 @@ export function FollowUp({ threadId, waiting = false }: { threadId: string; wait
       }}
       action={async (formData) => {
         setText("");
+        attachments.clear();
         try {
           await followUp(formData);
         } finally {
           sending.current = false;
         }
       }}
-      className="flex items-end gap-2 rounded-composer border border-line bg-canvas py-2.5 pr-2.5 pl-5"
+      className="flex flex-col rounded-composer border border-line bg-canvas py-2.5 pr-2.5 pl-3"
     >
       <input type="hidden" name="threadId" value={threadId} />
+      <div className="flex items-end gap-2">
+      <AttachButton attachments={attachments} />
       <PendingTextarea
         name="message"
         readOnly={waiting}
@@ -65,7 +70,9 @@ export function FollowUp({ threadId, waiting = false }: { threadId: string; wait
         placeholder="Ask a follow-up or change the inputs…"
         className="max-h-32 min-h-9 flex-1 resize-none bg-transparent py-1.5 text-[15px] placeholder:text-ink-3 focus:outline-none"
       />
-      <Send disabled={!text.trim() || waiting} />
+      <Send disabled={!text.trim() || waiting || attachments.uploading} />
+      </div>
+      <AttachmentList attachments={attachments} />
     </form>
   );
 }

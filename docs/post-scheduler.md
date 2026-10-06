@@ -26,6 +26,25 @@ Business account at a date and time they choose. Template:
 
 Several posts are several runs; each is its own row.
 
+## Attaching an image
+
+The chat composer (and the follow-up box in a thread) has an attach button for
+JPEG and PNG images, up to 8 MB each and 4 per message. The file is uploaded to
+`POST /api/media`, stored in `MediaUpload` and served from an unguessable public
+link (`/api/media/<token>.jpg|png`) — Instagram and Facebook fetch the image from
+a URL, and a post can be scheduled weeks ahead, so the link works for 90 days and
+the tick deletes what has expired. The submitted links are re-checked against the
+signed-in user before the message tells the assistant to use them as `mediaUrl`.
+
+- The type is read from the file's first bytes, never from its name or declared type.
+- Instagram publishes JPEG only: a PNG is accepted for Facebook, and a PNG link
+  for an Instagram post is refused with a sentence the assistant can relay.
+- The Orchestrator (an n8n workflow) has to act on the note the platform appends
+  to the message (“use these exact public URLs as the post's mediaUrl”). That
+  workflow is not in this repository; check it on a real run.
+- The platform's own address must be reachable from the internet (`PUBLIC_URL`),
+  or the networks cannot fetch the image.
+
 ## Rules the platform enforces (`parsePostInput`)
 
 Caption 1–2200 characters; networks `facebook` and/or `instagram`; `mediaUrl`
