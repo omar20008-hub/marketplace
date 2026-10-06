@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { env } from "@/lib/env";
+import { runDuePosts } from "@/server/posts/scheduled-posts";
 import { runDueSchedules } from "@/server/scheduler";
 
 /**
@@ -27,7 +28,9 @@ export async function POST(request: Request) {
   }
 
   const summary = await runDueSchedules();
-  return NextResponse.json({ ok: true, ...summary });
+  // Due social posts (Post Scheduler) ride the same heartbeat.
+  const posts = await runDuePosts();
+  return NextResponse.json({ ok: true, ...summary, posts });
 }
 
 /**

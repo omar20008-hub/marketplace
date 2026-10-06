@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { env } from "@/lib/env";
+import { runDuePosts } from "@/server/posts/scheduled-posts";
 import { tickKnowledge } from "@/server/knowledge/worker";
 
 /**
@@ -14,8 +15,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const result = await tickKnowledge();
-  if (!result.available) return NextResponse.json({ ok: true, available: false });
-  return NextResponse.json({ ok: true, ...result });
+  const posts = await runDuePosts();
+  if (!result.available) return NextResponse.json({ ok: true, available: false, posts });
+  return NextResponse.json({ ok: true, ...result, posts });
 }
 
 export const GET = POST;
