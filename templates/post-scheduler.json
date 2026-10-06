@@ -1,0 +1,521 @@
+{
+  "name": "Post scheduler",
+  "nodes": [
+    {
+      "id": "7c1e9b40-2d6a-4f3e-8a51-9e0f1a2b3c01",
+      "name": "Post Scheduler",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        192,
+        848
+      ],
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "caption",
+              "type": "string"
+            },
+            {
+              "name": "networks",
+              "type": "string"
+            },
+            {
+              "name": "scheduledAt",
+              "type": "string"
+            },
+            {
+              "name": "mediaUrl",
+              "type": "string"
+            },
+            {
+              "name": "pageId",
+              "type": "string"
+            },
+            {
+              "name": "postId",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "7c1e9b40-2d6a-4f3e-8a51-9e0f1a2b3c02",
+      "name": "Is Due Post",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        416,
+        848
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.postId }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "7c1e9b40-2d6a-4f3e-8a51-9e0f1a2b3c03",
+      "name": "Queue Post",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        672,
+        1056
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "__MP_PLATFORM_URL__/api/posts",
+        "authentication": "none",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer __MP_KNOWLEDGE_KEY__"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ caption: $json.caption, networks: $json.networks, scheduledAt: $json.scheduledAt, mediaUrl: $json.mediaUrl || undefined, pageId: $json.pageId || undefined }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "7c1e9b40-2d6a-4f3e-8a51-9e0f1a2b3c04",
+      "name": "Reply Scheduled",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        896,
+        1056
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "o1",
+              "name": "output",
+              "type": "string",
+              "value": "={{ $json.id ? 'تمت جدولة البوست (' + $json.id + ') للنشر في ' + $json.scheduledAt + ' (UTC). يمكنك إلغاؤه قبل ذلك الوقت.' : 'تعذّرت الجدولة: ' + ($json.error || 'خطأ غير معروف') }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "7c1e9b40-2d6a-4f3e-8a51-9e0f1a2b3c05",
+      "name": "Get Pages",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        672,
+        640
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://graph.facebook.com/v21.0/me/accounts",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "facebookGraphApi",
+        "sendQuery": true,
+        "specifyQuery": "keypair",
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "id,name,access_token,instagram_business_account"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "facebookGraphApi": {
+          "id": "placeholder",
+          "name": "Facebook Graph account"
+        }
+      }
+    },
+    {
+      "id": "7c1e9b40-2d6a-4f3e-8a51-9e0f1a2b3c06",
+      "name": "Pick Page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        640
+      ],
+      "parameters": {
+        "jsCode": "const input = $('Post Scheduler').first().json;\nconst pages = $input.first().json.data || [];\nconst wanted = String(input.networks || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);\nconst page = input.pageId ? pages.find((p) => p.id === String(input.pageId)) : pages[0];\nif (!page) throw new Error('لا توجد صفحة فيسبوك يمكن النشر عليها بهذا الحساب.');\nconst igId = (page.instagram_business_account && page.instagram_business_account.id) || '';\nif (wanted.includes('instagram') && !igId) throw new Error('الصفحة \"' + page.name + '\" غير مرتبطة بحساب إنستغرام للأعمال.');\nif (wanted.includes('instagram') && !input.mediaUrl) throw new Error('إنستغرام يتطلب صورة.');\nreturn [{ json: { caption: input.caption, mediaUrl: input.mediaUrl || '', pageId: page.id, pageName: page.name,\n  pageToken: page.access_token, igId, facebook: wanted.includes('facebook'), instagram: wanted.includes('instagram') } }];"
+      }
+    },
+    {
+      "id": "7c1e9b40-2d6a-4f3e-8a51-9e0f1a2b3c07",
+      "name": "Facebook?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        640
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.facebook }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "7c1e9b40-2d6a-4f3e-8a51-9e0f1a2b3c08",
+      "name": "Publish Facebook",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1344,
+        544
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://graph.facebook.com/v21.0/' + $json.pageId + ($json.mediaUrl ? '/photos' : '/feed') }}",
+        "authentication": "none",
+        "sendBody": true,
+        "specifyBody": "keypair",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{ $json.pageToken }}"
+            },
+            {
+              "name": "={{ $json.mediaUrl ? 'caption' : 'message' }}",
+              "value": "={{ $json.caption }}"
+            },
+            {
+              "name": "url",
+              "value": "={{ $json.mediaUrl }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "7c1e9b40-2d6a-4f3e-8a51-9e0f1a2b3c09",
+      "name": "After Facebook",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1568,
+        640
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "7c1e9b40-2d6a-4f3e-8a51-9e0f1a2b3c10",
+      "name": "Instagram?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1792,
+        640
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $('Pick Page').first().json.instagram }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "7c1e9b40-2d6a-4f3e-8a51-9e0f1a2b3c11",
+      "name": "Create IG Container",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2016,
+        544
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://graph.facebook.com/v21.0/' + $('Pick Page').first().json.igId + '/media' }}",
+        "authentication": "none",
+        "sendBody": true,
+        "specifyBody": "keypair",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{ $('Pick Page').first().json.pageToken }}"
+            },
+            {
+              "name": "image_url",
+              "value": "={{ $('Pick Page').first().json.mediaUrl }}"
+            },
+            {
+              "name": "caption",
+              "value": "={{ $('Pick Page').first().json.caption }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "7c1e9b40-2d6a-4f3e-8a51-9e0f1a2b3c12",
+      "name": "Publish IG",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2240,
+        544
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://graph.facebook.com/v21.0/' + $('Pick Page').first().json.igId + '/media_publish' }}",
+        "authentication": "none",
+        "sendBody": true,
+        "specifyBody": "keypair",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{ $('Pick Page').first().json.pageToken }}"
+            },
+            {
+              "name": "creation_id",
+              "value": "={{ $json.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "7c1e9b40-2d6a-4f3e-8a51-9e0f1a2b3c13",
+      "name": "Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2464,
+        640
+      ],
+      "parameters": {
+        "jsCode": "const page = $('Pick Page').first().json;\nconst lines = [];\nlet failed = false;\nconst why = (r) => (r && r.error && (r.error.message || r.error)) || (r && r.message) || 'فشل غير معروف';\nif (page.facebook) {\n  const r = $('Publish Facebook').first().json;\n  if (r.id || r.post_id) lines.push('فيسبوك (' + page.pageName + '): ' + (r.post_id || r.id));\n  else { failed = true; lines.push('فيسبوك: ' + why(r)); }\n}\nif (page.instagram) {\n  const container = $('Create IG Container').first().json;\n  const r = $('Publish IG').isExecuted ? $('Publish IG').first().json : container;\n  if (container.id && r.id) lines.push('إنستغرام: ' + r.id);\n  else { failed = true; lines.push('إنستغرام: ' + why(r.error ? r : container)); }\n}\nif (failed) throw new Error(lines.join(' | '));\nreturn [{ json: { output: 'تم النشر. ' + lines.join(' | ') } }];"
+      }
+    }
+  ],
+  "connections": {
+    "Post Scheduler": {
+      "main": [
+        [
+          {
+            "node": "Is Due Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Due Post": {
+      "main": [
+        [
+          {
+            "node": "Get Pages",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Queue Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Queue Post": {
+      "main": [
+        [
+          {
+            "node": "Reply Scheduled",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Pages": {
+      "main": [
+        [
+          {
+            "node": "Pick Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pick Page": {
+      "main": [
+        [
+          {
+            "node": "Facebook?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Facebook?": {
+      "main": [
+        [
+          {
+            "node": "Publish Facebook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "After Facebook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish Facebook": {
+      "main": [
+        [
+          {
+            "node": "After Facebook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "After Facebook": {
+      "main": [
+        [
+          {
+            "node": "Instagram?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Instagram?": {
+      "main": [
+        [
+          {
+            "node": "Create IG Container",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create IG Container": {
+      "main": [
+        [
+          {
+            "node": "Publish IG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish IG": {
+      "main": [
+        [
+          {
+            "node": "Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

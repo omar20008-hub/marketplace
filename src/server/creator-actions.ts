@@ -61,7 +61,11 @@ export async function uploadProduct(
 
   // Read from the file the creator sent, not from anything n8n reports: whether a
   // template asks the platform for a knowledge key is visible in the template.
-  const usesKnowledge = text.includes("__MP_KNOWLEDGE_KEY__");
+  // The key is also how other templates (Post scheduler) talk to the platform, so
+  // it only means "reads the user's files" when the template calls the search.
+  const usesKnowledge =
+    text.includes("__MP_KNOWLEDGE_KEY__") && text.includes("/api/knowledge/");
+  const usesPosts = text.includes("__MP_KNOWLEDGE_KEY__") && text.includes("/api/posts");
 
   const slug = slugify(title);
   const existing = await prisma.product.findUnique({ where: { slug } });
@@ -91,6 +95,7 @@ export async function uploadProduct(
       invocationMode: reply.invocationMode,
       inputFields: splitList(reply.inputFields),
       usesKnowledge,
+      usesPosts,
     },
     update: {
       templateId: reply.templateId,
@@ -105,6 +110,7 @@ export async function uploadProduct(
       invocationMode: reply.invocationMode,
       inputFields: splitList(reply.inputFields),
       usesKnowledge,
+      usesPosts,
     },
   });
 

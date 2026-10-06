@@ -305,6 +305,12 @@ edited file is picked up in seconds instead of at the next re-listing. Notes:
   every 6 hours, so a missed notification costs freshness, not correctness. On
   http (a laptop) there is no push and that re-listing is all there is.
 
+### Post scheduler
+
+`templates/post-scheduler.json` publishes a post to Facebook and/or Instagram at a
+chosen time. The queue is the `ScheduledPost` table, filled through `/api/posts` and
+drained by the same tick as schedules. See [docs/post-scheduler.md](docs/post-scheduler.md).
+
 ### Google Drive connection
 
 Drive is the one connection the platform holds itself, through its own OAuth

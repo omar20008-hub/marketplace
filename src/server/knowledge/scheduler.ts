@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
+import { runDuePosts } from "@/server/posts/scheduled-posts";
 import { tickKnowledge } from "./worker";
 
 /**
@@ -181,7 +182,16 @@ export function startKnowledgeScheduler(): Scheduler | null {
   const scheduler = createScheduler({
     intervalMs: intervalSeconds * 1000,
     firstDelayMs: FIRST_PASS_DELAY_MS,
-    pass: () => runScheduledPass(),
+    pass: async () => {
+      // Due social posts ride the same clock. A post is claimed by compare-and-swap,
+      // so this needs no lock, and a failure here must not skip indexing's next pass.
+      try {
+        await runScheduledPass();
+      } finally {
+        const { outcomes } = await runDuePosts();
+        if (outcomes.length > 0) console.log(`post tick: ${outcomes.length} due`);
+      }
+    },
     onError: (error) => console.error(`Knowledge tick failed: ${describeError(error)}`),
   });
   globalForScheduler.__knowledgeScheduler = scheduler;

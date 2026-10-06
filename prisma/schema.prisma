@@ -161,6 +161,9 @@ model Product {
   /// the __MP_KNOWLEDGE_KEY__ placeholder). Set from the uploaded file itself, so
   /// the setup wizard knows to ask for a folder.
   usesKnowledge  Boolean  @default(false)
+  /// True for a template that queues social posts through /api/posts (Post scheduler).
+  /// Set at upload from the file itself; adds the Posts screen to My workspace.
+  usesPosts      Boolean  @default(false)
 
   // Marketplace signals. Ratings are platform-owned, health is derived from runs.
   ratingAvg   Float   @default(0)
@@ -324,6 +327,7 @@ model Installation {
   credentials InstallationCredential[]
   runs        Run[]
   schedules   Schedule[]
+  posts       ScheduledPost[]
 
   /// sha256 of the key this installation's n8n instance uses to search its
   /// knowledge sources. The key itself exists only in that instance; here there
@@ -770,4 +774,44 @@ model KnowledgeJob {
 model Heartbeat {
   name String   @id
   at   DateTime
+}
+
+enum PostStatus {
+  SCHEDULED
+  PUBLISHING
+  PUBLISHED
+  FAILED
+  CANCELLED
+}
+
+/// A social post waiting for its time. Written by an installed Post Scheduler
+/// workflow through /api/posts (authenticated by the installation's own key) and
+/// published by the tick, which hands each due post back to that workflow.
+model ScheduledPost {
+  id             String       @id @default(cuid())
+  installationId String
+  installation   Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+
+  caption  String
+  /// Public https URL of the image. Required for Instagram.
+  mediaUrl String?
+  /// Any of "facebook", "instagram".
+  networks String[]
+  /// Optional Facebook Page id; empty means the first Page the token can post to.
+  pageId   String?
+
+  /// UTC.
+  scheduledAt DateTime
+  status      PostStatus @default(SCHEDULED)
+  attempts    Int        @default(0)
+  /// Claim time while PUBLISHING, so a tick that died mid-way can be recovered.
+  claimedAt   DateTime?
+  publishedAt DateTime?
+  /// The workflow's reply on success, the reason on failure.
+  result      String?
+
+  createdAt DateTime @default(now())
+
+  @@index([status, scheduledAt])
+  @@index([installationId, status])
 }
