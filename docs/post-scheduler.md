@@ -7,8 +7,8 @@ Business account at a date and time they choose. Template:
 ## How it works
 
 1. The user asks in the main chat. The Orchestrator collects the template's
-   inputs (`caption`, `networks`, `scheduledAt`, plus optional `mediaUrl`,
-   `pageId`) and asks for whatever is missing before it runs anything.
+   inputs (`caption`, `networks`, `scheduledAt`, `mediaUrl`, `postId`) and asks for
+   whatever is missing before it runs anything. See *Why every input is required*.
 2. The workflow's schedule path calls `POST /api/posts` on the platform with the
    installation's own `kb_…` key (the placeholders `__MP_PLATFORM_URL__` and
    `__MP_KNOWLEDGE_KEY__`, filled in at install). The platform validates and
@@ -18,9 +18,10 @@ Business account at a date and time they choose. Template:
    `/api/knowledge/tick`, or the in-process `KNOWLEDGE_TICK_INTERVAL_SECONDS`
    scheduler) calls `runDuePosts()`. Each due post is claimed with a
    compare-and-swap and handed back to the same installation through
-   `executeRun()`, with `postId` set.
-4. With `postId` present the workflow takes its publishing path: it lists the
-   user's Pages with their `facebookGraphApi` connection, posts to Facebook
+   `executeRun()`, with `postId` set to the post's id.
+4. With a real `postId` (anything but `new`) the workflow takes its publishing
+   path: it lists the user's Pages with their `facebookGraphApi` connection and
+   uses the first one, posts to Facebook
    (`/feed`, or `/photos` with an image) and/or creates and publishes an
    Instagram media container using the Page token.
 
@@ -45,11 +46,26 @@ signed-in user before the message tells the assistant to use them as `mediaUrl`.
 - The platform's own address must be reachable from the internet (`PUBLIC_URL`),
   or the networks cannot fetch the image.
 
+## Why every input is required
+
+MP · Dispatcher treats every declared input as required: a missing or empty one
+comes back as `incomplete`, and MP · Upload & Provision has no way to mark one
+optional. So the template declares only inputs that always carry a value, and the
+two that are sometimes meaningless carry a word instead:
+
+- `mediaUrl` is the image link, or `none` for a text-only Facebook post.
+- `postId` is `new` when the user is scheduling (the Orchestrator always passes
+  it, and never asks), and the post's id when the platform publishes it.
+
+MP · Orchestrator's rule 17 tells the assistant this. The platform sends the same
+two words back when it publishes, and `POST /api/posts` reads `mediaUrl: none` as
+no image.
+
 ## Rules the platform enforces (`parsePostInput`)
 
 Caption 1–2200 characters; networks `facebook` and/or `instagram`; `mediaUrl`
 must be https and is required for Instagram; `scheduledAt` ISO 8601, between one
-minute and 75 days ahead; `pageId` numeric. Times are UTC, as everywhere else.
+minute and 75 days ahead. Times are UTC, as everywhere else.
 
 ## Behaviour worth knowing
 
@@ -64,9 +80,14 @@ minute and 75 days ahead; `pageId` numeric. Times are UTC, as everywhere else.
 
 ## Not verified here
 
-Nothing in this change has run against a real n8n instance or Facebook. Before
-relying on it: upload the template, approve it, connect a Facebook token that can
-manage a Page (`pages_manage_posts`, plus `instagram_content_publish` for
-Instagram), and schedule a post two minutes ahead. Specifically check that
-Upload & Provision marks `mediaUrl`, `pageId` and `postId` as optional inputs —
-the mock treats every declared field as required unless it says otherwise.
+Nothing in this change has run against a real Facebook account. Before relying on
+it: upload the template, approve it, connect a Facebook token that can manage a
+Page (`pages_manage_posts`, plus `instagram_content_publish` for Instagram), and
+schedule a post two minutes ahead. What *has* been checked against the live n8n
+workflows (by reading them): the node types are on the whitelist (the Code nodes
+are flagged for manual review), `facebookGraphApi` is a registered durable
+credential type, the install key and platform URL are sent on every activation,
+and the dispatcher's required-input rule above.
+
+The publishing path posts to the **first** Page the token can manage; choosing
+among several Pages is not supported.

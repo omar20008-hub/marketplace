@@ -58,8 +58,10 @@ export function parsePostInput(body: unknown, now = new Date()): Parsed {
   if (unknown.length > 0) return { ok: false, error: `unsupported network: ${unknown.join(", ")}` };
   const networks = names as Network[];
 
+  // The template declares mediaUrl as an input, and every declared input is required
+  // by the dispatcher, so "no image" arrives as the word "none", not as a missing field.
   let mediaUrl: string | null = null;
-  if (typeof input.mediaUrl === "string" && input.mediaUrl.trim()) {
+  if (typeof input.mediaUrl === "string" && input.mediaUrl.trim() && input.mediaUrl.trim().toLowerCase() !== "none") {
     try {
       const url = new URL(input.mediaUrl.trim());
       if (url.protocol !== "https:") throw new Error("not https");
@@ -170,8 +172,9 @@ export async function runDuePosts({
           caption: post.caption,
           networks: post.networks.join(","),
           scheduledAt: post.scheduledAt.toISOString(),
-          ...(post.mediaUrl ? { mediaUrl: post.mediaUrl } : {}),
-          ...(post.pageId ? { pageId: post.pageId } : {}),
+          // Every declared input is required by the dispatcher, so an absent image
+          // is the word "none" rather than a missing field.
+          mediaUrl: post.mediaUrl ?? "none",
         },
       });
       if (run?.result === "SUCCESS") {

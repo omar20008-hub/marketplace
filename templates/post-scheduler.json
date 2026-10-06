@@ -31,10 +31,6 @@
               "type": "string"
             },
             {
-              "name": "pageId",
-              "type": "string"
-            },
-            {
               "name": "postId",
               "type": "string"
             }
@@ -61,11 +57,11 @@
           "conditions": [
             {
               "id": "c1",
-              "leftValue": "={{ $json.postId }}",
+              "leftValue": "={{ $json.postId !== 'new' && String($json.postId || '') !== '' }}",
               "rightValue": "",
               "operator": {
-                "type": "string",
-                "operation": "notEmpty",
+                "type": "boolean",
+                "operation": "true",
                 "singleValue": true
               }
             }
@@ -100,7 +96,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ caption: $json.caption, networks: $json.networks, scheduledAt: $json.scheduledAt, mediaUrl: $json.mediaUrl || undefined, pageId: $json.pageId || undefined }) }}",
+        "jsonBody": "={{ JSON.stringify({ caption: $json.caption, networks: $json.networks, scheduledAt: $json.scheduledAt, mediaUrl: ($json.mediaUrl && $json.mediaUrl !== 'none') ? $json.mediaUrl : undefined }) }}",
         "options": {
           "response": {
             "response": {
@@ -176,7 +172,7 @@
         640
       ],
       "parameters": {
-        "jsCode": "const input = $('Post Scheduler').first().json;\nconst pages = $input.first().json.data || [];\nconst wanted = String(input.networks || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);\nconst page = input.pageId ? pages.find((p) => p.id === String(input.pageId)) : pages[0];\nif (!page) throw new Error('لا توجد صفحة فيسبوك يمكن النشر عليها بهذا الحساب.');\nconst igId = (page.instagram_business_account && page.instagram_business_account.id) || '';\nif (wanted.includes('instagram') && !igId) throw new Error('الصفحة \"' + page.name + '\" غير مرتبطة بحساب إنستغرام للأعمال.');\nif (wanted.includes('instagram') && !input.mediaUrl) throw new Error('إنستغرام يتطلب صورة.');\nreturn [{ json: { caption: input.caption, mediaUrl: input.mediaUrl || '', pageId: page.id, pageName: page.name,\n  pageToken: page.access_token, igId, facebook: wanted.includes('facebook'), instagram: wanted.includes('instagram') } }];"
+        "jsCode": "const input = $('Post Scheduler').first().json;\nconst pages = $input.first().json.data || [];\nconst wanted = String(input.networks || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);\nconst page = pages[0];\nif (!page) throw new Error('لا توجد صفحة فيسبوك يمكن النشر عليها بهذا الحساب.');\nconst igId = (page.instagram_business_account && page.instagram_business_account.id) || '';\nif (wanted.includes('instagram') && !igId) throw new Error('الصفحة \"' + page.name + '\" غير مرتبطة بحساب إنستغرام للأعمال.');\nconst mediaUrl = input.mediaUrl && input.mediaUrl !== 'none' ? input.mediaUrl : '';\nif (wanted.includes('instagram') && !mediaUrl) throw new Error('إنستغرام يتطلب صورة.');\nreturn [{ json: { caption: input.caption, mediaUrl: mediaUrl, pageId: page.id, pageName: page.name,\n  pageToken: page.access_token, igId, facebook: wanted.includes('facebook'), instagram: wanted.includes('instagram') } }];"
       }
     },
     {
