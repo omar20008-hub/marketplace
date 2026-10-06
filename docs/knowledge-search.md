@@ -162,6 +162,13 @@ the queue is being drained. Otherwise it says which: `google.missing` (names onl
   attempts.) Requests are sent in batches of 25. A folder with failed files shows
   "N failed" rather than "Up to date". The durable fix is quota: use a paid key, or
   raise the `gemini-embedding-001` limits in Google AI Studio.
+  **Indexing resumes instead of restarting.** A file is embedded and stored 25 chunks
+  at a time. If a rate limit stops it part-way, the chunks stored so far stay (hidden:
+  the file is not READY), `KnowledgeFile.partialRevision` records `<revision>:<chunk
+  count>`, and the job is *deferred* — no attempt is spent — for the time the API asked.
+  The next pass embeds only the rest. A changed file, or a changed text, starts over.
+  Before this, a large PDF was embedded from its first chunk on every retry, never
+  got past the per-minute limit, and spent the daily quota on repeats.
 - **A daily allowance of our own** (`EMBEDDINGS_DAILY_LIMIT`, off when unset). The
   free tier allows about 1000 embedded texts a day, and a large PDF spends hundreds.
   Set the variable a little under the real quota (searches embed one query each and
