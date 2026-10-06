@@ -39,6 +39,18 @@ export default async function FilesPage({
     where: { targetId: { in: installation.knowledgeSources.map((s) => s.id) } },
   });
 
+  const waitingIds = installation.knowledgeSources.flatMap((s) =>
+    s.files.filter((f) => f.status === "PENDING").map((f) => f.id),
+  );
+  const retries = new Map(
+    (
+      await prisma.knowledgeJob.findMany({
+        where: { kind: "INDEX_FILE", targetId: { in: waitingIds } },
+        select: { targetId: true, runAfter: true },
+      })
+    ).map((job) => [job.targetId, job.runAfter]),
+  );
+
   const usage = await knowledgeUsage(user.id);
   // Work is queued and nothing has come to run it. Only then does the page say so;
   // while the worker is alive this changes nothing on screen.
@@ -162,6 +174,7 @@ export default async function FilesPage({
                         status: file.status,
                         error: file.error,
                         chunks: file.chunkCount,
+                        nextTry: retries.get(file.id) ?? null,
                       }}
                     />
                   ))}

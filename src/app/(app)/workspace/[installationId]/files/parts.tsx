@@ -9,6 +9,7 @@ import {
   attachFolder,
   removeSource,
   retryFile,
+  tryFileNow,
   syncNow,
   type KnowledgeActionState,
 } from "@/server/knowledge/actions";
@@ -66,6 +67,8 @@ export function FileRow({
     status: string;
     error: string | null;
     chunks: number;
+    /** When the queue will try a waiting file again, if it is backing off. */
+    nextTry?: Date | null;
   };
 }) {
   const badge = FILE_BADGE[file.status] ?? FILE_BADGE.UNSUPPORTED;
@@ -85,9 +88,18 @@ export function FileRow({
         {file.path || file.error ? (
           <div className="truncate text-xs text-ink-3">
             {file.error ?? file.path}
+            {file.status === "PENDING" && file.error && file.nextTry ? ` ${nextTryText(file.nextTry)}` : ""}
           </div>
         ) : null}
       </div>
+      {file.status === "PENDING" ? (
+        <form action={tryFileNow}>
+          <input type="hidden" name="fileId" value={file.id} />
+          <Button type="submit" size="sm" tone="secondary">
+            Try now
+          </Button>
+        </form>
+      ) : null}
       {file.status === "FAILED" ? (
         <form action={retryFile}>
           <input type="hidden" name="fileId" value={file.id} />
@@ -99,6 +111,13 @@ export function FileRow({
       <Badge tone={badge.tone}>{badge.label}</Badge>
     </li>
   );
+}
+
+function nextTryText(at: Date): string {
+  const minutes = Math.ceil((at.getTime() - Date.now()) / 60_000);
+  if (minutes <= 1) return "Next try within a minute.";
+  if (minutes < 90) return `Next try in about ${minutes} minutes.`;
+  return `Next try in about ${Math.round(minutes / 60)} hours.`;
 }
 
 export function SourceActions({

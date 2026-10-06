@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { GOOGLE_DRIVE_CREDENTIAL } from "@/lib/google-oauth";
-import { enqueue } from "./queue";
+import { enqueue, expedite } from "./queue";
 import { createKnowledgeSource } from "./sources";
 import { stopWatch } from "./watch";
 
@@ -52,7 +52,27 @@ export async function syncNow(formData: FormData) {
   // A PAUSED source is one the user (or an uninstall) stopped; it stays stopped.
   if (source.status === "PAUSED") return;
   await enqueue("SYNC_SOURCE", source.id);
+  // A file waiting out a retry backoff would otherwise sit there for up to an hour
+  // after the person pressed "Check now": bring those forward too.
+  const waiting = await prisma.knowledgeFile.findMany({
+    where: { sourceId: source.id, status: "PENDING" },
+    select: { id: true },
+    take: 200,
+  });
+  for (const { id } of waiting) await expedite("INDEX_FILE", id);
   revalidatePath(`/workspace/${source.installationId}/files`);
+}
+
+/** A file that is waiting (a rate limit, a retry delay): try it on the next pass instead of when the backoff ends. */
+export async function tryFileNow(formData: FormData) {
+  const user = await requireUser();
+  const file = await prisma.knowledgeFile.findFirst({
+    where: { id: String(formData.get("fileId") ?? ""), source: { userId: user.id } },
+    include: { source: true },
+  });
+  if (!file || file.status !== "PENDING" || file.source.status !== "ACTIVE") return;
+  await expedite("INDEX_FILE", file.id);
+  revalidatePath(`/workspace/${file.source.installationId}/files`);
 }
 
 export async function retryFile(formData: FormData) {
