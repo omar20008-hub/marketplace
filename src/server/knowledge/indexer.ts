@@ -18,7 +18,8 @@ import { ensureWatch } from "./watch";
 
 export const MAX_FILES_PER_SOURCE = 2000;
 const MAX_CHUNKS_PER_FILE = 3000;
-const INSERT_BATCH = 200;
+/** Texts embedded (and stored) per step; progress is saved after each, so a limit mid-file costs one step, not the file. */
+const EMBED_STEP = 25;
 
 type Outcome = { again?: boolean; /** Not a failure: run again after this many seconds, attempt not spent. */ deferSeconds?: number };
 
@@ -230,39 +231,74 @@ export async function indexFile(fileId: string): Promise<Outcome> {
     }
 
     const chunks = chunkText(text.text).slice(0, MAX_CHUNKS_PER_FILE);
-    if (!fits(room, chunks.length)) {
+
+    // Carry on after the chunks an earlier, rate-limited pass already stored — if it
+    // was for this very revision and this very text. Anything else starts over.
+    const marker = `${revision}:${chunks.length}`;
+    let done = 0;
+    if (file.partialRevision === marker) {
+      const stored = await prisma.knowledgeChunk.aggregate({
+        where: { fileId: file.id },
+        _count: true,
+        _max: { ordinal: true },
+      });
+      if (stored._count > 0 && stored._max.ordinal === stored._count - 1) done = stored._count;
+    }
+    if (done === 0) {
+      await prisma.$transaction([
+        prisma.knowledgeChunk.deleteMany({ where: { fileId: file.id } }),
+        prisma.knowledgeFile.update({ where: { id: file.id }, data: { partialRevision: marker } }),
+      ]);
+    }
+
+    if (!fits(room, chunks.length - done)) {
       return waitForNewDay(file.id, room.secondsToReset);
     }
-    // A short header makes each chunk say where it came from, which helps both
-    // the embedding and the model reading it.
-    const vectors = await embedTexts(
-      chunks.map((chunk) => `${file.name}\n\n${chunk}`),
-      "document",
-    );
 
-    await prisma.$transaction(async (tx) => {
-      await tx.knowledgeChunk.deleteMany({ where: { fileId: file.id } });
-      for (let i = 0; i < chunks.length; i += INSERT_BATCH) {
-        const slice = chunks.slice(i, i + INSERT_BATCH);
-        await tx.$executeRaw`
-          INSERT INTO "KnowledgeChunk" (id, "fileId", "sourceId", ordinal, content, embedding)
-          SELECT gen_random_uuid()::text, ${file.id}, ${file.sourceId}, t.ord, t.content, t.vec::vector
-          FROM unnest(${slice}::text[], ${slice.map((_, k) => i + k)}::int[],
-                      ${vectors.slice(i, i + INSERT_BATCH).map(toVectorLiteral)}::text[])
-               AS t(content, ord, vec)`;
+    let storedThisPass = 0;
+    for (let i = done; i < chunks.length; i += EMBED_STEP) {
+      const slice = chunks.slice(i, i + EMBED_STEP);
+      let vectors: number[][];
+      try {
+        // A short header makes each chunk say where it came from, which helps both
+        // the embedding and the model reading it.
+        vectors = await embedTexts(slice.map((chunk) => `${file.name}\n\n${chunk}`), "document");
+      } catch (error) {
+        // Stopped by a rate limit part-way: what is stored stays, and the next pass
+        // resumes. That is progress, not a failure, so it does not spend an attempt.
+        if (error instanceof EmbeddingError && error.retryable && storedThisPass > 0) {
+          await prisma.knowledgeFile.update({
+            where: { id: file.id },
+            data: {
+              status: "PENDING",
+              error: friendlyJobError(classifyJobError(error), false) ?? "Retrying after a temporary problem.",
+            },
+          });
+          return { deferSeconds: error.limit?.retryAfterSeconds ?? 60 };
+        }
+        throw error;
       }
-      await tx.knowledgeFile.update({
-        where: { id: file.id },
-        data: {
-          status: "READY",
-          error: null,
-          chunkCount: chunks.length,
-          indexedRevision: revision,
-          indexedAt: new Date(),
-          embeddingModel: embeddingTag(),
-        },
-      });
-    }, { timeout: 60_000 });
+      await prisma.$executeRaw`
+        INSERT INTO "KnowledgeChunk" (id, "fileId", "sourceId", ordinal, content, embedding)
+        SELECT gen_random_uuid()::text, ${file.id}, ${file.sourceId}, t.ord, t.content, t.vec::vector
+        FROM unnest(${slice}::text[], ${slice.map((_, k) => i + k)}::int[],
+                    ${vectors.map(toVectorLiteral)}::text[])
+             AS t(content, ord, vec)`;
+      storedThisPass += slice.length;
+    }
+
+    await prisma.knowledgeFile.update({
+      where: { id: file.id },
+      data: {
+        status: "READY",
+        error: null,
+        chunkCount: chunks.length,
+        indexedRevision: revision,
+        partialRevision: null,
+        indexedAt: new Date(),
+        embeddingModel: embeddingTag(),
+      },
+    });
   } catch (error) {
     if (error instanceof GoogleAuthError && error.permanent) {
       await prisma.knowledgeFile.update({ where: { id: file.id }, data: { status: "PENDING" } });

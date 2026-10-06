@@ -705,6 +705,10 @@ model KnowledgeFile {
   error           String?
   chunkCount      Int                 @default(0)
   indexedRevision String?
+  /// "<revision>:<chunk count>" of a pass that stopped part-way (a rate limit). The
+  /// chunks written so far stay, hidden because the file is not READY, and the next
+  /// pass carries on after them instead of embedding the whole file again.
+  partialRevision String?
   /// Which embedding model produced this file's chunks (see embeddingTag()).
   /// Vectors from different models cannot be compared, so search ignores a file
   /// whose tag is not the current one until it is re-indexed. Null is a file
