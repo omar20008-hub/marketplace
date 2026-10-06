@@ -61,6 +61,8 @@ describe("embedTexts against Gemini", () => {
   const realSleep = embeddingsRuntime.sleep;
 
   beforeEach(() => {
+    embeddingsRuntime.batchLimit = 25;
+    embeddingsRuntime.limitedAt = 0;
     (env.embeddings as { driver: string }).driver = "gemini";
     (env.embeddings as { apiKey: string }).apiKey = "test-key";
     sleeps.length = 0;
@@ -93,6 +95,31 @@ describe("embedTexts against Gemini", () => {
     vi.stubGlobal("fetch", vi.fn(async () => replies.shift()!));
     expect(await embedTexts(["d"], "document")).toHaveLength(1);
     expect(sleeps).toEqual([12000]);
+  });
+
+  it("halves the batch when a request is refused, so one too big for the token allowance still gets through", async () => {
+    // The API refuses any request of more than 10 texts (as if it carried too many tokens).
+    const sizes: number[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: { body: string }) => {
+      const n = JSON.parse(init.body).requests.length as number;
+      sizes.push(n);
+      return n > 10 ? limited({ "retry-after": "40" }, { error: { details: [{ violations: [{ quotaId: "EmbedContentInputTokensPerMinutePerProjectPerModel-FreeTier" }] }] } }) : ok(n);
+    }));
+    const texts = Array.from({ length: 40 }, (_, i) => `t${i}`);
+    const vectors = await embedTexts(texts, "document");
+    expect(vectors).toHaveLength(40);
+    expect(sizes.slice(0, 3)).toEqual([25, 12, 8]); // 25 refused, 12 refused, 8 accepted
+    expect(Math.max(...sizes.slice(3))).toBeLessThanOrEqual(8); // and the smaller size is kept
+    expect(sleeps).toEqual([]); // no waiting was needed
+    expect(embeddingsRuntime.batchLimit).toBe(8);
+  });
+
+  it("does not shrink for a daily limit", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () =>
+      limited({}, { error: { details: [{ violations: [{ quotaId: "EmbedContentRequestsPerDayPerProjectPerModel" }] }] } }),
+    ));
+    await embedTexts(Array.from({ length: 10 }, (_, i) => `t${i}`), "document").catch(() => {});
+    expect(embeddingsRuntime.batchLimit).toBe(25);
   });
 
   it("gives up inside the call on a daily limit, with the quota named, and does not wait", async () => {
