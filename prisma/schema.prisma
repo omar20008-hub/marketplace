@@ -161,6 +161,9 @@ model Product {
   /// the __MP_KNOWLEDGE_KEY__ placeholder). Set from the uploaded file itself, so
   /// the setup wizard knows to ask for a folder.
   usesKnowledge  Boolean  @default(false)
+  /// True for a template that queues social posts through /api/posts (Post scheduler).
+  /// Set at upload from the file itself; adds the Posts screen to My workspace.
+  usesPosts      Boolean  @default(false)
 
   // Marketplace signals. Ratings are platform-owned, health is derived from runs.
   ratingAvg   Float   @default(0)

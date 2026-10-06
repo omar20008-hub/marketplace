@@ -243,6 +243,19 @@ describe("a workflow the scan accepts", () => {
     ]);
   });
 
+  it("marks a post-queuing template as posts, not as a files product", async () => {
+    await seedCreator();
+    const queuing = {
+      type: "n8n-nodes-base.httpRequest",
+      name: "Queue Post",
+      parameters: { url: "__MP_PLATFORM_URL__/api/posts", headerValue: "Bearer __MP_KNOWLEDGE_KEY__" },
+    };
+    await upload(workflowFile(queuing), { title: "Post queue" });
+
+    const product = await prisma.product.findFirstOrThrow();
+    expect([product.usesPosts, product.usesKnowledge]).toEqual([true, false]);
+  });
+
   it("opens a submission under review", async () => {
     await seedCreator();
     await upload(workflowFile());

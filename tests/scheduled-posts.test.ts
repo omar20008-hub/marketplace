@@ -266,3 +266,34 @@ describe("the template", () => {
     expect(text).toContain("Bearer __MP_KNOWLEDGE_KEY__");
   });
 });
+
+describe("postsActivity", () => {
+  const at = (iso: string, status = "SCHEDULED") => ({ status, scheduledAt: new Date(iso) });
+  const now = new Date("2026-10-10T08:00:00Z").getTime();
+
+  it("is quiet for a post that is hours away", async () => {
+    const { postsActivity } = await import("@/lib/posts");
+    expect(postsActivity([at("2026-10-10T12:00:00Z")], now)).toEqual({ stalled: false, busy: false });
+  });
+
+  it("refreshes for a post that is due within a minute, or publishing", async () => {
+    const { postsActivity } = await import("@/lib/posts");
+    expect(postsActivity([at("2026-10-10T08:00:30Z")], now).busy).toBe(true);
+    expect(postsActivity([at("2026-10-10T07:00:00Z", "PUBLISHING")], now).busy).toBe(true);
+  });
+
+  it("says the clock is stopped only for a post long past due", async () => {
+    const { postsActivity } = await import("@/lib/posts");
+    expect(postsActivity([at("2026-10-10T07:58:00Z")], now).stalled).toBe(false);
+    expect(postsActivity([at("2026-10-10T07:50:00Z")], now).stalled).toBe(true);
+    expect(postsActivity([at("2026-10-10T07:50:00Z", "PUBLISHED")], now).stalled).toBe(false);
+  });
+});
+
+describe("what upload marks", () => {
+  it("flags the template as posts, not as files", async () => {
+    const text = readFileSync("templates/post-scheduler.json", "utf8");
+    expect(text.includes("__MP_KNOWLEDGE_KEY__") && text.includes("/api/posts")).toBe(true);
+    expect(text.includes("/api/knowledge/")).toBe(false);
+  });
+});
