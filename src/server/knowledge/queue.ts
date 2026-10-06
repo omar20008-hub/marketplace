@@ -41,6 +41,21 @@ export async function enqueue(kind: JobKind, targetId: string, delaySeconds = 0)
       SET rerun = ("KnowledgeJob"."leasedUntil" IS NOT NULL AND "KnowledgeJob"."leasedUntil" > now())`;
 }
 
+/**
+ * "Do it now", for a person who has pressed a button: make sure the job exists and
+ * runs on the next pass, whatever backoff it was waiting out, with its attempts
+ * counted afresh. A job that is running right now is left alone (it will go round
+ * again as enqueue arranges).
+ */
+export async function expedite(kind: JobKind, targetId: string) {
+  await enqueue(kind, targetId);
+  await prisma.$executeRaw`
+    UPDATE "KnowledgeJob"
+    SET "runAfter" = now(), attempts = 0
+    WHERE "dedupeKey" = ${`${kind}:${targetId}`}
+      AND ("leasedUntil" IS NULL OR "leasedUntil" < now())`;
+}
+
 export async function claim(): Promise<Job | null> {
   const rows = await prisma.$queryRaw<Job[]>`
     UPDATE "KnowledgeJob"

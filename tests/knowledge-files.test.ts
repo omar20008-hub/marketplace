@@ -56,7 +56,7 @@ const { prisma } = await import("@/lib/db");
 const { parseFolderInput } = await import("@/lib/drive");
 const { GET: folders } = await import("@/app/api/knowledge/folders/route");
 const { activate } = await import("@/server/install-actions");
-const { attachFolder, removeSource, syncNow, retryFile } = await import("@/server/knowledge/actions");
+const { attachFolder, removeSource, syncNow, retryFile, tryFileNow } = await import("@/server/knowledge/actions");
 const { GOOGLE_DRIVE_CREDENTIAL } = await import("@/lib/google-oauth");
 const { linkify } = await import("@/components/app/linkified");
 
@@ -302,6 +302,66 @@ describe("managing a source", () => {
     await retryFile(form({ fileId: failed.id }));
     expect((await prisma.knowledgeFile.findUniqueOrThrow({ where: { id: failed.id } })).status).toBe("PENDING");
     expect(await prisma.knowledgeJob.count()).toBe(1);
+  });
+});
+
+describe("trying a waiting file now", () => {
+  async function waitingFile(email: string) {
+    const user = await seedUser(email);
+    const product = await seedProduct(user.id);
+    const installation = await prisma.installation.create({
+      data: { userId: user.id, productId: product.id, pinnedVersion: "1.0", status: "ACTIVE" },
+    });
+    const account = await prisma.connectedAccount.findFirstOrThrow({ where: { userId: user.id } });
+    const source = await prisma.knowledgeSource.create({
+      data: { userId: user.id, installationId: installation.id, accountId: account.id, folderId: "f-contracts-0001", folderName: "Contracts" },
+    });
+    const file = await prisma.knowledgeFile.create({
+      data: { sourceId: source.id, externalId: "w", name: "w.pdf", mimeType: "application/pdf", revision: "r", status: "PENDING", error: "limiting requests" },
+    });
+    // The queue has it backing off for the best part of an hour, 7 attempts in.
+    await prisma.knowledgeJob.create({
+      data: { kind: "INDEX_FILE", targetId: file.id, dedupeKey: `INDEX_FILE:${file.id}`, attempts: 7, runAfter: new Date(Date.now() + 50 * 60_000) },
+    });
+    return { user, source, file };
+  }
+  const form = (fields: Record<string, string>) => {
+    const f = new FormData();
+    for (const [k, v] of Object.entries(fields)) f.set(k, v);
+    return f;
+  };
+  const job = (fileId: string) => prisma.knowledgeJob.findUniqueOrThrow({ where: { dedupeKey: `INDEX_FILE:${fileId}` } });
+
+  it("brings the retry forward and counts its attempts afresh", async () => {
+    const { user, file } = await waitingFile("a@example.test");
+    viewer.current = user;
+    await tryFileNow(form({ fileId: file.id }));
+    const after = await job(file.id);
+    expect(after.attempts).toBe(0);
+    expect(after.runAfter.getTime()).toBeLessThanOrEqual(Date.now());
+  });
+
+  it("is also what Check now does for the folder's waiting files", async () => {
+    const { user, source, file } = await waitingFile("a@example.test");
+    viewer.current = user;
+    await syncNow(form({ sourceId: source.id }));
+    expect((await job(file.id)).runAfter.getTime()).toBeLessThanOrEqual(Date.now());
+  });
+
+  it("leaves a job alone that is running right now, and other people's files", async () => {
+    const { file } = await waitingFile("a@example.test");
+    await prisma.knowledgeJob.update({ where: { dedupeKey: `INDEX_FILE:${file.id}` }, data: { leasedUntil: new Date(Date.now() + 60_000) } });
+    const other = await seedUser("b@example.test");
+    viewer.current = other;
+    await tryFileNow(form({ fileId: file.id }));
+    const untouched = await job(file.id);
+    expect(untouched.attempts).toBe(7);
+    expect(untouched.runAfter.getTime()).toBeGreaterThan(Date.now() + 40 * 60_000);
+
+    const owner = await prisma.user.findFirstOrThrow({ where: { email: "a@example.test" } });
+    viewer.current = owner;
+    await tryFileNow(form({ fileId: file.id }));
+    expect((await job(file.id)).attempts).toBe(7); // still running: not interrupted
   });
 });
 
