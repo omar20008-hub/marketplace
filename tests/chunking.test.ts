@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chunkText } from "@/lib/chunking";
+import { chunkText, storableText } from "@/lib/chunking";
 
 describe("chunkText", () => {
   it("returns nothing for empty input", () => {
@@ -36,3 +36,20 @@ describe("chunkText", () => {
     expect(chunks.length).toBeGreaterThan(3);
   });
 });
+
+describe("storableText", () => {
+  it("replaces NUL and other control characters but keeps newlines, returns and tabs", () => {
+    expect(storableText("a\u0000b\u0001c\u007fd\ne\r\nf\tg")).toBe("a b c d\ne\r\nf\tg");
+  });
+
+  it("replaces a lone surrogate and keeps a proper pair", () => {
+    expect(storableText("x\ud800y")).toBe("x\ufffdy");
+    expect(storableText("x\udc00y")).toBe("x\ufffdy");
+    expect(storableText("smile \ud83d\ude00!")).toBe("smile \ud83d\ude00!");
+  });
+
+  it("leaves ordinary text alone, Arabic included", () => {
+    expect(storableText("مرحبا بالعالم. Hello.")).toBe("مرحبا بالعالم. Hello.");
+  });
+});
+

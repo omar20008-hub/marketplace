@@ -30,6 +30,25 @@ function splitLong(paragraph: string, target: number): string[] {
   return out;
 }
 
+/**
+ * Text as Postgres can store it. A PDF's extracted text can carry NUL bytes, other
+ * control characters and lone UTF-16 surrogates; a NUL makes the insert fail
+ * outright ("invalid byte sequence for encoding UTF8: 0x00") and a lone surrogate
+ * cannot be encoded. Newlines, returns and tabs stay.
+ */
+export function storableText(input: string): string {
+  const noControls = input.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, " ");
+  return typeof noControls.toWellFormed === "function"
+    ? noControls.toWellFormed()
+    : noControls.replace(/[\ud800-\udfff]/g, (c, i, str) => {
+        const code = c.charCodeAt(0);
+        const next = str.charCodeAt(i + 1);
+        const prev = str.charCodeAt(i - 1);
+        const paired = code <= 0xdbff ? next >= 0xdc00 && next <= 0xdfff : prev >= 0xd800 && prev <= 0xdbff;
+        return paired ? c : "\ufffd";
+      });
+}
+
 export function chunkText(
   input: string,
   { target = CHUNK_TARGET, overlap = CHUNK_OVERLAP } = {},

@@ -169,6 +169,11 @@ the queue is being drained. Otherwise it says which: `google.missing` (names onl
   batch at once (25 → 12 → 8, never below 8) and keeps the smaller size for half an
   hour. Check AI Studio → Usage → Rate Limit: requests far under the limit with
   TPM near 30K points here.
+  **Text is made storable before it is chunked** (`storableText`): a PDF's extracted
+  text can carry NUL bytes and lone surrogates, and Postgres refuses a NUL
+  (`22021 invalid byte sequence … 0x00`). That failure is classified `nul_byte_in_text`
+  and the Files page shows only "Retrying after a temporary problem" with an ordinary
+  (non-rate-limit) backoff, 30 s × 4ⁿ — a 32-minute next try is its signature.
   **Indexing resumes instead of restarting.** A file is embedded and stored 25 chunks
   at a time. If a rate limit stops it part-way, the chunks stored so far stay (hidden:
   the file is not READY), `KnowledgeFile.partialRevision` records `<revision>:<chunk

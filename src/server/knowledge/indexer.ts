@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import { chunkText } from "@/lib/chunking";
+import { chunkText, storableText } from "@/lib/chunking";
 import { DriveError, listTree, readFileText, skipReason, type DriveFile } from "@/lib/drive";
 import { EmbeddingError, embedTexts, embeddingTag, toVectorLiteral } from "@/lib/embeddings";
 import { GoogleAuthError } from "@/lib/google-oauth";
@@ -230,7 +230,7 @@ export async function indexFile(fileId: string): Promise<Outcome> {
       return {};
     }
 
-    const chunks = chunkText(text.text).slice(0, MAX_CHUNKS_PER_FILE);
+    const chunks = chunkText(storableText(text.text)).slice(0, MAX_CHUNKS_PER_FILE);
 
     // Carry on after the chunks an earlier, rate-limited pass already stored — if it
     // was for this very revision and this very text. Anything else starts over.
