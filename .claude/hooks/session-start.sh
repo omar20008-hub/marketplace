@@ -3,6 +3,10 @@
 # and the project's npm dependencies so lint, typecheck and tests can run.
 set -euo pipefail
 
+# Run in the background so the session starts at once; Skills and npm scripts
+# are usable once this finishes (a minute or two on a fresh container).
+echo '{"async": true, "asyncTimeout": 300000}'
+
 if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   exit 0
 fi
