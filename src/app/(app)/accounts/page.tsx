@@ -42,7 +42,7 @@ const ALLOWS: Record<string, { grants: string[]; denies: string[] }> = {
 };
 
 const CONNECTABLE: { credentialType: string; displayName: string }[] = [
-  { credentialType: "facebookGraphApi", displayName: "Instagram Business" },
+  { credentialType: "facebookGraphApi", displayName: "Facebook & Instagram" },
   { credentialType: "slackApi", displayName: "Slack" },
   { credentialType: "hubspotApi", displayName: "HubSpot" },
   { credentialType: "openAiApi", displayName: "AI model" },
