@@ -224,6 +224,25 @@ describe("syncSource", () => {
     expect(changed.status).toBe("PENDING");
   });
 
+  it("keeps a file out that its owner left out, even when a new version arrives", async () => {
+    drive.files = [file("a")];
+    drive.texts = { a: "alpha" };
+    await syncSource(sourceId);
+    await runKnowledgeJobs();
+    const row = await prisma.knowledgeFile.findFirstOrThrow({ where: { externalId: "a" } });
+    await prisma.knowledgeFile.update({
+      where: { id: row.id },
+      data: { status: "UNSUPPORTED", error: "Left out because you chose to.", chunkCount: 0 },
+    });
+    await prisma.knowledgeChunk.deleteMany({ where: { fileId: row.id } });
+
+    drive.files = [file("a", { revision: "r2" })];
+    await syncSource(sourceId);
+    const after = await prisma.knowledgeFile.findUniqueOrThrow({ where: { id: row.id } });
+    expect(after).toMatchObject({ status: "UNSUPPORTED", revision: "r2" });
+    expect(await jobCount()).toBe(0);
+  });
+
   it("removes a file that left the folder, along with its chunks", async () => {
     drive.files = [file("a")];
     drive.texts = { a: "alpha text" };

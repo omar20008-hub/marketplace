@@ -56,7 +56,7 @@ const { prisma } = await import("@/lib/db");
 const { parseFolderInput } = await import("@/lib/drive");
 const { GET: folders } = await import("@/app/api/knowledge/folders/route");
 const { activate } = await import("@/server/install-actions");
-const { attachFolder, removeSource, syncNow, retryFile, tryFileNow } = await import("@/server/knowledge/actions");
+const { attachFolder, removeSource, syncNow, retryFile, tryFileNow, leaveOutFile, useFileAgain } = await import("@/server/knowledge/actions");
 const { GOOGLE_DRIVE_CREDENTIAL } = await import("@/lib/google-oauth");
 const { linkify } = await import("@/components/app/linkified");
 
@@ -362,6 +362,57 @@ describe("trying a waiting file now", () => {
     viewer.current = owner;
     await tryFileNow(form({ fileId: file.id }));
     expect((await job(file.id)).attempts).toBe(7); // still running: not interrupted
+  });
+});
+
+describe("leaving a file out", () => {
+  async function readyFile(email: string) {
+    const user = await seedUser(email);
+    const product = await seedProduct(user.id);
+    const installation = await prisma.installation.create({
+      data: { userId: user.id, productId: product.id, pinnedVersion: "1.0", status: "ACTIVE" },
+    });
+    const account = await prisma.connectedAccount.findFirstOrThrow({ where: { userId: user.id } });
+    const source = await prisma.knowledgeSource.create({
+      data: { userId: user.id, installationId: installation.id, accountId: account.id, folderId: "f-contracts-0001", folderName: "Contracts" },
+    });
+    const file = await prisma.knowledgeFile.create({
+      data: { sourceId: source.id, externalId: "x", name: "x.pdf", mimeType: "application/pdf", revision: "r1", status: "READY", chunkCount: 1, indexedRevision: "r1" },
+    });
+    await prisma.$executeRaw`INSERT INTO "KnowledgeChunk" (id, "fileId", "sourceId", ordinal, content) VALUES (gen_random_uuid()::text, ${file.id}, ${source.id}, 0, 'garbage')`;
+    return { user, source, file };
+  }
+  const form = (fields: Record<string, string>) => {
+    const f = new FormData();
+    for (const [k, v] of Object.entries(fields)) f.set(k, v);
+    return f;
+  };
+
+  it("deletes what was read from it, keeps it out, and is undone by Use again", async () => {
+    const { user, file } = await readyFile("a@example.test");
+    viewer.current = user;
+    await leaveOutFile(form({ fileId: file.id }));
+    let row = await prisma.knowledgeFile.findUniqueOrThrow({ where: { id: file.id } });
+    expect(row).toMatchObject({ status: "UNSUPPORTED", chunkCount: 0, error: "Left out because you chose to." });
+    expect(await prisma.knowledgeChunk.count({ where: { fileId: file.id } })).toBe(0);
+
+    await useFileAgain(form({ fileId: file.id }));
+    row = await prisma.knowledgeFile.findUniqueOrThrow({ where: { id: file.id } });
+    expect(row).toMatchObject({ status: "PENDING", error: null });
+    expect(await prisma.knowledgeJob.count({ where: { dedupeKey: `INDEX_FILE:${file.id}` } })).toBe(1);
+  });
+
+  it("only the owner can, and Use again is only for a file the owner left out", async () => {
+    const { user, file } = await readyFile("a@example.test");
+    const other = await seedUser("b@example.test");
+    viewer.current = other;
+    await leaveOutFile(form({ fileId: file.id }));
+    expect((await prisma.knowledgeFile.findUniqueOrThrow({ where: { id: file.id } })).status).toBe("READY");
+
+    viewer.current = user;
+    await prisma.knowledgeFile.update({ where: { id: file.id }, data: { status: "UNSUPPORTED", error: "This file type cannot be read yet." } });
+    await useFileAgain(form({ fileId: file.id }));
+    expect((await prisma.knowledgeFile.findUniqueOrThrow({ where: { id: file.id } })).status).toBe("UNSUPPORTED");
   });
 });
 

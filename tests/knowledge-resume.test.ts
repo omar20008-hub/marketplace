@@ -167,6 +167,16 @@ describe("indexing a file that is rate-limited part-way", () => {
     expect(stored.some((c) => /Section\s+7/.test(c.content))).toBe(true); // the text around it is kept
   });
 
+  it("marks a file whose text is unreadable as skipped, without embedding anything", async () => {
+    drive.text = Array.from({ length: 120 }, () => "\u0000\u0000a\u0000\u0000b\u0000 ").join("");
+    const file = await seedFile();
+    await indexFile(file.id);
+    const row = await prisma.knowledgeFile.findUniqueOrThrow({ where: { id: file.id } });
+    expect(row).toMatchObject({ status: "UNSUPPORTED", chunkCount: 0 });
+    expect(row.error).toMatch(/unreadable/);
+    expect(limit.calls).toBe(0);
+  });
+
   it("does not show a half-indexed file to search", async () => {
     const file = await seedFile();
     limit.failOnCall = 2;

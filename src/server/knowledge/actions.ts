@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { GOOGLE_DRIVE_CREDENTIAL } from "@/lib/google-oauth";
+import { EXCLUDED_BY_USER } from "./indexer";
 import { enqueue, expedite } from "./queue";
 import { createKnowledgeSource } from "./sources";
 import { stopWatch } from "./watch";
@@ -83,6 +84,51 @@ export async function retryFile(formData: FormData) {
   });
   if (!file || file.status !== "FAILED") return;
   await prisma.knowledgeFile.update({ where: { id: file.id }, data: { status: "PENDING", error: null } });
+  await enqueue("INDEX_FILE", file.id);
+  revalidatePath(`/workspace/${file.source.installationId}/files`);
+}
+
+/**
+ * Leave a file out of what the assistant reads: its chunks are deleted and it stays
+ * out, new versions included, until it is used again. For a file that is not worth
+ * indexing (a scan with a broken text layer, a duplicate of a better copy).
+ */
+export async function leaveOutFile(formData: FormData) {
+  const user = await requireUser();
+  const file = await prisma.knowledgeFile.findFirst({
+    where: { id: String(formData.get("fileId") ?? ""), source: { userId: user.id } },
+    include: { source: true },
+  });
+  if (!file || file.status === "REMOVED") return;
+  await prisma.$transaction([
+    prisma.knowledgeChunk.deleteMany({ where: { fileId: file.id } }),
+    prisma.knowledgeJob.deleteMany({ where: { dedupeKey: `INDEX_FILE:${file.id}` } }),
+    prisma.knowledgeFile.update({
+      where: { id: file.id },
+      data: {
+        status: "UNSUPPORTED",
+        error: EXCLUDED_BY_USER,
+        chunkCount: 0,
+        partialRevision: null,
+        indexedRevision: file.revision,
+      },
+    }),
+  ]);
+  revalidatePath(`/workspace/${file.source.installationId}/files`);
+}
+
+/** The opposite: read a file that was left out. Only for one the owner left out, not one that cannot be read. */
+export async function useFileAgain(formData: FormData) {
+  const user = await requireUser();
+  const file = await prisma.knowledgeFile.findFirst({
+    where: { id: String(formData.get("fileId") ?? ""), source: { userId: user.id } },
+    include: { source: true },
+  });
+  if (!file || file.status !== "UNSUPPORTED" || file.error !== EXCLUDED_BY_USER) return;
+  await prisma.knowledgeFile.update({
+    where: { id: file.id },
+    data: { status: "PENDING", error: null, indexedRevision: null },
+  });
   await enqueue("INDEX_FILE", file.id);
   revalidatePath(`/workspace/${file.source.installationId}/files`);
 }
