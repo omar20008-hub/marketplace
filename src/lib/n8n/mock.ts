@@ -73,7 +73,7 @@ const CREDENTIAL_SCHEMAS: Record<string, CredentialSchema> = {
         type: "string",
         title: "Access token",
         format: "password",
-        description: "A long-lived token for the Instagram Business account.",
+        description: "A long-lived access token for the Facebook Page and its linked Instagram Business account.",
       },
     },
   },
