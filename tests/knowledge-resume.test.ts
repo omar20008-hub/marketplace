@@ -154,6 +154,19 @@ describe("indexing a file that is rate-limited part-way", () => {
     expect(await prisma.knowledgeChunk.count({ where: { fileId: file.id } })).toBe(25);
   });
 
+  it("indexes text with NUL bytes and lone surrogates in it, which Postgres cannot store as they are", async () => {
+    // A PDF's extracted text can carry both; stored as they are, the insert fails
+    // ("invalid byte sequence … 0x00") on the batch that holds them, every pass.
+    drive.text = bigText.replace("Section 7.", "Section\u0000 7.\ud800").replace("Section 30.", "Section 30.\u0001\u0007");
+    const file = await seedFile();
+    await indexFile(file.id);
+    const row = await prisma.knowledgeFile.findUniqueOrThrow({ where: { id: file.id } });
+    expect(row.status).toBe("READY");
+    const stored = await prisma.knowledgeChunk.findMany({ where: { fileId: file.id }, select: { content: true } });
+    expect(stored.some((c) => c.content.includes("\u0000"))).toBe(false);
+    expect(stored.some((c) => /Section\s+7/.test(c.content))).toBe(true); // the text around it is kept
+  });
+
   it("does not show a half-indexed file to search", async () => {
     const file = await seedFile();
     limit.failOnCall = 2;
