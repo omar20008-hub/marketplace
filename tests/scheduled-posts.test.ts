@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { prisma } from "@/lib/db";
+import { n8n } from "@/lib/n8n";
 import { mockDriver } from "@/lib/n8n/mock";
 import { newKnowledgeKey } from "@/server/knowledge/keys";
 import {
@@ -245,6 +246,21 @@ describe("runDuePosts", () => {
     expect((await runDuePosts({ now: NOW })).checked).toBe(0);
   });
 
+  it("keeps the reason the workflow gave when a publish fails", async () => {
+    const { installation } = await seedInstallation("a@example.test");
+    const post = await make(installation.id, new Date("2026-10-10T07:59:00Z"));
+    const dispatch = vi
+      .spyOn(n8n, "dispatch")
+      .mockResolvedValueOnce({ result: "error", errorType: "فيسبوك رفض الطلب: Invalid OAuth access token" });
+
+    await runDuePosts({ now: NOW });
+
+    const row = await prisma.scheduledPost.findUnique({ where: { id: post.id } });
+    expect(row?.status).toBe("FAILED");
+    expect(row?.result).toBe("Failed · فيسبوك رفض الطلب: Invalid OAuth access token");
+    dispatch.mockRestore();
+  });
+
   it("marks a post abandoned mid-publish as failed instead of sending it again", async () => {
     const { installation } = await seedInstallation("a@example.test");
     const post = await make(installation.id, new Date("2026-10-10T07:00:00Z"));
@@ -278,6 +294,17 @@ describe("the template", () => {
       credentialDurability: "durable",
       inputFields: "caption,networks,scheduledAt,mediaUrl,postId",
     });
+  });
+
+  it("lets a Facebook error come back as data, so its own message reaches the owner", () => {
+    const template = JSON.parse(readFileSync("templates/post-scheduler.json", "utf8")) as {
+      nodes: { name: string; parameters: { options?: unknown; jsCode?: string } }[];
+    };
+    const node = (name: string) => template.nodes.find((n) => n.name === name)!;
+    for (const name of ["Get Pages", "Publish Facebook", "Create IG Container", "Publish IG"]) {
+      expect(JSON.stringify(node(name).parameters.options)).toContain('"neverError":true');
+    }
+    expect(node("Pick Page").parameters.jsCode).toContain("answer.error.message");
   });
 
   it("calls the platform with the placeholders MP · Install Template fills in", () => {

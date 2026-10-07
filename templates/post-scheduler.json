@@ -153,7 +153,13 @@
             }
           ]
         },
-        "options": {}
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
       },
       "credentials": {
         "facebookGraphApi": {
@@ -172,7 +178,7 @@
         640
       ],
       "parameters": {
-        "jsCode": "const input = $('Post Scheduler').first().json;\nconst pages = $input.first().json.data || [];\nconst wanted = String(input.networks || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);\nconst page = pages[0];\nif (!page) throw new Error('لا توجد صفحة فيسبوك يمكن النشر عليها بهذا الحساب.');\nconst igId = (page.instagram_business_account && page.instagram_business_account.id) || '';\nif (wanted.includes('instagram') && !igId) throw new Error('الصفحة \"' + page.name + '\" غير مرتبطة بحساب إنستغرام للأعمال.');\nconst mediaUrl = input.mediaUrl && input.mediaUrl !== 'none' ? input.mediaUrl : '';\nif (wanted.includes('instagram') && !mediaUrl) throw new Error('إنستغرام يتطلب صورة.');\nreturn [{ json: { caption: input.caption, mediaUrl: mediaUrl, pageId: page.id, pageName: page.name,\n  pageToken: page.access_token, igId, facebook: wanted.includes('facebook'), instagram: wanted.includes('instagram') } }];"
+        "jsCode": "const input = $('Post Scheduler').first().json;\nconst answer = $input.first().json;\nif (answer.error) throw new Error('فيسبوك رفض الطلب: ' + (answer.error.message || answer.error));\nconst pages = answer.data || [];\nconst wanted = String(input.networks || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);\nconst page = pages[0];\nif (!page) throw new Error('لا توجد صفحة فيسبوك يمكن النشر عليها بهذا الحساب.');\nconst igId = (page.instagram_business_account && page.instagram_business_account.id) || '';\nif (wanted.includes('instagram') && !igId) throw new Error('الصفحة \"' + page.name + '\" غير مرتبطة بحساب إنستغرام للأعمال.');\nconst mediaUrl = input.mediaUrl && input.mediaUrl !== 'none' ? input.mediaUrl : '';\nif (wanted.includes('instagram') && !mediaUrl) throw new Error('إنستغرام يتطلب صورة.');\nreturn [{ json: { caption: input.caption, mediaUrl: mediaUrl, pageId: page.id, pageName: page.name,\n  pageToken: page.access_token, igId, facebook: wanted.includes('facebook'), instagram: wanted.includes('instagram') } }];"
       }
     },
     {
@@ -239,7 +245,13 @@
             }
           ]
         },
-        "options": {}
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
       },
       "onError": "continueRegularOutput"
     },
@@ -318,7 +330,13 @@
             }
           ]
         },
-        "options": {}
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
       },
       "onError": "continueRegularOutput"
     },
@@ -349,7 +367,13 @@
             }
           ]
         },
-        "options": {}
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
       },
       "onError": "continueRegularOutput"
     },
@@ -363,7 +387,7 @@
         640
       ],
       "parameters": {
-        "jsCode": "const page = $('Pick Page').first().json;\nconst lines = [];\nlet failed = false;\nconst why = (r) => (r && r.error && (r.error.message || r.error)) || (r && r.message) || 'فشل غير معروف';\nif (page.facebook) {\n  const r = $('Publish Facebook').first().json;\n  if (r.id || r.post_id) lines.push('فيسبوك (' + page.pageName + '): ' + (r.post_id || r.id));\n  else { failed = true; lines.push('فيسبوك: ' + why(r)); }\n}\nif (page.instagram) {\n  const container = $('Create IG Container').first().json;\n  const r = $('Publish IG').isExecuted ? $('Publish IG').first().json : container;\n  if (container.id && r.id) lines.push('إنستغرام: ' + r.id);\n  else { failed = true; lines.push('إنستغرام: ' + why(r.error ? r : container)); }\n}\nif (failed) throw new Error(lines.join(' | '));\nreturn [{ json: { output: 'تم النشر. ' + lines.join(' | ') } }];"
+        "jsCode": "const page = $('Pick Page').first().json;\nconst lines = [];\nlet failed = false;\nconst why = (r) => (r && r.error && (r.error.message || r.error)) || (r && r.message) || 'فشل غير معروف';\nif (page.facebook) {\n  const r = $('Publish Facebook').first().json;\n  if (r.id || r.post_id) lines.push('فيسبوك (' + page.pageName + '): ' + (r.post_id || r.id));\n  else { failed = true; lines.push('فيسبوك: ' + why(r)); }\n}\nif (page.instagram) {\n  const container = $('Create IG Container').first().json;\n  const r = $('Publish IG').isExecuted ? $('Publish IG').first().json : container;\n  if (container.id && r.id) lines.push('إنستغرام: ' + r.id);\n  else { failed = true; lines.push('إنستغرام: ' + why(container.error ? container : r)); }\n}\nif (failed) throw new Error(lines.join(' | '));\nreturn [{ json: { output: 'تم النشر. ' + lines.join(' | ') } }];"
       }
     }
   ],

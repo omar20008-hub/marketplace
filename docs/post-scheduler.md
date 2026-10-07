@@ -75,6 +75,9 @@ minute and 75 days ahead. Times are UTC, as everywhere else.
 - Publishing goes through `executeRun()`, so it meets the readiness check and
   plan limit, and **each publish counts as a run**. Five consecutive failures
   disable the installation, as for any product.
+- A failed post keeps its reason (Posts, History): what the workflow reported, with
+  Facebook's own message when the failure came from the Graph API (an expired or
+  invalid token reads as such). The reason comes from the dispatcher's `errorType`.
 - A scheduled post can be cancelled (`DELETE /api/posts/:id`) until it starts
   publishing.
 
