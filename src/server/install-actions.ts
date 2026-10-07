@@ -192,15 +192,30 @@ export async function activate(
   // earlier one stops working the moment the hash is replaced below.
   const knowledge = newKnowledgeKey();
 
-  const reply = await n8n.install({
-    userId: user.id,
-    templateId: product.templateId ?? product.id,
-    storageBackend,
-    credentialsJson,
-    schedule,
-    knowledgeKey: knowledge.key,
-    platformUrl: env.publicUrl,
-  });
+  // n8n can fail inside the install (it refuses a credential body, say) and answer
+  // with an error rather than the contract's reply. That used to escape as an
+  // exception and replace the wizard with the generic "This screen did not load".
+  // Nothing has been written for the installation at this point, so say so, and
+  // keep the cause in the server log for whoever has to read it.
+  let reply: Awaited<ReturnType<typeof n8n.install>>;
+  try {
+    reply = await n8n.install({
+      userId: user.id,
+      templateId: product.templateId ?? product.id,
+      storageBackend,
+      credentialsJson,
+      schedule,
+      knowledgeKey: knowledge.key,
+      platformUrl: env.publicUrl,
+    });
+  } catch (error) {
+    console.error("Install Template failed", error instanceof Error ? error.message : "unknown");
+    return {
+      error:
+        "Setting this up failed, and nothing was installed. If you just connected an account, " +
+        "remove it from Connected accounts and connect it again, then retry.",
+    };
+  }
 
   if ("ok" in reply) {
     return { error: reply.errorText };

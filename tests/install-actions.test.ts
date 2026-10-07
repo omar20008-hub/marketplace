@@ -137,6 +137,32 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
+describe("activate — when n8n fails inside the install", () => {
+  it("answers with a sentence instead of throwing, and installs nothing", async () => {
+    const user = await seedUser();
+    const product = await prisma.product.create({
+      data: productData(user.id, "PUBLISHED", []),
+    });
+    const failure = vi
+      .spyOn(n8n, "install")
+      .mockRejectedValueOnce(new Error('Bad request: request.body.data is not allowed to have the additional property "apiKey"'));
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const result = await submit({ productId: product.id, storageBackend: "platform" });
+
+    expect(result.redirectedTo).toBeNull();
+    expect(result.error).toMatch(/nothing was installed/);
+    expect(result.error).toMatch(/Connected accounts/);
+    expect(await prisma.installation.count()).toBe(0);
+    // The cause goes to the server log, not to the person.
+    expect(logged).toHaveBeenCalledWith("Install Template failed", expect.stringContaining("apiKey"));
+    expect(result.error).not.toMatch(/apiKey/);
+
+    failure.mockRestore();
+    logged.mockRestore();
+  });
+});
+
 describe("activate — what it refuses", () => {
   it("refuses a product that does not exist", async () => {
     await seedUser();
