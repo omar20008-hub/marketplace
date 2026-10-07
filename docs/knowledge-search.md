@@ -174,6 +174,16 @@ the queue is being drained. Otherwise it says which: `google.missing` (names onl
   (`22021 invalid byte sequence … 0x00`). That failure is classified `nul_byte_in_text`
   and the Files page shows only "Retrying after a temporary problem" with an ordinary
   (non-rate-limit) backoff, 30 s × 4ⁿ — a 32-minute next try is its signature.
+  **Text files are decoded by their own encoding** (`src/lib/text-decode.ts`): UTF-8
+  (with or without a BOM), UTF-16 by its BOM, and otherwise Windows-1256 when the
+  bytes decode mostly to Arabic, Windows-1252 if not. Excel on an Arabic Windows saves
+  "CSV (Comma delimited)" as Windows-1256; read as UTF-8 that is a run of replacement
+  characters.
+  **The chat agent survives Gemini's 503s.** `templates/chat-with-your-files.json` gives
+  the agent 5 tries 5 s apart and a fallback model (`gemini-2.5-flash-lite`). The run
+  log in n8n's `mp_runs` table showed "Service unavailable" from the instance's agent,
+  which had neither. Instances already installed are copies of the template as it was,
+  so they need the same two settings applied by hand.
   **Word, Excel and PowerPoint** (`.docx`, `.xlsx`, `.pptx`) are read by
   `src/lib/office-text.ts`: a small zip reader over `node:zlib` (no dependency) and the
   text parts of the XML. Word: paragraphs, tables (a row is its cells joined by ` | `),
