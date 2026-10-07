@@ -181,7 +181,9 @@ export async function runDuePosts({
         status = "PUBLISHED";
         result = run.message ?? "Published";
       } else {
-        result = [statusLabel(run), run?.message].filter(Boolean).join(" · ");
+        // A failed run keeps what went wrong in errorType (the dispatcher's reason),
+        // not in message; leaving it out showed the owner a bare "Failed".
+        result = [statusLabel(run), run?.errorType, run?.message].filter(Boolean).join(" · ");
       }
     } catch (error) {
       result = error instanceof Error ? `Failed · ${error.message}` : "Failed";
