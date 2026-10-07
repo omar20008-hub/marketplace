@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { Card, FootNote, PageTitle, SectionLabel } from "@/components/ds";
 import { oauthStartUrl } from "@/lib/credentials";
-import { relativeDays } from "@/lib/readiness";
+import { relativeTime } from "@/lib/readiness";
 import { processingStalled } from "@/server/knowledge/heartbeat";
 import { knowledgeUsage } from "@/server/knowledge/limits";
 import { AttachFolder, AutoRefresh, FileRow, SourceActions, SourceStatus } from "./parts";
@@ -129,7 +129,7 @@ export default async function FilesPage({
                     <div className="mt-0.5 text-xs text-ink-3">
                       Google Drive
                       {source.lastSyncedAt
-                        ? ` · checked ${relativeDays(source.lastSyncedAt)}`
+                        ? ` · checked ${relativeTime(source.lastSyncedAt)}`
                         : " · not checked yet"}
                     </div>
                   </div>

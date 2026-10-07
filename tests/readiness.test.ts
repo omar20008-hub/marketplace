@@ -4,6 +4,7 @@ import {
   formatDuration,
   readinessFor,
   relativeDays,
+  relativeTime,
   waitingFor,
 } from "@/lib/readiness";
 
@@ -290,3 +291,19 @@ describe("waitingFor", () => {
     expect(waitingFor(new Date(now.getTime() - 26 * 3_600_000), now)).toBe("1d");
   });
 });
+
+describe("relativeTime", () => {
+  const now = new Date("2026-10-07T12:00:00Z");
+  const ago = (ms: number) => new Date(now.getTime() - ms);
+  it("says 'just now' and minutes, so a status line visibly changes after a button press", () => {
+    expect(relativeTime(ago(20_000), now)).toBe("just now");
+    expect(relativeTime(ago(5 * 60_000), now)).toBe("5 min ago");
+    expect(relativeTime(ago(59 * 60_000), now)).toBe("59 min ago");
+  });
+  it("is the same as relativeDays from an hour on, and has a dash for nothing", () => {
+    expect(relativeTime(ago(2 * 3_600_000), now)).toBe("2h ago");
+    expect(relativeTime(ago(3 * 86_400_000), now)).toBe("3d ago");
+    expect(relativeTime(null, now)).toBe("—");
+  });
+});
+

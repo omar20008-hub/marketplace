@@ -164,6 +164,9 @@ export function isReadable(mimeType: string): boolean {
  * lock file, a `.tmp`. They duplicate real files or hold nothing, and embedding
  * them spends quota the real files need.
  */
+/** The reason recorded for a scratch file. */
+export const TEMPORARY_FILE_REASON = "A temporary file, so it is not indexed.";
+
 export function isTemporaryName(name: string): boolean {
   const lower = name.toLowerCase();
   return lower.startsWith("tmp_") || name.startsWith("~$") || lower.endsWith(".tmp");
@@ -174,7 +177,7 @@ export const UNSUPPORTED_TYPE_REASON = "This file type cannot be read yet.";
 
 /** Why a file is not indexed, or null when it is. */
 export function skipReason(name: string, mimeType: string): string | null {
-  if (isTemporaryName(name)) return "A temporary file, so it is not indexed.";
+  if (isTemporaryName(name)) return TEMPORARY_FILE_REASON;
   if (!isReadable(mimeType)) return UNSUPPORTED_TYPE_REASON;
   return null;
 }

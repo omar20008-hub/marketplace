@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { GOOGLE_DRIVE_CREDENTIAL } from "@/lib/google-oauth";
 import { EXCLUDED_BY_USER } from "./indexer";
+import { TEMPORARY_FILE_REASON, UNSUPPORTED_TYPE_REASON } from "@/lib/drive";
 import { enqueue, expedite } from "./queue";
 import { createKnowledgeSource } from "./sources";
 import { stopWatch } from "./watch";
@@ -114,6 +115,35 @@ export async function leaveOutFile(formData: FormData) {
       },
     }),
   ]);
+  revalidatePath(`/workspace/${file.source.installationId}/files`);
+}
+
+/**
+ * A file skipped because its text could not be read (unreadable, empty, no text layer)
+ * is read once more on request: the reader may have improved since, or the file been
+ * replaced by one with the same name and checksum. Not for one left out on purpose
+ * (Use again), a scratch file, or a type that cannot be read.
+ */
+export async function tryFileAgain(formData: FormData) {
+  const user = await requireUser();
+  const file = await prisma.knowledgeFile.findFirst({
+    where: { id: String(formData.get("fileId") ?? ""), source: { userId: user.id } },
+    include: { source: true },
+  });
+  if (
+    !file ||
+    file.status !== "UNSUPPORTED" ||
+    !file.error ||
+    [EXCLUDED_BY_USER, TEMPORARY_FILE_REASON, UNSUPPORTED_TYPE_REASON].includes(file.error) ||
+    file.source.status !== "ACTIVE"
+  ) {
+    return;
+  }
+  await prisma.knowledgeFile.update({
+    where: { id: file.id },
+    data: { status: "PENDING", error: null, indexedRevision: null },
+  });
+  await enqueue("INDEX_FILE", file.id);
   revalidatePath(`/workspace/${file.source.installationId}/files`);
 }
 

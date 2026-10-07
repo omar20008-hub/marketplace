@@ -170,6 +170,18 @@ export function relativeDays(date: Date | null | undefined, now = new Date()) {
   return `${months} month${months > 1 ? "s" : ""} ago`;
 }
 
+/**
+ * How long ago, down to the minute, for a status line that people watch change after
+ * pressing a button ("checked just now" after Check now). From a day on, as relativeDays.
+ */
+export function relativeTime(date: Date | null | undefined, now = new Date()) {
+  if (!date) return "—";
+  const minutes = Math.floor((now.getTime() - date.getTime()) / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  return relativeDays(date, now);
+}
+
 export function waitingFor(date: Date, now = new Date()) {
   const hours = Math.floor((now.getTime() - date.getTime()) / 3_600_000);
   if (hours < 24) return `${Math.max(1, hours)}h`;

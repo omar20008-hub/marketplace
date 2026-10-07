@@ -174,6 +174,9 @@ the queue is being drained. Otherwise it says which: `google.missing` (names onl
   (`22021 invalid byte sequence … 0x00`). That failure is classified `nul_byte_in_text`
   and the Files page shows only "Retrying after a temporary problem" with an ordinary
   (non-rate-limit) backoff, 30 s × 4ⁿ — a 32-minute next try is its signature.
+  **Try again** (Files page) re-reads a file that was skipped because its text could
+  not be read (unreadable, empty, no text layer) — for when the reader has improved
+  since — and not one left out on purpose, a scratch file or an unsupported type.
   **Text files are decoded by their own encoding** (`src/lib/text-decode.ts`): UTF-8
   (with or without a BOM), UTF-16 by its BOM, and otherwise Windows-1256 when the
   bytes decode mostly to Arabic, Windows-1252 if not. Excel on an Arabic Windows saves
