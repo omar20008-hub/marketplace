@@ -1,6 +1,7 @@
 import "server-only";
 import { extractText, getDocumentProxy } from "unpdf";
 import { extractOfficeText, OFFICE_TYPES, OfficeError } from "./office-text";
+import { decodeText } from "./text-decode";
 
 /**
  * The little of the Drive API the indexer needs: check a folder, walk it, and
@@ -216,7 +217,7 @@ export async function readFileText(token: string, file: DriveFile): Promise<File
     return { ok: true, text: text.slice(0, MAX_TEXT_CHARS) };
   }
 
-  const text = (await response.text()).slice(0, MAX_TEXT_CHARS);
+  const text = decodeText(new Uint8Array(await response.arrayBuffer())).slice(0, MAX_TEXT_CHARS);
   if (!text.trim()) return { ok: false, reason: "The file is empty." };
   return { ok: true, text };
 }
