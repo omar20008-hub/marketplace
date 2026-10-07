@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { n8n } from "@/lib/n8n";
-import { GOOGLE_DRIVE_CREDENTIAL, oauthStartUrl } from "@/lib/credentials";
+import { GOOGLE_DRIVE_CREDENTIAL, knownCredentialSchema, oauthStartUrl } from "@/lib/credentials";
 import { connectErrorText } from "@/lib/google-oauth";
 import { Badge, ButtonAnchor, ButtonLink, Card, PageTitle } from "@/components/ds";
 import { disconnectAccount } from "@/server/account-actions";
@@ -92,7 +92,11 @@ export default async function AccountsPage({
     CONNECTABLE.map(async (item) => {
       const oauthStartHref =
         item.credentialType === GOOGLE_DRIVE_CREDENTIAL ? oauthStartUrl("/accounts") : undefined;
-      const schema = oauthStartHref ? null : await n8n.credentialSchema(item.credentialType);
+      // The same order as the setup wizard: what is known to be right first, then n8n's own answer.
+      const schema = oauthStartHref
+        ? null
+        : (knownCredentialSchema(item.credentialType) ??
+          (await n8n.credentialSchema(item.credentialType)));
       return {
         credentialType: item.credentialType,
         displayName: item.displayName,

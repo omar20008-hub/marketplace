@@ -46,6 +46,23 @@ const genericSecretSchema: CredentialSchema = {
 };
 
 const KNOWN_SCHEMAS: Record<string, CredentialSchema> = {
+  // n8n's GET /credentials/schema/facebookGraphApi answers nothing here, so the form
+  // fell back to the generic "apiKey" field, and n8n's POST /credentials then refused
+  // the body: `request.body.data is not allowed to have the additional property
+  // "apiKey"` (the credential's one field is accessToken). Seen on a live activation.
+  facebookGraphApi: {
+    type: "object",
+    required: ["accessToken"],
+    properties: {
+      accessToken: {
+        type: "string",
+        title: "Access token",
+        format: "password",
+        description:
+          "A long-lived user access token for the Facebook Page (and its linked Instagram Business account).",
+      },
+    },
+  },
   googlePalmApi: {
     type: "object",
     required: ["apiKey", "host"],
