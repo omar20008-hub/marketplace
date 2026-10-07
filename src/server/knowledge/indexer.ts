@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { chunkText, storableText } from "@/lib/chunking";
+import { looksUnreadable, UNREADABLE_TEXT_REASON } from "@/lib/text-quality";
 import { DriveError, listTree, readFileText, skipReason, type DriveFile } from "@/lib/drive";
 import { EmbeddingError, embedTexts, embeddingTag, toVectorLiteral } from "@/lib/embeddings";
 import { GoogleAuthError } from "@/lib/google-oauth";
@@ -18,6 +19,8 @@ import { ensureWatch } from "./watch";
 
 export const MAX_FILES_PER_SOURCE = 2000;
 const MAX_CHUNKS_PER_FILE = 3000;
+/** The reason shown for a file its owner chose to leave out (see actions.ts). */
+export const EXCLUDED_BY_USER = "Left out because you chose to.";
 /** Texts embedded (and stored) per step; progress is saved after each, so a limit mid-file costs one step, not the file. */
 const EMBED_STEP = 25;
 
@@ -115,6 +118,16 @@ export async function syncSource(sourceId: string): Promise<Outcome> {
     } else if (skip && !["UNSUPPORTED", "REMOVED"].includes(existing.status)) {
       // Indexed (or waiting to be) before it was known to be a scratch file: drop it.
       await markSkipped(existing.id, skip, existing.revision);
+    } else if (
+      existing.status === "UNSUPPORTED" &&
+      existing.error === EXCLUDED_BY_USER &&
+      existing.revision !== file.revision
+    ) {
+      // Left out on purpose: a new version of it is left out too.
+      await prisma.knowledgeFile.update({
+        where: { id: existing.id },
+        data: { revision: file.revision, indexedRevision: file.revision, ...meta },
+      });
     } else if (existing.revision !== file.revision || existing.status === "REMOVED") {
       // Changed (or returned after being removed): read it again from scratch.
       await prisma.knowledgeFile.update({
@@ -230,6 +243,10 @@ export async function indexFile(fileId: string): Promise<Outcome> {
       return {};
     }
 
+    if (looksUnreadable(text.text)) {
+      await markSkipped(file.id, UNREADABLE_TEXT_REASON, revision);
+      return {};
+    }
     const chunks = chunkText(storableText(text.text)).slice(0, MAX_CHUNKS_PER_FILE);
 
     // Carry on after the chunks an earlier, rate-limited pass already stored — if it

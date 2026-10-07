@@ -10,6 +10,8 @@ import {
   removeSource,
   retryFile,
   tryFileNow,
+  leaveOutFile,
+  useFileAgain,
   syncNow,
   type KnowledgeActionState,
 } from "@/server/knowledge/actions";
@@ -100,6 +102,22 @@ export function FileRow({
           </Button>
         </form>
       ) : null}
+      {["READY", "PENDING", "FAILED"].includes(file.status) ? (
+        <form action={leaveOutFile}>
+          <input type="hidden" name="fileId" value={file.id} />
+          <Button type="submit" size="sm" tone="secondary">
+            Leave out
+          </Button>
+        </form>
+      ) : null}
+      {file.status === "UNSUPPORTED" && file.error === EXCLUDED_BY_USER_TEXT ? (
+        <form action={useFileAgain}>
+          <input type="hidden" name="fileId" value={file.id} />
+          <Button type="submit" size="sm" tone="secondary">
+            Use again
+          </Button>
+        </form>
+      ) : null}
       {file.status === "FAILED" ? (
         <form action={retryFile}>
           <input type="hidden" name="fileId" value={file.id} />
@@ -112,6 +130,9 @@ export function FileRow({
     </li>
   );
 }
+
+/** Must match EXCLUDED_BY_USER in the indexer (a client file cannot import it: that module is server-only). */
+const EXCLUDED_BY_USER_TEXT = "Left out because you chose to.";
 
 function nextTryText(at: Date): string {
   const minutes = Math.ceil((at.getTime() - Date.now()) / 60_000);

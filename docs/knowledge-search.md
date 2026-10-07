@@ -174,6 +174,14 @@ the queue is being drained. Otherwise it says which: `google.missing` (names onl
   (`22021 invalid byte sequence … 0x00`). That failure is classified `nul_byte_in_text`
   and the Files page shows only "Retrying after a temporary problem" with an ordinary
   (non-rate-limit) backoff, 30 s × 4ⁿ — a 32-minute next try is its signature.
+  **Unreadable text is not indexed** (`looksUnreadable`, `src/lib/text-quality.ts`): when
+  20% or more of a file's visible characters are NUL/control characters, replacement
+  characters, private-use code points or stray symbols (a PDF whose fonts have no
+  Unicode mapping), the file is marked Skipped with a reason that points at an OCR
+  copy. Garbage chunks would otherwise answer questions ahead of a good copy, since
+  every chunk carries its file's name. **Leave out / Use again** (Files page) lets
+  the owner exclude any file by hand: its chunks are deleted and it stays out, new
+  versions included, until it is used again.
   **Indexing resumes instead of restarting.** A file is embedded and stored 25 chunks
   at a time. If a rate limit stops it part-way, the chunks stored so far stay (hidden:
   the file is not READY), `KnowledgeFile.partialRevision` records `<revision>:<chunk
