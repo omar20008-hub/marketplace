@@ -12,6 +12,7 @@ import {
   tryFileNow,
   leaveOutFile,
   useFileAgain,
+  tryFileAgain,
   syncNow,
   type KnowledgeActionState,
 } from "@/server/knowledge/actions";
@@ -118,6 +119,14 @@ export function FileRow({
           </Button>
         </form>
       ) : null}
+      {file.status === "UNSUPPORTED" && file.error && !NOT_RETRYABLE.includes(file.error) ? (
+        <form action={tryFileAgain}>
+          <input type="hidden" name="fileId" value={file.id} />
+          <Button type="submit" size="sm" tone="secondary">
+            Try again
+          </Button>
+        </form>
+      ) : null}
       {file.status === "FAILED" ? (
         <form action={retryFile}>
           <input type="hidden" name="fileId" value={file.id} />
@@ -133,6 +142,9 @@ export function FileRow({
 
 /** Must match EXCLUDED_BY_USER in the indexer (a client file cannot import it: that module is server-only). */
 const EXCLUDED_BY_USER_TEXT = "Left out because you chose to.";
+
+/** Skipped for a reason reading again cannot change: left out on purpose, a scratch file, a type that cannot be read. Must match drive.ts and indexer.ts (server-only modules). */
+const NOT_RETRYABLE = [EXCLUDED_BY_USER_TEXT, "A temporary file, so it is not indexed.", "This file type cannot be read yet."];
 
 function nextTryText(at: Date): string {
   const minutes = Math.ceil((at.getTime() - Date.now()) / 60_000);

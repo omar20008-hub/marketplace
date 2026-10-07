@@ -178,7 +178,17 @@ export default async function AccountsPage({
                 ) : account.scope === "PLATFORM" ? (
                   <Badge tone="platform">Platform</Badge>
                 ) : account.status === "PENDING" ? (
-                  <Badge tone="partial">Not connected</Badge>
+                  // The button that does the connecting is on the row itself, not only in
+                  // the "Connect an account" panel further down.
+                  account.credentialType === GOOGLE_DRIVE_CREDENTIAL ? (
+                    <ButtonAnchor href={oauthStartUrl("/accounts")} size="sm">
+                      Connect
+                    </ButtonAnchor>
+                  ) : (
+                    <ButtonLink href={`/accounts?connect=${account.credentialType}`} size="sm">
+                      Connect
+                    </ButtonLink>
+                  )
                 ) : (
                   <>
                     <Badge tone="ready">Active</Badge>

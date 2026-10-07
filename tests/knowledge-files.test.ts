@@ -56,7 +56,7 @@ const { prisma } = await import("@/lib/db");
 const { parseFolderInput } = await import("@/lib/drive");
 const { GET: folders } = await import("@/app/api/knowledge/folders/route");
 const { activate } = await import("@/server/install-actions");
-const { attachFolder, removeSource, syncNow, retryFile, tryFileNow, leaveOutFile, useFileAgain } = await import("@/server/knowledge/actions");
+const { attachFolder, removeSource, syncNow, retryFile, tryFileNow, leaveOutFile, useFileAgain, tryFileAgain } = await import("@/server/knowledge/actions");
 const { GOOGLE_DRIVE_CREDENTIAL } = await import("@/lib/google-oauth");
 const { linkify } = await import("@/components/app/linkified");
 
@@ -412,6 +412,59 @@ describe("leaving a file out", () => {
     viewer.current = user;
     await prisma.knowledgeFile.update({ where: { id: file.id }, data: { status: "UNSUPPORTED", error: "This file type cannot be read yet." } });
     await useFileAgain(form({ fileId: file.id }));
+    expect((await prisma.knowledgeFile.findUniqueOrThrow({ where: { id: file.id } })).status).toBe("UNSUPPORTED");
+  });
+});
+
+describe("trying a skipped file again", () => {
+  async function skipped(email: string, error: string) {
+    const user = await seedUser(email);
+    const product = await seedProduct(user.id);
+    const installation = await prisma.installation.create({
+      data: { userId: user.id, productId: product.id, pinnedVersion: "1.0", status: "ACTIVE" },
+    });
+    const account = await prisma.connectedAccount.findFirstOrThrow({ where: { userId: user.id } });
+    const source = await prisma.knowledgeSource.create({
+      data: { userId: user.id, installationId: installation.id, accountId: account.id, folderId: "f-contracts-0001", folderName: "Contracts" },
+    });
+    const file = await prisma.knowledgeFile.create({
+      data: { sourceId: source.id, externalId: "s", name: "s.csv", mimeType: "text/csv", revision: "r1", status: "UNSUPPORTED", error, indexedRevision: "r1" },
+    });
+    return { user, file };
+  }
+  const form = (id: string) => {
+    const f = new FormData();
+    f.set("fileId", id);
+    return f;
+  };
+
+  it("queues a file skipped as unreadable, once the reader may have improved", async () => {
+    const { user, file } = await skipped("a@example.test", "The text in this file is unreadable (a scan or an unusual font). Use a copy that has real text, such as an OCR version.");
+    viewer.current = user;
+    await tryFileAgain(form(file.id));
+    const row = await prisma.knowledgeFile.findUniqueOrThrow({ where: { id: file.id } });
+    expect(row).toMatchObject({ status: "PENDING", error: null, indexedRevision: null });
+    expect(await prisma.knowledgeJob.count({ where: { dedupeKey: `INDEX_FILE:${file.id}` } })).toBe(1);
+  });
+
+  it("leaves alone what reading again cannot change: left out on purpose, scratch files, unreadable types, someone else's", async () => {
+    for (const error of ["Left out because you chose to.", "A temporary file, so it is not indexed.", "This file type cannot be read yet."]) {
+      await prisma.knowledgeJob.deleteMany({});
+      await prisma.knowledgeFile.deleteMany({});
+      await prisma.knowledgeSource.deleteMany({});
+      await prisma.installation.deleteMany({});
+      await prisma.product.deleteMany({});
+      await prisma.connectedAccount.deleteMany({});
+      await prisma.user.deleteMany({});
+      const { user, file } = await skipped(`${Math.random().toString(36).slice(2)}@example.test`, error);
+      viewer.current = user;
+      await tryFileAgain(form(file.id));
+      expect((await prisma.knowledgeFile.findUniqueOrThrow({ where: { id: file.id } })).status).toBe("UNSUPPORTED");
+      expect(await prisma.knowledgeJob.count()).toBe(0);
+    }
+    const { file } = await skipped("owner@example.test", "The file is empty.");
+    viewer.current = await seedUser("other@example.test");
+    await tryFileAgain(form(file.id));
     expect((await prisma.knowledgeFile.findUniqueOrThrow({ where: { id: file.id } })).status).toBe("UNSUPPORTED");
   });
 });
