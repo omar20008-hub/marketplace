@@ -1,5 +1,6 @@
 import "server-only";
 import { extractText, getDocumentProxy } from "unpdf";
+import { extractOfficeText, OFFICE_TYPES, OfficeError } from "./office-text";
 
 /**
  * The little of the Drive API the indexer needs: check a folder, walk it, and
@@ -152,7 +153,9 @@ const NATIVE_EXPORTS: Record<string, string> = {
 const PLAIN = new Set(["text/plain", "text/markdown", "text/csv", "application/json"]);
 
 export function isReadable(mimeType: string): boolean {
-  return mimeType in NATIVE_EXPORTS || PLAIN.has(mimeType) || mimeType === "application/pdf";
+  return (
+    mimeType in NATIVE_EXPORTS || PLAIN.has(mimeType) || mimeType === "application/pdf" || OFFICE_TYPES.has(mimeType)
+  );
 }
 
 /**
@@ -165,10 +168,13 @@ export function isTemporaryName(name: string): boolean {
   return lower.startsWith("tmp_") || name.startsWith("~$") || lower.endsWith(".tmp");
 }
 
+/** The reason recorded for a file of a type that cannot be read (also how a file waiting for a newly supported type is recognised). */
+export const UNSUPPORTED_TYPE_REASON = "This file type cannot be read yet.";
+
 /** Why a file is not indexed, or null when it is. */
 export function skipReason(name: string, mimeType: string): string | null {
   if (isTemporaryName(name)) return "A temporary file, so it is not indexed.";
-  if (!isReadable(mimeType)) return "This file type cannot be read yet.";
+  if (!isReadable(mimeType)) return UNSUPPORTED_TYPE_REASON;
   return null;
 }
 
@@ -177,7 +183,7 @@ export type FileText = { ok: true; text: string } | { ok: false; reason: string 
 export async function readFileText(token: string, file: DriveFile): Promise<FileText> {
   const id = encodeURIComponent(file.id);
   if (!isReadable(file.mimeType)) {
-    return { ok: false, reason: "This file type cannot be read yet." };
+    return { ok: false, reason: UNSUPPORTED_TYPE_REASON };
   }
   if (file.size !== null && file.size > MAX_DOWNLOAD_BYTES) {
     return { ok: false, reason: "The file is larger than 25 MB." };
@@ -195,6 +201,18 @@ export async function readFileText(token: string, file: DriveFile): Promise<File
     const pdf = await getDocumentProxy(new Uint8Array(await response.arrayBuffer()));
     const { text } = await extractText(pdf, { mergePages: true });
     if (!text.trim()) return { ok: false, reason: "The PDF has no text layer (a scan?)." };
+    return { ok: true, text: text.slice(0, MAX_TEXT_CHARS) };
+  }
+
+  if (OFFICE_TYPES.has(file.mimeType)) {
+    let text: string;
+    try {
+      text = extractOfficeText(new Uint8Array(await response.arrayBuffer()), file.mimeType);
+    } catch (error) {
+      if (error instanceof OfficeError) return { ok: false, reason: error.message };
+      throw error;
+    }
+    if (!text.trim()) return { ok: false, reason: "The file has no text in it." };
     return { ok: true, text: text.slice(0, MAX_TEXT_CHARS) };
   }
 

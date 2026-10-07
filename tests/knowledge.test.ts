@@ -224,6 +224,26 @@ describe("syncSource", () => {
     expect(changed.status).toBe("PENDING");
   });
 
+  it("reads after all a file that was turned away for its type, once that type is readable (Word, Excel, PowerPoint)", async () => {
+    const docx = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    drive.files = [file("w", { mimeType: docx }), file("old", { mimeType: "application/msword" })];
+    drive.texts = {};
+    await syncSource(sourceId);
+    // Both were recorded as unsupported before Word files could be read.
+    await prisma.knowledgeFile.updateMany({
+      data: { status: "UNSUPPORTED", error: "This file type cannot be read yet." },
+    });
+    await prisma.knowledgeJob.deleteMany({});
+
+    await syncSource(sourceId);
+    const w = await prisma.knowledgeFile.findFirstOrThrow({ where: { externalId: "w" } });
+    const old = await prisma.knowledgeFile.findFirstOrThrow({ where: { externalId: "old" } });
+    expect(w).toMatchObject({ status: "PENDING", error: null });
+    expect(old).toMatchObject({ status: "UNSUPPORTED" }); // the binary .doc is still not readable
+    const jobs = await prisma.knowledgeJob.findMany();
+    expect(jobs.map((j) => j.targetId)).toEqual([w.id]);
+  });
+
   it("keeps a file out that its owner left out, even when a new version arrives", async () => {
     drive.files = [file("a")];
     drive.texts = { a: "alpha" };

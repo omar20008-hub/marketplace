@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { chunkText, storableText } from "@/lib/chunking";
 import { looksUnreadable, UNREADABLE_TEXT_REASON } from "@/lib/text-quality";
-import { DriveError, listTree, readFileText, skipReason, type DriveFile } from "@/lib/drive";
+import { DriveError, listTree, readFileText, skipReason, UNSUPPORTED_TYPE_REASON, type DriveFile } from "@/lib/drive";
 import { EmbeddingError, embedTexts, embeddingTag, toVectorLiteral } from "@/lib/embeddings";
 import { GoogleAuthError } from "@/lib/google-oauth";
 import { getGoogleAccessToken } from "@/server/google-account";
@@ -95,7 +95,12 @@ export async function syncSource(sourceId: string): Promise<Outcome> {
     const meta = { name: file.name, mimeType: file.mimeType, path: file.path, webUrl: file.webUrl };
     const skip = skipReason(file.name, file.mimeType);
 
-    if ((!existing || existing.status === "REMOVED") && !skip) {
+    // A file once turned away for its type, whose type is readable now (Word, Excel
+    // and PowerPoint were added later): it is read after all.
+    const reviving =
+      !skip && existing?.status === "UNSUPPORTED" && existing.error === UNSUPPORTED_TYPE_REASON;
+
+    if ((!existing || existing.status === "REMOVED" || reviving) && !skip) {
       if (budget <= 0) {
         turnedAway++;
         continue;
@@ -115,6 +120,12 @@ export async function syncSource(sourceId: string): Promise<Outcome> {
         },
       });
       if (created.status === "PENDING") toIndex.push(created.id);
+    } else if (reviving) {
+      await prisma.knowledgeFile.update({
+        where: { id: existing.id },
+        data: { revision: file.revision, status: "PENDING", error: null, indexedRevision: null, ...meta },
+      });
+      toIndex.push(existing.id);
     } else if (skip && !["UNSUPPORTED", "REMOVED"].includes(existing.status)) {
       // Indexed (or waiting to be) before it was known to be a scratch file: drop it.
       await markSkipped(existing.id, skip, existing.revision);

@@ -174,6 +174,18 @@ the queue is being drained. Otherwise it says which: `google.missing` (names onl
   (`22021 invalid byte sequence … 0x00`). That failure is classified `nul_byte_in_text`
   and the Files page shows only "Retrying after a temporary problem" with an ordinary
   (non-rate-limit) backoff, 30 s × 4ⁿ — a 32-minute next try is its signature.
+  **Word, Excel and PowerPoint** (`.docx`, `.xlsx`, `.pptx`) are read by
+  `src/lib/office-text.ts`: a small zip reader over `node:zlib` (no dependency) and the
+  text parts of the XML. Word: paragraphs, tables (a row is its cells joined by ` | `),
+  footnotes. Excel: every sheet under `## Sheet: <name>`, one row per line, cell values
+  (not formulas) with shared strings resolved. PowerPoint: slides in order under
+  `## Slide N`, with speaker notes. The archive is untrusted: parts are size-capped (a
+  zip bomb is refused, not expanded), password-protected or ZIP64 archives are turned
+  away, and no XML parser runs, so there is nothing to expand. Not supported: the old
+  binary `.doc`/`.xls`/`.ppt`, images and charts inside the files, comments, tracked
+  changes' deleted text, and Excel dates (shown as their serial number). A file once
+  skipped for its type ("This file type cannot be read yet.") is read at the next sync
+  after it becomes readable.
   **Unreadable text is not indexed** (`looksUnreadable`, `src/lib/text-quality.ts`): when
   20% or more of a file's visible characters are NUL/control characters, replacement
   characters, private-use code points or stray symbols (a PDF whose fonts have no
