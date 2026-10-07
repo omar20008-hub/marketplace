@@ -39,6 +39,15 @@ export default async function FilesPage({
     where: { targetId: { in: installation.knowledgeSources.map((s) => s.id) } },
   });
 
+  const checking = new Set(
+    (
+      await prisma.knowledgeJob.findMany({
+        where: { kind: "SYNC_SOURCE", targetId: { in: installation.knowledgeSources.map((s) => s.id) } },
+        select: { targetId: true },
+      })
+    ).map((job) => job.targetId),
+  );
+
   const waitingIds = installation.knowledgeSources.flatMap((s) =>
     s.files.filter((f) => f.status === "PENDING").map((f) => f.id),
   );
@@ -128,9 +137,11 @@ export default async function FilesPage({
                     <div className="truncate text-sm font-medium">{source.folderName}</div>
                     <div className="mt-0.5 text-xs text-ink-3">
                       Google Drive
-                      {source.lastSyncedAt
-                        ? ` · checked ${relativeTime(source.lastSyncedAt)}`
-                        : " · not checked yet"}
+                      {checking.has(source.id)
+                        ? " · checking now…"
+                        : source.lastSyncedAt
+                          ? ` · checked ${relativeTime(source.lastSyncedAt)}`
+                          : " · not checked yet"}
                     </div>
                   </div>
                   <SourceStatus status={source.status} busy={busy} failed={counts.failed} />

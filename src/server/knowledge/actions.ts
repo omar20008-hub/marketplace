@@ -53,7 +53,7 @@ export async function syncNow(formData: FormData) {
   if (!source) return;
   // A PAUSED source is one the user (or an uninstall) stopped; it stays stopped.
   if (source.status === "PAUSED") return;
-  await enqueue("SYNC_SOURCE", source.id);
+  await expedite("SYNC_SOURCE", source.id);
   // A file waiting out a retry backoff would otherwise sit there for up to an hour
   // after the person pressed "Check now": bring those forward too.
   const waiting = await prisma.knowledgeFile.findMany({
