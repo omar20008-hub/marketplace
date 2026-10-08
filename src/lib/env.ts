@@ -145,6 +145,20 @@ export const env = {
   },
 
   /**
+   * The platform's own Facebook app, for "Continue with Facebook": the user signs
+   * in on Facebook, and the platform keeps the long-lived token it gets back as
+   * their Facebook & Instagram connection. Not required to boot — without it the
+   * button says so, and pasting an access token still works. redirectUri is
+   * optional: by default it is PUBLIC_URL plus /api/oauth/facebook/callback, and
+   * whatever is used must be listed under "Valid OAuth Redirect URIs" in the app.
+   */
+  facebook: {
+    appId: process.env.FACEBOOK_APP_ID ?? "",
+    appSecret: process.env.FACEBOOK_APP_SECRET ?? "",
+    redirectUri: process.env.FACEBOOK_REDIRECT_URI ?? "",
+  },
+
+  /**
    * The address n8n uses to call back into the platform (knowledge search). It
    * is written into each installed workflow, so it must be reachable from n8n,
    * not merely from a browser. Defaults to the origin of the OAuth redirect.

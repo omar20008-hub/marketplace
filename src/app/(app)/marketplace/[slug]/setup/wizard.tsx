@@ -27,7 +27,7 @@ export type SetupRequirement = {
   providedBy: "PLATFORM" | "PLATFORM_OR_OWN" | "USER";
   connected: boolean;
   accountRef: string | null;
-  /** Set for a connection the platform holds itself (Google): a sign-in link, not a form. */
+  /** Set when the user signs in on the service's own page (Google, Facebook): a link, not only a form. */
   connectUrl: string | null;
   connectLabel: string;
   fields: {
@@ -230,9 +230,26 @@ export function SetupWizard({
                                 Connected
                               </Badge>
                             ) : requirement.connectUrl ? (
-                              <ButtonAnchor href={requirement.connectUrl} size="sm">
-                                {requirement.connectLabel}
-                              </ButtonAnchor>
+                              <div className="flex flex-wrap items-center justify-end gap-3">
+                                {/* A sign-in that also takes a pasted token (Facebook): the
+                                    button is the way in, the token the second one. */}
+                                {requirement.fields.length > 0 ? (
+                                  <button
+                                    type="button"
+                                    className="text-[13px] text-ink-2 hover:text-ink"
+                                    onClick={() =>
+                                      setOpenForm(
+                                        openForm === requirement.id ? null : requirement.id,
+                                      )
+                                    }
+                                  >
+                                    Use an access token instead
+                                  </button>
+                                ) : null}
+                                <ButtonAnchor href={requirement.connectUrl} size="sm">
+                                  {requirement.connectLabel}
+                                </ButtonAnchor>
+                              </div>
                             ) : (
                               <Button
                                 type="button"

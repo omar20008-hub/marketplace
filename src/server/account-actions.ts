@@ -6,7 +6,7 @@ import { requireUser } from "@/lib/auth";
 import { openCredential, sealCredential } from "@/lib/secrets";
 import { stopWatch } from "./knowledge/watch";
 import { GOOGLE_DRIVE_CREDENTIAL, revokeToken } from "@/lib/google-oauth";
-import { isPlatformOAuth } from "@/lib/credentials";
+import { hasFacebookSignIn, isPlatformOAuth } from "@/lib/credentials";
 import { refreshInstallationStates } from "./installation-state";
 
 /**
@@ -46,6 +46,36 @@ export async function connectAccount(
   }
 
   const accountRef = values.accountRef ?? user.email;
+  // The label is ours; what is sealed is exactly what n8n's credential will be
+  // created from, and n8n refuses a body with a field its credential type lacks.
+  const { accountRef: _label, ...secret } = values;
+  void _label;
+  if (Object.keys(secret).length === 0) return { error: "Fill in the connection details." };
+
+  // Facebook can be connected by signing in or by pasting a token. Either way it is
+  // one connection: a second one beside it would leave an install guessing which.
+  if (hasFacebookSignIn(credentialType)) {
+    const existing = await prisma.connectedAccount.findFirst({
+      where: { userId: user.id, credentialType },
+      orderBy: { createdAt: "asc" },
+    });
+    if (existing) {
+      await prisma.connectedAccount.update({
+        where: { id: existing.id },
+        data: {
+          status: "ACTIVE",
+          reusable,
+          secretJson: sealCredential(secret),
+          expiresAt: null,
+          ...(values.accountRef ? { accountRef: values.accountRef } : {}),
+        },
+      });
+      await refreshInstallationStates(user.id);
+      revalidatePath("/accounts");
+      revalidatePath("/workspace");
+      return { done: true };
+    }
+  }
 
   await prisma.connectedAccount.upsert({
     where: {
@@ -63,12 +93,12 @@ export async function connectAccount(
       accountRef,
       status: "ACTIVE",
       reusable,
-      secretJson: sealCredential(values),
+      secretJson: sealCredential(secret),
     },
     update: {
       status: "ACTIVE",
       reusable,
-      secretJson: sealCredential(values),
+      secretJson: sealCredential(secret),
       expiresAt: null,
     },
   });

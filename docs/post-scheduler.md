@@ -81,10 +81,45 @@ minute and 75 days ahead. Times are UTC, as everywhere else.
 - A scheduled post can be cancelled (`DELETE /api/posts/:id`) until it starts
   publishing.
 
+## Connecting Facebook & Instagram
+
+**Continue with Facebook is the main way**; pasting an access token is the second.
+Both end in the same place: one `facebookGraphApi` connection per user whose
+secret is exactly `{ accessToken }` (n8n's credential body refuses anything else),
+so installing a product does not care which way it was made.
+
+- **Sign-in** — `GET /api/oauth/facebook/start` → Facebook's dialog →
+  `GET /api/oauth/facebook/callback`. State lives in a signed httpOnly cookie
+  (`fb_oauth`, path `/api/oauth/facebook`) tied to the signed-in user, like the
+  Drive flow. The code is swapped for a short token and that for a long-lived one
+  (about 60 days); the callback then reads `/me`, `/me/permissions` and
+  `/me/accounts` and refuses, with a message, a sign-in where the posting
+  permission was unticked or the account has no Page. The connection is labelled
+  `<name> · <first Page>` — the Page posts go to.
+- **Expiry** — Facebook gives no refresh token. `expireFacebookAccounts()` (run on
+  every scheduler tick and by `POST /api/accounts/keepalive`) marks a connection
+  whose token ran out `EXPIRED`, which shows **Reconnect** on Connected accounts and
+  a note on the product. A pasted token has no recorded lifetime and is never
+  expired by the clock.
+- **Token instead** — the setup step and Connected accounts keep the access-token
+  form. Either way replaces the user's one Facebook connection in place.
+- **Settings** — `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET`, and `PUBLIC_URL` (or
+  `FACEBOOK_REDIRECT_URI`); the redirect URI, `<PUBLIC_URL>/api/oauth/facebook/callback`,
+  must be listed under *Facebook Login → Valid OAuth Redirect URIs*. Without them
+  the button explains what is missing and the token form still works.
+- **Meta app review** — in Development mode only people with a role on the app
+  (admin, developer, tester) can sign in. For everyone else the app needs App Review
+  for `pages_manage_posts`, `pages_read_engagement`, `pages_show_list`,
+  `instagram_basic` and `instagram_content_publish`, and usually Business
+  Verification.
+- **Known limit** — the token is copied into n8n's credential when a product is
+  installed. After reconnecting, remove the product and add it again so the new token
+  reaches n8n (there is no credential-update call yet).
+
 ## Not verified here
 
 Nothing in this change has run against a real Facebook account. Before relying on
-it: upload the template, approve it, connect a Facebook token that can manage a
+it: upload the template, approve it, connect Facebook (the sign-in, or a token that can manage a
 Page (`pages_manage_posts`, plus `instagram_content_publish` for Instagram), and
 schedule a post two minutes ahead. What *has* been checked against the live n8n
 workflows (by reading them): the node types are on the whitelist (the Code nodes

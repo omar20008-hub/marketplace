@@ -29,6 +29,9 @@ process.env.GOOGLE_CLIENT_ID = "test-client-id.apps.googleusercontent.com";
 process.env.GOOGLE_CLIENT_SECRET = "test-client-secret";
 process.env.GOOGLE_REDIRECT_URI = "https://app.example.test/api/oauth/google/callback";
 
+process.env.FACEBOOK_APP_ID = "1234567890";
+process.env.FACEBOOK_APP_SECRET = "test-facebook-app-secret";
+
 process.env.N8N_DRIVER = "mock";
 process.env.N8N_WEBHOOK_TOKEN = "test-webhook-token";
 process.env.N8N_SYNC_TOKEN = "test-sync-token";

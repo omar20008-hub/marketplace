@@ -2,6 +2,7 @@ import "server-only";
 import { createHash, randomBytes } from "node:crypto";
 import { GOOGLE_DRIVE_CREDENTIAL } from "./credentials";
 import { env } from "./env";
+import { facebookConnectErrorText, isFacebookConnectError } from "./facebook-oauth";
 import { appUrl } from "./public-origin";
 
 export { GOOGLE_DRIVE_CREDENTIAL, appUrl };
@@ -105,6 +106,8 @@ export const CONNECT_ERRORS: Record<string, string> = {
  * to set, and a value never leaves the environment it was set in.
  */
 export function connectErrorText(code: string | undefined): string {
+  // The same banner serves Facebook's sign-in; its codes all start with fb_.
+  if (isFacebookConnectError(code)) return facebookConnectErrorText(code);
   if (code === "not_configured") {
     const missing = googleMissingConfig();
     if (missing.length > 0) {

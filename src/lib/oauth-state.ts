@@ -14,6 +14,9 @@ import { env } from "./env";
 
 export const OAUTH_COOKIE = "g_oauth";
 export const OAUTH_COOKIE_PATH = "/api/oauth/google";
+/** Facebook's sign-in keeps its state in its own cookie, on its own path. */
+export const FACEBOOK_OAUTH_COOKIE = "fb_oauth";
+export const FACEBOOK_OAUTH_COOKIE_PATH = "/api/oauth/facebook";
 export const OAUTH_STATE_TTL_SECONDS = 600;
 
 type Payload = {
