@@ -1,7 +1,12 @@
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { n8n } from "@/lib/n8n";
-import { GOOGLE_DRIVE_CREDENTIAL, knownCredentialSchema, oauthStartUrl } from "@/lib/credentials";
+import {
+  GOOGLE_DRIVE_CREDENTIAL,
+  hasFacebookSignIn,
+  knownCredentialSchema,
+  oauthStartUrl,
+} from "@/lib/credentials";
 import { connectErrorText } from "@/lib/google-oauth";
 import { Badge, ButtonAnchor, ButtonLink, Card, PageTitle } from "@/components/ds";
 import { disconnectAccount } from "@/server/account-actions";
@@ -102,6 +107,10 @@ export default async function AccountsPage({
         displayName: item.displayName,
         allows: ALLOWS[item.credentialType] ?? { grants: [], denies: [] },
         oauthStartUrl: oauthStartHref,
+        // Facebook has both: the sign-in, and a pasted access token as the second way.
+        signInUrl: hasFacebookSignIn(item.credentialType)
+          ? oauthStartUrl("/accounts", item.credentialType)
+          : undefined,
         fields: schema
           ? Object.entries(schema.properties).map(([name, property]) => ({
               name,
@@ -163,8 +172,12 @@ export default async function AccountsPage({
                 </div>
 
                 {account.status === "EXPIRED" ? (
-                  account.credentialType === GOOGLE_DRIVE_CREDENTIAL ? (
-                    <ButtonAnchor href={oauthStartUrl("/accounts")} size="sm">
+                  account.credentialType === GOOGLE_DRIVE_CREDENTIAL ||
+                  hasFacebookSignIn(account.credentialType) ? (
+                    <ButtonAnchor
+                      href={oauthStartUrl("/accounts", account.credentialType)}
+                      size="sm"
+                    >
                       Reconnect
                     </ButtonAnchor>
                   ) : (
@@ -180,8 +193,12 @@ export default async function AccountsPage({
                 ) : account.status === "PENDING" ? (
                   // The button that does the connecting is on the row itself, not only in
                   // the "Connect an account" panel further down.
-                  account.credentialType === GOOGLE_DRIVE_CREDENTIAL ? (
-                    <ButtonAnchor href={oauthStartUrl("/accounts")} size="sm">
+                  account.credentialType === GOOGLE_DRIVE_CREDENTIAL ||
+                  hasFacebookSignIn(account.credentialType) ? (
+                    <ButtonAnchor
+                      href={oauthStartUrl("/accounts", account.credentialType)}
+                      size="sm"
+                    >
                       Connect
                     </ButtonAnchor>
                   ) : (

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { expireFacebookAccounts } from "@/server/facebook-account";
 import { purgeExpiredMedia } from "@/server/media";
 import { executeRun } from "@/server/run-engine";
 import { statusLabel } from "@/server/scheduler";
@@ -131,6 +132,9 @@ export async function runDuePosts({
   // went out is unknowable from here, so say that instead of re-sending it.
   // Attachments past their 90 days are deleted on the same clock. Never worth failing a tick over.
   await purgeExpiredMedia(now).catch(() => 0);
+  // A Facebook sign-in lasts about 60 days; one that ran out is marked so the person
+  // sees "Reconnect" instead of a post that fails.
+  await expireFacebookAccounts(now).catch(() => 0);
 
   await prisma.scheduledPost.updateMany({
     where: { status: "PUBLISHING", claimedAt: { lt: new Date(now.getTime() - STALE_CLAIM_MS) } },

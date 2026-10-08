@@ -32,9 +32,22 @@ export function isPlatformOAuth(credentialType: string) {
   return credentialType === GOOGLE_DRIVE_CREDENTIAL;
 }
 
+export const FACEBOOK_CREDENTIAL = "facebookGraphApi";
+
+/**
+ * Facebook is the other kind: the user signs in on Facebook and the platform
+ * keeps the token it gets back — but the token is still written into n8n's
+ * credential at install like a pasted one, so a Facebook connection stays an
+ * ordinary connection and pasting an access token remains a second way to make it.
+ */
+export function hasFacebookSignIn(credentialType: string) {
+  return credentialType === FACEBOOK_CREDENTIAL;
+}
+
 /** The link that starts that sign-in, and where it should land the user after. */
-export function oauthStartUrl(returnTo: string) {
-  return `/api/oauth/google/start?returnTo=${encodeURIComponent(returnTo)}`;
+export function oauthStartUrl(returnTo: string, credentialType: string = GOOGLE_DRIVE_CREDENTIAL) {
+  const provider = hasFacebookSignIn(credentialType) ? "facebook" : "google";
+  return `/api/oauth/${provider}/start?returnTo=${encodeURIComponent(returnTo)}`;
 }
 
 const genericSecretSchema: CredentialSchema = {

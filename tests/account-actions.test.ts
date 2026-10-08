@@ -190,6 +190,33 @@ describe("connectAccount", () => {
     expect(await prisma.connectedAccount.count()).toBe(0);
   });
 
+  it("keeps the label out of the sealed secret, which becomes n8n's credential body", async () => {
+    await seedUser();
+    await connectAccount({}, slack({ "field.accountRef": "acme.slack.com" }));
+
+    const account = (await prisma.connectedAccount.findFirst())!;
+    expect(account.accountRef).toBe("acme.slack.com");
+    expect(openCredential(account.secretJson)).toEqual({ accessToken: "xoxb-secret-value" });
+  });
+
+  it("makes a pasted Facebook token replace the signed-in one rather than sit beside it", async () => {
+    await seedUser();
+    const facebook = (token: string, ref?: string) =>
+      form({
+        credentialType: "facebookGraphApi",
+        displayName: "Facebook & Instagram",
+        "field.accessToken": token,
+        ...(ref ? { "field.accountRef": ref } : {}),
+      });
+    await connectAccount({}, facebook("EAAfirst", "Nora Acme · Acme Page"));
+    await connectAccount({}, facebook("EAAsecond"));
+
+    const accounts = await prisma.connectedAccount.findMany();
+    expect(accounts).toHaveLength(1);
+    expect(accounts[0].accountRef).toBe("Nora Acme · Acme Page");
+    expect(openCredential(accounts[0].secretJson)).toEqual({ accessToken: "EAAsecond" });
+  });
+
   it("replaces the secret on a reconnect rather than adding a second row", async () => {
     await seedUser();
     await connectAccount({}, slack());

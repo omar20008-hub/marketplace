@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { n8n } from "@/lib/n8n";
 import {
   fallbackCredentialSchema,
+  hasFacebookSignIn,
   isPlatformOAuth,
   knownCredentialSchema,
   oauthStartUrl,
@@ -59,6 +60,14 @@ export default async function SetupPage({
         isPlatformOAuth(requirement.credentialType) &&
         account?.status !== "ACTIVE";
 
+      // Facebook is signed in with first and a pasted token is the second way, so it
+      // gets the button and the form both.
+      const facebookSignIn =
+        requirement.providedBy === "USER" &&
+        requirement.credentialType !== null &&
+        hasFacebookSignIn(requirement.credentialType) &&
+        account?.status !== "ACTIVE";
+
       const schema =
         !platformOAuth &&
         requirement.providedBy === "USER" &&
@@ -78,8 +87,17 @@ export default async function SetupPage({
         providedBy: requirement.providedBy,
         connected: account?.status === "ACTIVE",
         accountRef: account?.accountRef ?? null,
-        connectUrl: platformOAuth ? oauthStartUrl(`/marketplace/${slug}/setup`) : null,
-        connectLabel: account?.status === "EXPIRED" ? "Reconnect" : "Connect",
+        connectUrl:
+          platformOAuth || facebookSignIn
+            ? oauthStartUrl(`/marketplace/${slug}/setup`, requirement.credentialType!)
+            : null,
+        connectLabel: facebookSignIn
+          ? account?.status === "EXPIRED"
+            ? "Reconnect with Facebook"
+            : "Continue with Facebook"
+          : account?.status === "EXPIRED"
+            ? "Reconnect"
+            : "Connect",
         fields: schema
           ? Object.entries(schema.properties).map(([name, property]) => ({
               name,

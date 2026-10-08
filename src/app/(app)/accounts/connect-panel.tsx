@@ -11,6 +11,8 @@ export type Connectable = {
   displayName: string;
   /** Set when the platform signs the user in itself (Google) instead of taking keys. */
   oauthStartUrl?: string;
+  /** Set when the user can also sign in on the service itself (Facebook); the token form stays as the second way. */
+  signInUrl?: string;
   allows: { grants: string[]; denies: string[] };
   fields: {
     name: string;
@@ -102,6 +104,13 @@ export function ConnectPanel({
               </p>
             ) : (
               <>
+                {option.signInUrl ? (
+                  <p className="text-[13px] text-ink-2">
+                    Sign in on {option.displayName}&apos;s own page and choose the Page to
+                    post to. The platform never sees your password. If you already have an
+                    access token, you can paste it below instead.
+                  </p>
+                ) : null}
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[13px] font-medium">Label this account</span>
                   <Input
@@ -122,7 +131,7 @@ export function ConnectPanel({
                       name={`field.${field.name}`}
                       type={field.secret ? "password" : "text"}
                       autoComplete="off"
-                      required={field.required}
+                      required={field.required && !option.signInUrl}
                     />
                     {field.description ? (
                       <span className="text-xs text-ink-3">{field.description}</span>
@@ -179,6 +188,15 @@ export function ConnectPanel({
               <ButtonAnchor href={option.oauthStartUrl} size="sm">
                 Continue with Google
               </ButtonAnchor>
+            ) : option.signInUrl ? (
+              <>
+                <Button type="submit" tone="secondary" size="sm" disabled={pending}>
+                  {pending ? "Connecting…" : "Connect with access token"}
+                </Button>
+                <ButtonAnchor href={option.signInUrl} size="sm">
+                  Continue with Facebook
+                </ButtonAnchor>
+              </>
             ) : (
               <Button
                 type="submit"
