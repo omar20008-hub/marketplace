@@ -24,6 +24,7 @@ process.env.SECRETS_KEY =
   "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
 
 process.env.SCHEDULE_TOKEN = "test-schedule-token";
+process.env.CHANNEL_TOKEN = "test-channel-token";
 
 process.env.GOOGLE_CLIENT_ID = "test-client-id.apps.googleusercontent.com";
 process.env.GOOGLE_CLIENT_SECRET = "test-client-secret";

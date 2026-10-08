@@ -67,6 +67,40 @@ model User {
   knowledge     KnowledgeSource[]
   memories      UserMemory[]
   memoryFiles   MemoryFile[]
+  channelLinks      ChannelLink[]
+  channelLinkCodes  ChannelLinkCode[]
+}
+
+// ------------------------------------------------------------ chat channels
+
+// A person's account on a chat channel, linked to their platform user. The
+// channel's own id is the key (for Telegram, the numeric user id), so one
+// channel account belongs to one platform user, and a user has one per channel.
+model ChannelLink {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel    String // "telegram"
+  externalId String
+  linkedAt   DateTime @default(now())
+
+  @@unique([channel, externalId])
+  @@unique([userId, channel])
+}
+
+// A one-time code the person sends to the bot as "/link <code>". Only its
+// SHA-256 is stored; the code itself is shown once, to the person who asked.
+model ChannelLinkCode {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel   String
+  codeHash  String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, channel])
 }
 
 // Plans, credits and quotas live only here. No workflow enforces them.

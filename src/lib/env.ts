@@ -26,6 +26,7 @@ const EXAMPLE_VALUES = new Set([
   "dev-only-secret-change-me-to-something-long-and-random",
   "dev-sync-token",
   "dev-schedule-token",
+  "dev-channel-token",
 ]);
 
 const MIN_SECRET_LENGTH = 24;
@@ -129,6 +130,22 @@ export const env = {
     "SCHEDULE_TOKEN",
     process.env.SCHEDULE_TOKEN ?? "",
   ),
+
+  /**
+   * Authorises the chat-channel calls n8n makes back into the platform
+   * (POST /api/channels/telegram/link and /resolve), sent as x-channel-token.
+   * Empty disables both endpoints, for the same reason as scheduleToken.
+   */
+  channelToken: refuseExampleToken(
+    "CHANNEL_TOKEN",
+    process.env.CHANNEL_TOKEN ?? "",
+  ),
+
+  /**
+   * The public username of the Telegram bot people message, without the @. Shown
+   * on the accounts page so the person knows which chat to open. Not a secret.
+   */
+  telegramBotUsername: process.env.TELEGRAM_BOT_USERNAME?.replace(/^@/, "") || null,
 
   /**
    * The platform's own Google OAuth client, for connections the platform holds

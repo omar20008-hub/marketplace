@@ -6,6 +6,9 @@ import { connectErrorText } from "@/lib/google-oauth";
 import { Badge, ButtonAnchor, ButtonLink, Card, PageTitle } from "@/components/ds";
 import { disconnectAccount } from "@/server/account-actions";
 import { ConnectPanel, type Connectable } from "./connect-panel";
+import { TelegramLinkCard } from "./telegram-link-card";
+import { telegramLinkFor } from "@/server/channel-links";
+import { env } from "@/lib/env";
 
 export const metadata = { title: "Connected accounts · Builder" };
 
@@ -111,6 +114,8 @@ export default async function AccountsPage({
     }),
   );
 
+  const telegram = await telegramLinkFor(user.id);
+
   const connected = accounts.filter((a) => a.status !== "PENDING").length;
 
   return (
@@ -194,7 +199,13 @@ export default async function AccountsPage({
           })}
         </div>
 
-        <ConnectPanel options={connectable} preselect={connect} />
+        <div className="flex flex-col gap-4">
+          <ConnectPanel options={connectable} preselect={connect} />
+          <TelegramLinkCard
+            linkedAt={telegram?.linkedAt.toISOString() ?? null}
+            botUsername={env.telegramBotUsername}
+          />
+        </div>
       </div>
     </div>
   );
