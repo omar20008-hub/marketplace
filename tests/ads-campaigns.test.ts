@@ -158,7 +158,12 @@ describe("createAdCampaign", () => {
 
     const result = await createAdCampaign(user.id, valid(), meta.fetcher, NOW);
 
-    expect(result).toEqual({ ok: true, campaignId: expect.any(String), status: "PAUSED" });
+    expect(result).toMatchObject({
+      ok: true,
+      campaignId: expect.any(String),
+      status: "PAUSED",
+      review: { days: 8, maxTotalCents: 4000 },
+    });
     expect(meta.calls.map((c) => c.url.split("/").pop())).toEqual([
       "campaigns",
       "adsets",
