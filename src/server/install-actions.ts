@@ -240,7 +240,7 @@ export async function activate(
     return {
       error:
         "Setting this up failed, and nothing was installed. If you just connected an account, " +
-        "remove it from Connected accounts and connect it again, then retry.",
+        "remove it from Connectors and connect it again, then retry.",
     };
   }
 
