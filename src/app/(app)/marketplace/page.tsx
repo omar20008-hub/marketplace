@@ -58,7 +58,7 @@ export default async function MarketplacePage({
       include: { requirements: true, creator: true },
     }),
     user
-      ? prisma.connectedAccount.findMany({ where: { userId: user.id } })
+      ? prisma.connector.findMany({ where: { userId: user.id } })
       : Promise.resolve([]),
     user
       ? prisma.installation.findMany({

@@ -60,7 +60,7 @@ model User {
 
   products      Product[]
   installations Installation[]
-  accounts      ConnectedAccount[]
+  connectors    Connector[]
   adCampaigns   AdCampaign[]
   runs          Run[]
   threads       Thread[]
@@ -307,10 +307,11 @@ enum AccountStatus {
   PENDING
 }
 
-// A reusable connection. The design lets one account serve many products, while
-// n8n creates a credential per installation, so InstallationCredential below
-// records which n8n credential each installation got from this account.
-model ConnectedAccount {
+// A reusable connection to an outside tool. The design lets one connector serve
+// many products, while n8n creates a credential per installation, so
+// InstallationCredential below records which n8n credential each installation
+// got from this connector.
+model Connector {
   id             String        @id @default(cuid())
   userId         String
   user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -391,8 +392,8 @@ model InstallationCredential {
   id              String            @id @default(cuid())
   installationId  String
   installation    Installation      @relation(fields: [installationId], references: [id], onDelete: Cascade)
-  accountId       String?
-  account         ConnectedAccount? @relation(fields: [accountId], references: [id])
+  connectorId     String?
+  connector       Connector?        @relation(fields: [connectorId], references: [id])
   credentialType  String
   n8nCredentialId String?
 
@@ -715,8 +716,8 @@ model KnowledgeSource {
   /// own user attached to it, never the user's other folders.
   installationId String
   installation   Installation          @relation(fields: [installationId], references: [id], onDelete: Cascade)
-  accountId      String
-  account        ConnectedAccount      @relation(fields: [accountId], references: [id])
+  connectorId    String
+  connector      Connector             @relation(fields: [connectorId], references: [id])
   provider       String                @default("gdrive")
   folderId       String
   folderName     String
@@ -739,7 +740,7 @@ model KnowledgeSource {
   files KnowledgeFile[]
 
   @@unique([installationId, provider, folderId])
-  @@index([accountId])
+  @@index([connectorId])
 }
 
 model KnowledgeFile {

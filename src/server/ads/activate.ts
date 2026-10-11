@@ -57,7 +57,7 @@ export async function activateAdCampaign(
     };
   }
 
-  const connection = await prisma.connectedAccount.findFirst({
+  const connection = await prisma.connector.findFirst({
     where: { userId, credentialType: FACEBOOK_CREDENTIAL, status: "ACTIVE" },
   });
   if (!connection?.secretJson) {

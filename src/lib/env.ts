@@ -176,6 +176,16 @@ export const env = {
   },
 
   /**
+   * Asana, the first tool signed into through the generic connector sign-in
+   * (lib/connectors). Each tool gets its own app registration and its own pair of
+   * these; the redirect is always PUBLIC_URL + /api/connectors/<tool>/callback.
+   */
+  asana: {
+    clientId: process.env.ASANA_CLIENT_ID ?? "",
+    clientSecret: process.env.ASANA_CLIENT_SECRET ?? "",
+  },
+
+  /**
    * Stripe, for the paid plans (see lib/billing.ts). Not required to boot: without a
    * secret key the upgrade buttons say billing is not set up yet. The price ids are
    * the Stripe prices for each paid plan; the webhook secret checks that a request

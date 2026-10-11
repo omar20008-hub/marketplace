@@ -40,7 +40,7 @@ export default async function SetupPage({
   if (product.status !== "PUBLISHED") redirect(`/marketplace/${slug}`);
 
   const [accounts, adapters] = await Promise.all([
-    prisma.connectedAccount.findMany({ where: { userId: user.id } }),
+    prisma.connector.findMany({ where: { userId: user.id } }),
     prisma.storageAdapter.findMany(),
   ]);
 

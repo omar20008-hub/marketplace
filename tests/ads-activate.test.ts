@@ -16,7 +16,7 @@ const TOKEN = "EAA-test-activate-token";
 
 async function wipe() {
   await prisma.adCampaign.deleteMany({});
-  await prisma.connectedAccount.deleteMany({});
+  await prisma.connector.deleteMany({});
   await prisma.user.deleteMany({});
   await prisma.plan.deleteMany({});
 }
@@ -29,7 +29,7 @@ async function seed(over: Partial<{ status: "PAUSED" | "ACTIVE"; endsAt: Date; w
     data: { email: "act@example.test", name: "A", passwordHash: "x", initials: "A", planId: PLAN_ID },
   });
   if (over.connected !== false) {
-    await prisma.connectedAccount.create({
+    await prisma.connector.create({
       data: {
         userId: user.id,
         credentialType: "facebookGraphApi",

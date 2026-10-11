@@ -36,7 +36,7 @@ function valid(over: Record<string, unknown> = {}) {
 
 async function wipe() {
   await prisma.adCampaign.deleteMany({});
-  await prisma.connectedAccount.deleteMany({});
+  await prisma.connector.deleteMany({});
   await prisma.user.deleteMany({});
   await prisma.plan.deleteMany({});
 }
@@ -49,7 +49,7 @@ async function seedUser(connected = true, expiresAt: Date | null = null) {
     data: { email: "ads@example.test", name: "A", passwordHash: "x", initials: "A", planId: PLAN_ID },
   });
   if (connected) {
-    await prisma.connectedAccount.create({
+    await prisma.connector.create({
       data: {
         userId: user.id,
         credentialType: "facebookGraphApi",

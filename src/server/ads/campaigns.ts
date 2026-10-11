@@ -38,7 +38,7 @@ export async function createAdCampaign(
   if (!checked.ok) return { ok: false, errors: checked.errors };
   const input = checked.value;
 
-  const connection = await prisma.connectedAccount.findFirst({
+  const connection = await prisma.connector.findFirst({
     where: { userId, credentialType: FACEBOOK_CREDENTIAL, status: "ACTIVE" },
   });
   if (!connection?.secretJson) {

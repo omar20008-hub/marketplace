@@ -3,6 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { GOOGLE_DRIVE_CREDENTIAL } from "./credentials";
 import { env } from "./env";
 import { facebookConnectErrorText, isFacebookConnectError } from "./facebook-oauth";
+import { TOOL_CONNECT_ERRORS, isToolConnectError } from "./connectors/messages";
 import { appUrl } from "./public-origin";
 
 export { GOOGLE_DRIVE_CREDENTIAL, appUrl };
@@ -10,7 +11,7 @@ export { GOOGLE_DRIVE_CREDENTIAL, appUrl };
 /**
  * Google OAuth for the connections the platform holds itself.
  *
- * The refresh token stays here, encrypted in ConnectedAccount.secretJson —
+ * The refresh token stays here, encrypted in Connector.secretJson —
  * never in n8n, whose credential creation only knows plain key/value fields and
  * cannot renew an OAuth token. Whatever needs Drive asks the platform.
  *
@@ -18,8 +19,25 @@ export { GOOGLE_DRIVE_CREDENTIAL, appUrl };
  */
 
 export const DRIVE_READONLY_SCOPE = "https://www.googleapis.com/auth/drive.readonly";
+export const DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+export const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
+export const DOCS_SCOPE = "https://www.googleapis.com/auth/documents";
+export const SLIDES_SCOPE = "https://www.googleapis.com/auth/presentations";
 
-const SCOPES = ["openid", "email", DRIVE_READONLY_SCOPE];
+/**
+ * drive.file, not drive: the platform may create files and change the ones the
+ * person picks or it created, and nothing else in their Drive. Sheets, Docs and
+ * Slides are granted by their own scopes, because Google has no narrower one for them.
+ */
+const SCOPES = [
+  "openid",
+  "email",
+  DRIVE_READONLY_SCOPE,
+  DRIVE_FILE_SCOPE,
+  SHEETS_SCOPE,
+  DOCS_SCOPE,
+  SLIDES_SCOPE,
+];
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const REVOKE_URL = "https://oauth2.googleapis.com/revoke";
@@ -110,6 +128,7 @@ export const CONNECT_ERRORS: Record<string, string> = {
 export function connectErrorText(code: string | undefined): string {
   // The same banner serves Facebook's sign-in; its codes all start with fb_.
   if (isFacebookConnectError(code)) return facebookConnectErrorText(code);
+  if (isToolConnectError(code)) return TOOL_CONNECT_ERRORS[code!];
   if (code === "not_configured") {
     const missing = googleMissingConfig();
     if (missing.length > 0) {

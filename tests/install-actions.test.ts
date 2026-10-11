@@ -47,7 +47,7 @@ async function wipe() {
   await prisma.installationCredential.deleteMany({});
   await prisma.installation.deleteMany({});
   await prisma.requirement.deleteMany({});
-  await prisma.connectedAccount.deleteMany({});
+  await prisma.connector.deleteMany({});
   await prisma.product.deleteMany({});
   await prisma.user.deleteMany({});
   await prisma.plan.deleteMany({});
@@ -305,7 +305,7 @@ describe("activate — a connection the platform holds itself", () => {
 
   it("counts a connected Drive as satisfied, but never sends its tokens to n8n", async () => {
     const user = await seedUser();
-    await prisma.connectedAccount.create({
+    await prisma.connector.create({
       data: {
         userId: user.id,
         credentialType: "googleDriveOAuth2Api",
@@ -352,7 +352,7 @@ describe("activate — a connection the platform holds itself", () => {
       "cred.googleDriveOAuth2Api.refresh_token": "1//forged",
     });
 
-    expect(await prisma.connectedAccount.count()).toBe(0);
+    expect(await prisma.connector.count()).toBe(0);
   });
 });
 
@@ -383,7 +383,7 @@ describe("activate — a completed install", () => {
     expect(installation).toMatchObject({ status: "ACTIVE" });
     expect(installation!.installationId).toMatch(/^inst_/);
 
-    const account = await prisma.connectedAccount.findFirst();
+    const account = await prisma.connector.findFirst();
     expect(account!.status).toBe("ACTIVE");
     // The plaintext must not be what is in the column.
     expect(account!.secretJson).not.toContain("xoxb-secret-value");
@@ -404,12 +404,12 @@ describe("activate — a completed install", () => {
 
     const link = await prisma.installationCredential.findFirst();
     expect(link).toMatchObject({ credentialType: "slackApi" });
-    expect(link!.accountId).toBeTruthy();
+    expect(link!.connectorId).toBeTruthy();
   });
 
   it("reuses an account the user already connected", async () => {
     const user = await seedUser();
-    await prisma.connectedAccount.create({
+    await prisma.connector.create({
       data: {
         userId: user.id,
         credentialType: "slackApi",
@@ -427,7 +427,7 @@ describe("activate — a completed install", () => {
     });
 
     expect(result.redirectedTo).toBe("/workspace");
-    expect(await prisma.connectedAccount.count()).toBe(1);
+    expect(await prisma.connector.count()).toBe(1);
     expect(await prisma.installation.findFirst()).toMatchObject({
       status: "ACTIVE",
     });
@@ -435,7 +435,7 @@ describe("activate — a completed install", () => {
 
   it("replaces an expired account in place rather than adding a second one", async () => {
     const user = await seedUser();
-    await prisma.connectedAccount.create({
+    await prisma.connector.create({
       data: {
         userId: user.id,
         credentialType: "slackApi",
@@ -453,7 +453,7 @@ describe("activate — a completed install", () => {
       "cred.slackApi.accessToken": "xoxb-fresh",
     });
 
-    const accounts = await prisma.connectedAccount.findMany();
+    const accounts = await prisma.connector.findMany();
     expect(accounts).toHaveLength(1);
     expect(accounts[0]).toMatchObject({ status: "ACTIVE", expiresAt: null });
     expect(openCredential(accounts[0].secretJson)).toEqual({
@@ -461,10 +461,7 @@ describe("activate — a completed install", () => {
     });
   });
 
-  it("refuses a credential type the platform cannot collect yet", async () => {
-    // Google Sheets needs a consent flow that does not exist, so the mock
-    // refuses it exactly as Install Template does. The user should be told,
-    // not handed a broken installation.
+  it("asks for Google Drive when Sheets is needed and Drive is not connected, installing nothing", async () => {
     const user = await seedUser();
     const product = await prisma.product.create({
       data: productData(user.id, "PUBLISHED", [
@@ -476,16 +473,94 @@ describe("activate — a completed install", () => {
         },
       ]),
     });
+    const install = vi.spyOn(n8n, "install");
 
-    const result = await submit({
-      productId: product.id,
-      storageBackend: "platform",
-      "cred.googleSheetsOAuth2Api.token": "pretend",
+    const result = await submit({ productId: product.id, storageBackend: "platform" });
+
+    expect(install).not.toHaveBeenCalled();
+    expect(result.redirectedTo).toBe("/workspace");
+    const partial = await prisma.installation.findFirstOrThrow();
+    expect(partial.status).toBe("PARTIAL");
+    expect(partial.attentionNote).toContain("Google Sheets");
+    install.mockRestore();
+  });
+
+  it("asks for Google Drive again when the connection was made before Sheets was added", async () => {
+    const user = await seedUser();
+    await prisma.connector.create({
+      data: {
+        userId: user.id,
+        credentialType: "googleDriveOAuth2Api",
+        displayName: "Google Drive",
+        initials: "GD",
+        accountRef: "nora@acme.co",
+        status: "ACTIVE",
+        secretJson: sealCredential({ refresh_token: "1//old", access_token: "ya29.old", scope: "https://www.googleapis.com/auth/drive.readonly" }),
+        expiresAt: new Date(Date.now() + 30 * 60_000),
+      },
     });
+    const product = await prisma.product.create({
+      data: productData(user.id, "PUBLISHED", [
+        {
+          kind: "CONNECTION",
+          label: "Sheets",
+          credentialType: "googleSheetsOAuth2Api",
+          providedBy: "USER",
+        },
+      ]),
+    });
+    const install = vi.spyOn(n8n, "install");
 
-    expect(result.redirectedTo).toBeNull();
-    expect(result.error).toMatch(/googleSheetsOAuth2Api/);
-    expect(await prisma.installation.count()).toBe(0);
+    const result = await submit({ productId: product.id, storageBackend: "platform" });
+
+    expect(install).not.toHaveBeenCalled();
+    expect(result.redirectedTo).toBe("/workspace");
+    const partial = await prisma.installation.findFirstOrThrow();
+    expect(partial.status).toBe("PARTIAL");
+    expect(partial.attentionNote).toContain("Google Sheets");
+    install.mockRestore();
+  });
+
+  it("serves Sheets through the Drive connection and never sends its tokens to n8n", async () => {
+    const user = await seedUser();
+    const drive = await prisma.connector.create({
+      data: {
+        userId: user.id,
+        credentialType: "googleDriveOAuth2Api",
+        displayName: "Google Drive",
+        initials: "GD",
+        accountRef: "nora@acme.co",
+        status: "ACTIVE",
+        secretJson: sealCredential({
+          refresh_token: "1//drive-secret",
+          access_token: "ya29.drive",
+          scope: `https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/spreadsheets`,
+        }),
+        expiresAt: new Date(Date.now() + 30 * 60_000),
+      },
+    });
+    const product = await prisma.product.create({
+      data: productData(user.id, "PUBLISHED", [
+        {
+          kind: "CONNECTION",
+          label: "Sheets",
+          credentialType: "googleSheetsOAuth2Api",
+          providedBy: "USER",
+        },
+      ]),
+    });
+    const install = vi.spyOn(n8n, "install");
+
+    await submit({ productId: product.id, storageBackend: "platform" });
+
+    const sent = install.mock.calls[0][0].credentialsJson;
+    expect(sent).not.toContain("drive-secret");
+    expect(sent).not.toContain("googleSheetsOAuth2Api");
+    const link = await prisma.installationCredential.findFirstOrThrow({
+      where: { credentialType: "googleSheetsOAuth2Api" },
+    });
+    expect(link.connectorId).toBe(drive.id);
+    install.mockRestore();
   });
 
   it("ignores an empty field rather than storing a blank secret", async () => {
@@ -498,7 +573,7 @@ describe("activate — a completed install", () => {
       "cred.slackApi.accessToken": "",
     });
 
-    expect(await prisma.connectedAccount.count()).toBe(0);
+    expect(await prisma.connector.count()).toBe(0);
     expect(await prisma.installation.findFirst()).toMatchObject({
       status: "PARTIAL",
     });
@@ -639,5 +714,81 @@ describe("activate — platform-held keys", () => {
       (env.embeddings as { apiKey: string }).apiKey = environmentKey;
       install.mockRestore();
     }
+  });
+});
+
+describe("activate — a tool signed into through the connector sign-in", () => {
+  it("keeps the tool's tokens out of n8n and links the installation to the connection", async () => {
+    const user = await seedUser();
+    const asana = await prisma.connector.create({
+      data: {
+        userId: user.id,
+        credentialType: "asanaOAuth2Api",
+        displayName: "Nora (Asana)",
+        initials: "AS",
+        accountRef: "nora@acme.co",
+        status: "ACTIVE",
+        secretJson: sealCredential({ access_token: "at-live", refresh_token: "rt-1" }),
+        expiresAt: new Date(Date.now() + 30 * 60_000),
+      },
+    });
+    const product = await prisma.product.create({
+      data: productData(user.id, "PUBLISHED", [
+        {
+          kind: "CONNECTION",
+          label: "Asana",
+          credentialType: "asanaOAuth2Api",
+          providedBy: "USER",
+        },
+      ]),
+    });
+    const install = vi.spyOn(n8n, "install");
+
+    const result = await submit({ productId: product.id, storageBackend: "platform" });
+
+    expect(result.redirectedTo).toBe("/workspace");
+    const sent = install.mock.calls[0][0].credentialsJson;
+    expect(sent).not.toContain("rt-1");
+    expect(sent).not.toContain("at-live");
+    expect(JSON.parse(sent)).not.toHaveProperty("asanaOAuth2Api");
+    const link = await prisma.installationCredential.findFirstOrThrow({
+      where: { credentialType: "asanaOAuth2Api" },
+    });
+    expect(link.connectorId).toBe(asana.id);
+    install.mockRestore();
+  });
+
+  it("installs with a lapsed tool token, because the platform renews it when the workflow runs", async () => {
+    const user = await seedUser();
+    await prisma.connector.create({
+      data: {
+        userId: user.id,
+        credentialType: "asanaOAuth2Api",
+        displayName: "Nora (Asana)",
+        initials: "AS",
+        accountRef: "nora@acme.co",
+        status: "ACTIVE",
+        secretJson: sealCredential({ access_token: "at-old", refresh_token: "rt-revoked" }),
+        expiresAt: new Date(Date.now() - 60_000),
+      },
+    });
+    const product = await prisma.product.create({
+      data: productData(user.id, "PUBLISHED", [
+        {
+          kind: "CONNECTION",
+          label: "Asana",
+          credentialType: "asanaOAuth2Api",
+          providedBy: "USER",
+        },
+      ]),
+    });
+    const install = vi.spyOn(n8n, "install");
+
+    const result = await submit({ productId: product.id, storageBackend: "platform" });
+
+    expect(install).toHaveBeenCalledTimes(1);
+    expect(result.redirectedTo).toBe("/workspace");
+    expect(install.mock.calls[0][0].credentialsJson).not.toContain("rt-revoked");
+    install.mockRestore();
   });
 });

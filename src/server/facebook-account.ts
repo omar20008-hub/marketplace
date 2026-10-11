@@ -12,7 +12,7 @@ import { refreshInstallationStates } from "./installation-state";
 /**
  * The Facebook & Instagram connection made by "Continue with Facebook".
  *
- * It is the same ConnectedAccount a pasted token makes — one row per user for
+ * It is the same Connector a pasted token makes — one row per user for
  * this credential type, secret `{ accessToken }` and nothing else (n8n's
  * credential body refuses extra fields) — so installing a product needs no
  * special case. The one difference is expiresAt: a pasted token has none, this
@@ -42,17 +42,17 @@ export async function saveFacebookConnection({
 
   // Replaced in place: signing in again because a connection expired means
   // replacing it, not collecting another next to it.
-  const existing = await prisma.connectedAccount.findFirst({
+  const existing = await prisma.connector.findFirst({
     where: { userId, credentialType: FACEBOOK_CREDENTIAL },
     orderBy: { createdAt: "asc" },
   });
 
   const account = existing
-    ? await prisma.connectedAccount.update({
+    ? await prisma.connector.update({
         where: { id: existing.id },
         data: { status: "ACTIVE", secretJson, expiresAt: token.expiresAt, accountRef },
       })
-    : await prisma.connectedAccount.create({
+    : await prisma.connector.create({
         data: {
           userId,
           credentialType: FACEBOOK_CREDENTIAL,
@@ -77,7 +77,7 @@ export async function saveFacebookConnection({
  * Only connections with a recorded lifetime are touched; a pasted token has none.
  */
 export async function expireFacebookAccounts(now = new Date()): Promise<number> {
-  const lapsed = await prisma.connectedAccount.findMany({
+  const lapsed = await prisma.connector.findMany({
     where: {
       credentialType: FACEBOOK_CREDENTIAL,
       status: "ACTIVE",
@@ -88,7 +88,7 @@ export async function expireFacebookAccounts(now = new Date()): Promise<number> 
   });
   if (lapsed.length === 0) return 0;
 
-  await prisma.connectedAccount.updateMany({
+  await prisma.connector.updateMany({
     where: { id: { in: lapsed.map((account) => account.id) } },
     data: { status: "EXPIRED", secretJson: null, expiresAt: null },
   });
