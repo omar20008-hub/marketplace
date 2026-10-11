@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { hit } from "@/lib/rate-limit";
-import { findProviderByCredentialType } from "@/lib/connectors/providers";
+import { editorIsGranted, findProviderByCredentialType } from "@/lib/connectors/providers";
 import { installationForKey } from "@/server/knowledge/keys";
 import { ConnectorAuthError, getConnectorAccessToken } from "@/server/connector-tokens";
 
@@ -41,6 +41,14 @@ export async function POST(request: Request) {
   });
   if (!link?.connectorId) {
     return NextResponse.json({ error: "No connection for that tool on this installation" }, { status: 404 });
+  }
+
+  const provider = findProviderByCredentialType(credentialType)!;
+  const source = provider.sourceCredentialType
+    ? await prisma.connector.findUnique({ where: { id: link.connectorId } })
+    : null;
+  if (provider.sourceCredentialType && !editorIsGranted(provider, source?.secretJson ?? null)) {
+    return NextResponse.json({ error: "reconnect" }, { status: 409 });
   }
 
   try {

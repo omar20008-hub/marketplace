@@ -1,6 +1,8 @@
 import "server-only";
 import { env } from "@/lib/env";
 import { GOOGLE_DRIVE_CREDENTIAL } from "@/lib/credentials";
+import { DOCS_SCOPE, SHEETS_SCOPE, SLIDES_SCOPE } from "@/lib/google-oauth";
+import { openCredential } from "@/lib/secrets";
 
 /**
  * The tools the platform connects to, and how each one authenticates. Adding one
@@ -37,6 +39,8 @@ export type ConnectorProvider = {
   accountFrom: (json: unknown) => { accountRef: string; label: string } | null;
   /** The provider whose connection this one uses, when it has no connection of its own. */
   sourceCredentialType?: string;
+  /** The scope the source connection must have been granted for this tool to work. */
+  requiredScope?: string;
   /** Whether the person connects this tool from Connected accounts. */
   signIn: boolean;
 };
@@ -83,7 +87,12 @@ const googleDrive: ConnectorProvider = {
 };
 
 /** Sheets, Docs and Slides reach Google through the Drive connection's grant. */
-function googleEditor(credentialType: string, displayName: string, initials: string): ConnectorProvider {
+function googleEditor(
+  credentialType: string,
+  displayName: string,
+  initials: string,
+  requiredScope: string,
+): ConnectorProvider {
   return {
     ...googleDrive,
     id: credentialType,
@@ -91,17 +100,30 @@ function googleEditor(credentialType: string, displayName: string, initials: str
     displayName,
     initials,
     sourceCredentialType: GOOGLE_DRIVE_CREDENTIAL,
+    requiredScope,
     signIn: false,
   };
+}
+
+/**
+ * Whether the connection behind an editor was granted the scope the editor needs.
+ * A connection made before the editors were added holds read access only, and
+ * is treated as not connected for them until the person reconnects.
+ */
+export function editorIsGranted(provider: ConnectorProvider, secretJson: string | null): boolean {
+  if (!provider.requiredScope) return true;
+  if (!secretJson) return false;
+  const granted = (openCredential(secretJson).scope ?? "").split(" ");
+  return granted.includes(provider.requiredScope);
 }
 
 const SIGN_IN: ConnectorProvider[] = [asana];
 const ALL: ConnectorProvider[] = [
   ...SIGN_IN,
   googleDrive,
-  googleEditor("googleSheetsOAuth2Api", "Google Sheets", "GS"),
-  googleEditor("googleDocsOAuth2Api", "Google Docs", "GD"),
-  googleEditor("googleSlidesOAuth2Api", "Google Slides", "GP"),
+  googleEditor("googleSheetsOAuth2Api", "Google Sheets", "GS", SHEETS_SCOPE),
+  googleEditor("googleDocsOAuth2Api", "Google Docs", "GD", DOCS_SCOPE),
+  googleEditor("googleSlidesOAuth2Api", "Google Slides", "GP", SLIDES_SCOPE),
 ];
 
 /** A tool a person can connect from Connected accounts, by its URL segment. */

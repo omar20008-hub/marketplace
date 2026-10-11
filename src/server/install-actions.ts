@@ -10,7 +10,7 @@ import { env } from "@/lib/env";
 import { DriveError, getFolder } from "@/lib/drive";
 import { GOOGLE_DRIVE_CREDENTIAL } from "@/lib/google-oauth";
 import { getGoogleAccessToken } from "./google-account";
-import { findProviderByCredentialType } from "@/lib/connectors/providers";
+import { editorIsGranted, findProviderByCredentialType } from "@/lib/connectors/providers";
 import { newKnowledgeKey } from "./knowledge/keys";
 import { createKnowledgeSource } from "./knowledge/sources";
 import { stopWatch } from "./knowledge/watch";
@@ -153,7 +153,14 @@ export async function activate(
 
   const connectionFor = (type: string) =>
     byType.get(findProviderByCredentialType(type)?.sourceCredentialType ?? type);
-  const missing = needed.filter((type) => connectionFor(type)?.status !== "ACTIVE");
+  const missing = needed.filter((type) => {
+    const connection = connectionFor(type);
+    const provider = findProviderByCredentialType(type);
+    return (
+      connection?.status !== "ACTIVE" ||
+      (provider !== null && !editorIsGranted(provider, connection.secretJson))
+    );
+  });
 
   // Partially ready: recorded here, not sent to n8n. Install Template refuses an
   // incomplete credential set, and rightly so — there is nothing to install yet.

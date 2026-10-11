@@ -484,6 +484,42 @@ describe("activate — a completed install", () => {
     install.mockRestore();
   });
 
+  it("asks for Google Drive again when the connection was made before Sheets was added", async () => {
+    const user = await seedUser();
+    await prisma.connector.create({
+      data: {
+        userId: user.id,
+        credentialType: "googleDriveOAuth2Api",
+        displayName: "Google Drive",
+        initials: "GD",
+        accountRef: "nora@acme.co",
+        status: "ACTIVE",
+        secretJson: sealCredential({ refresh_token: "1//old", access_token: "ya29.old", scope: "https://www.googleapis.com/auth/drive.readonly" }),
+        expiresAt: new Date(Date.now() + 30 * 60_000),
+      },
+    });
+    const product = await prisma.product.create({
+      data: productData(user.id, "PUBLISHED", [
+        {
+          kind: "CONNECTION",
+          label: "Sheets",
+          credentialType: "googleSheetsOAuth2Api",
+          providedBy: "USER",
+        },
+      ]),
+    });
+    const install = vi.spyOn(n8n, "install");
+
+    const result = await submit({ productId: product.id, storageBackend: "platform" });
+
+    expect(install).not.toHaveBeenCalled();
+    expect(result.redirectedTo).toBe("/workspace");
+    const partial = await prisma.installation.findFirstOrThrow();
+    expect(partial.status).toBe("PARTIAL");
+    expect(partial.attentionNote).toContain("Google Sheets");
+    install.mockRestore();
+  });
+
   it("serves Sheets through the Drive connection and never sends its tokens to n8n", async () => {
     const user = await seedUser();
     const drive = await prisma.connector.create({
@@ -494,7 +530,11 @@ describe("activate — a completed install", () => {
         initials: "GD",
         accountRef: "nora@acme.co",
         status: "ACTIVE",
-        secretJson: sealCredential({ refresh_token: "1//drive-secret", access_token: "ya29.drive" }),
+        secretJson: sealCredential({
+          refresh_token: "1//drive-secret",
+          access_token: "ya29.drive",
+          scope: `https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/spreadsheets`,
+        }),
         expiresAt: new Date(Date.now() + 30 * 60_000),
       },
     });

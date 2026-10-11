@@ -183,7 +183,7 @@ describe("the connector token endpoint", () => {
         initials: "GD",
         accountRef: "s@example.test",
         status: "ACTIVE",
-        secretJson: sealCredential({ access_token: "ya29.live", refresh_token: "1//rt" }),
+        secretJson: sealCredential({ access_token: "ya29.live", refresh_token: "1//rt", scope: "https://www.googleapis.com/auth/spreadsheets" }),
         expiresAt: new Date(Date.now() + 30 * 60_000),
       },
     });
@@ -199,6 +199,70 @@ describe("the connector token endpoint", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ access_token: "ya29.live", token_type: "bearer" });
+  });
+
+  it("tells the template to reconnect when the Drive connection was not granted Sheets", async () => {
+    await prisma.plan.upsert({
+      where: { id: PLAN_ID },
+      create: { id: PLAN_ID, name: "T", monthlyRuns: 1, storageBytes: BigInt(1), monthlyCredits: 0 },
+      update: {},
+    });
+    const user = await prisma.user.create({
+      data: { email: "g@example.test", name: "G", passwordHash: "x", initials: "G", planId: PLAN_ID },
+    });
+    const product = await prisma.product.create({
+      data: {
+        slug: `p-${Math.random().toString(36).slice(2, 8)}`,
+        creatorId: user.id,
+        title: "Sheets digest",
+        summary: "s",
+        description: "d",
+        needsFromYou: "n",
+        kind: "WORKFLOW",
+        category: "Reporting",
+        status: "PUBLISHED",
+        templateId: `tpl_${Math.random().toString(36).slice(2, 8)}`,
+      },
+    });
+    const key = newKnowledgeKey();
+    const installation = await prisma.installation.create({
+      data: {
+        userId: user.id,
+        productId: product.id,
+        pinnedVersion: product.version,
+        storageBackend: "platform",
+        status: "ACTIVE",
+        knowledgeKeyHash: key.hash,
+      },
+    });
+    const drive = await prisma.connector.create({
+      data: {
+        userId: user.id,
+        credentialType: "googleDriveOAuth2Api",
+        displayName: "Google Drive",
+        initials: "GD",
+        accountRef: "g@example.test",
+        status: "ACTIVE",
+        secretJson: sealCredential({
+          access_token: "ya29.read-only",
+          refresh_token: "1//rt",
+          scope: "https://www.googleapis.com/auth/drive.readonly",
+        }),
+        expiresAt: new Date(Date.now() + 30 * 60_000),
+      },
+    });
+    await prisma.installationCredential.create({
+      data: {
+        installationId: installation.id,
+        credentialType: "googleSheetsOAuth2Api",
+        connectorId: drive.id,
+      },
+    });
+
+    const response = await ask(key.key, { credentialType: "googleSheetsOAuth2Api" });
+
+    expect(response.status).toBe(409);
+    expect(await response.text()).not.toContain("ya29.read-only");
   });
 
   it("tells the template to reconnect when the connection has ended", async () => {
