@@ -70,6 +70,8 @@ model User {
   memoryFiles   MemoryFile[]
   channelLinks      ChannelLink[]
   channelLinkCodes  ChannelLinkCode[]
+  siteLogins        SiteLogin[]
+  siteLoginRequests SiteLoginRequest[]
 }
 
 // ------------------------------------------------------------ chat channels
@@ -869,4 +871,40 @@ model MediaUpload {
 
   @@index([userId, expiresAt])
   @@index([expiresAt])
+}
+
+// ------------------------------------------------------------ saved site logins
+
+// A username and password the person saved for a website, so the personal
+// assistant can sign in for them. The password is sealed with SECRETS_KEY and
+// is read back only by the server-side fill path, never by a page or a model.
+model SiteLogin {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  siteUrl      String // the login page, normalised to https://host
+  host         String
+  username     String
+  sealedSecret String // sealCredential({ password })
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  lastUsedAt   DateTime?
+
+  @@unique([userId, host, username])
+  @@index([userId])
+}
+
+// A one-time link the platform hands out so the person can type a login into
+// the platform, not into a chat. Only the SHA-256 of the token is stored.
+model SiteLoginRequest {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  siteUrl   String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
 }
