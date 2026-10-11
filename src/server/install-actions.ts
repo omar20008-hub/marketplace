@@ -14,7 +14,7 @@ import { newKnowledgeKey } from "./knowledge/keys";
 import { createKnowledgeSource } from "./knowledge/sources";
 import { stopWatch } from "./knowledge/watch";
 import { credentialLabel as labelFor, isPlatformOAuth } from "@/lib/credentials";
-import { deployCopy } from "./template-deploy";
+import { deployCopy, removeCopy } from "./template-deploy";
 
 /**
  * Adding a product to the workspace.
@@ -343,6 +343,10 @@ export async function uninstall(formData: FormData) {
     where: { id: installationId, userId: user.id },
   });
   if (!installation) return;
+
+  if (env.template.driver === "platform") {
+    await removeCopy(installation);
+  }
 
   if (installation.installationId) {
     await n8n.uninstall({

@@ -110,3 +110,26 @@ export async function deployCopy(input: DeployInput): Promise<DeployResult> {
     };
   }
 }
+
+/**
+ * Removes a platform-installed copy from n8n: the workflow first, then the
+ * credentials it was bound to. A refusal is logged and does not stop the uninstall;
+ * the platform's own record is what decides whether the tool is still offered.
+ */
+export async function removeCopy(copy: {
+  instanceWorkflowId: string | null;
+  n8nCredentialIds: string[];
+}): Promise<{ workflowRemoved: boolean; credentialsRemoved: number }> {
+  let workflowRemoved = true;
+  if (copy.instanceWorkflowId) {
+    workflowRemoved = (await n8n.deleteWorkflow(copy.instanceWorkflowId)).ok;
+    if (!workflowRemoved) console.error("Uninstall: n8n kept the copy's workflow");
+  }
+
+  let credentialsRemoved = 0;
+  for (const id of copy.n8nCredentialIds) {
+    if ((await n8n.deleteCredential(id)).ok) credentialsRemoved += 1;
+    else console.error("Uninstall: n8n kept a credential of the copy");
+  }
+  return { workflowRemoved, credentialsRemoved };
+}

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { n8n } from "@/lib/n8n";
 import { liveDriver } from "@/lib/n8n/live";
-import { deployCopy, type DeployInput } from "@/server/template-deploy";
+import { deployCopy, removeCopy, type DeployInput } from "@/server/template-deploy";
 
 /**
  * Installing a copy on the platform. The n8n calls are spied on so each case can say
@@ -210,5 +210,37 @@ describe("the live copy calls", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe("removeCopy", () => {
+  it("deletes the workflow, then each credential it was bound to", async () => {
+    const deleteWorkflow = vi.spyOn(n8n, "deleteWorkflow").mockResolvedValue({ ok: true });
+    const deleteCredential = vi.spyOn(n8n, "deleteCredential").mockResolvedValue({ ok: true });
+
+    const result = await removeCopy({ instanceWorkflowId: "wf_copy", n8nCredentialIds: ["c1", "kc"] });
+
+    expect(deleteWorkflow).toHaveBeenCalledWith("wf_copy");
+    expect(deleteCredential.mock.calls.map((c) => c[0])).toEqual(["c1", "kc"]);
+    expect(result).toEqual({ workflowRemoved: true, credentialsRemoved: 2 });
+  });
+
+  it("keeps going when n8n refuses a delete, and reports it", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(n8n, "deleteWorkflow").mockResolvedValue({ ok: false });
+    vi.spyOn(n8n, "deleteCredential").mockResolvedValueOnce({ ok: false }).mockResolvedValueOnce({ ok: true });
+
+    const result = await removeCopy({ instanceWorkflowId: "wf_copy", n8nCredentialIds: ["c1", "c2"] });
+
+    expect(result).toEqual({ workflowRemoved: false, credentialsRemoved: 1 });
+  });
+
+  it("removes only the workflow for a copy with no recorded credentials", async () => {
+    const deleteCredential = vi.spyOn(n8n, "deleteCredential");
+    vi.spyOn(n8n, "deleteWorkflow").mockResolvedValue({ ok: true });
+
+    await removeCopy({ instanceWorkflowId: "wf_copy", n8nCredentialIds: [] });
+
+    expect(deleteCredential).not.toHaveBeenCalled();
   });
 });
