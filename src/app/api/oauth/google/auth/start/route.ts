@@ -35,6 +35,7 @@ export async function GET(request: Request) {
         challenge,
         redirectUri: appUrl(GOOGLE_AUTH_CALLBACK_PATH, {}, request),
         scopes: GOOGLE_LOGIN_SCOPES,
+        lasting: false,
       }),
     );
     response.cookies.set(OAUTH_COOKIE, cookie, {
