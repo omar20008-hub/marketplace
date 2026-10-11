@@ -11,6 +11,7 @@ import { connectErrorText } from "@/lib/google-oauth";
 import { Badge, ButtonAnchor, ButtonLink, Card, PageTitle } from "@/components/ds";
 import { disconnectAccount } from "@/server/account-actions";
 import { ConnectPanel, type Connectable } from "./connect-panel";
+import { connectorStartUrl, listProviders, missingSettings } from "@/lib/connectors/providers";
 import { TelegramLinkCard } from "./telegram-link-card";
 import { telegramLinkFor } from "@/server/channel-links";
 import { env } from "@/lib/env";
@@ -42,6 +43,10 @@ const ALLOWS: Record<string, { grants: string[]; denies: string[] }> = {
   googleSheetsOAuth2Api: {
     grants: ["Read and write the sheets you name"],
     denies: ["No access to the rest of your Drive"],
+  },
+  asanaOAuth2Api: {
+    grants: ["Read and update the Asana work your account can already reach"],
+    denies: ["Nothing beyond what your Asana account is allowed to do"],
   },
   openAiApi: {
     grants: ["Send prompts on your behalf"],
@@ -96,7 +101,21 @@ export default async function AccountsPage({
   });
   const useCount = new Map(usedBy.map((row) => [row.credentialType, row._count._all]));
 
-  const connectable: Connectable[] = await Promise.all(
+  // Tools signed into through the generic connector sign-in, offered only once their
+  // app is configured on the server: a button that cannot work is worse than none.
+  const connectorOptions: Connectable[] = listProviders()
+    .filter((provider) => missingSettings(provider).length === 0)
+    .map((provider) => ({
+      credentialType: provider.credentialType,
+      displayName: provider.displayName,
+      allows: ALLOWS[provider.credentialType] ?? { grants: [], denies: [] },
+      oauthStartUrl: connectorStartUrl(provider),
+      oauthLabel: provider.displayName,
+      fields: [],
+    }));
+
+  const connectable: Connectable[] = [
+    ...(await Promise.all(
     CONNECTABLE.map(async (item) => {
       const oauthStartHref =
         item.credentialType === GOOGLE_DRIVE_CREDENTIAL ? oauthStartUrl("/accounts") : undefined;
@@ -110,6 +129,7 @@ export default async function AccountsPage({
         displayName: item.displayName,
         allows: ALLOWS[item.credentialType] ?? { grants: [], denies: [] },
         oauthStartUrl: oauthStartHref,
+        oauthLabel: oauthStartHref ? "Google" : undefined,
         // Facebook has both: the sign-in, and a pasted access token as the second way.
         signInUrl: hasFacebookSignIn(item.credentialType)
           ? oauthStartUrl("/accounts", item.credentialType)
@@ -125,7 +145,9 @@ export default async function AccountsPage({
           : [],
       };
     }),
-  );
+    )),
+    ...connectorOptions,
+  ];
 
   const telegram = await telegramLinkFor(user.id);
 

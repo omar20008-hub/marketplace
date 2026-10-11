@@ -55,6 +55,18 @@ export function findProvider(id: string): ConnectorProvider | null {
   return Object.hasOwn(PROVIDERS, id) ? PROVIDERS[id] : null;
 }
 
+export function findProviderByCredentialType(credentialType: string): ConnectorProvider | null {
+  return Object.values(PROVIDERS).find((p) => p.credentialType === credentialType) ?? null;
+}
+
+export function listProviders(): ConnectorProvider[] {
+  return Object.values(PROVIDERS);
+}
+
+export function connectorStartUrl(provider: ConnectorProvider, returnTo = "/accounts"): string {
+  return `/api/connectors/${provider.id}/start?returnTo=${encodeURIComponent(returnTo)}`;
+}
+
 export function missingSettings(provider: ConnectorProvider): string[] {
   const missing: string[] = [];
   if (!provider.clientId()) missing.push(provider.settingNames[0]);
