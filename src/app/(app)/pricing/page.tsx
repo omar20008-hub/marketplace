@@ -31,6 +31,12 @@ export default async function PricingPage({
     <div className="mx-auto flex max-w-[960px] flex-col gap-6 px-5 py-8">
       <PageTitle title="Plans" meta="Pay by card or Apple Pay. Cancel from the billing page at any time." />
 
+      {!configured ? (
+        <p role="status" className="rounded-card bg-fill px-4 py-3 text-[13px] text-ink-2">
+          Paid plans open once payments are set up. Until then every account stays on Free.
+        </p>
+      ) : null}
+
       {billing && NOTICES[billing] ? (
         <p role="status" className="rounded-card bg-fill px-4 py-3 text-[13px] text-ink-2">
           {NOTICES[billing]}
@@ -66,7 +72,7 @@ export default async function PricingPage({
                 ) : plan.id === FREE_PLAN_ID ? (
                   <p className="text-[13px] text-ink-3">Included</p>
                 ) : (
-                  <p className="text-[13px] text-ink-3">Not available yet</p>
+                  <p className="text-[13px] text-ink-3">Payments open soon</p>
                 )}
               </div>
             </Card>
