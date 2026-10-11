@@ -5,7 +5,9 @@ import { prisma } from "@/lib/db";
 import { hashPassword, requireRole } from "@/lib/auth";
 import { initialsFor } from "@/lib/initials";
 import { n8n } from "@/lib/n8n";
+import { env } from "@/lib/env";
 import { credentialLabel } from "@/lib/credentials";
+import { publishTemplateWorkflow } from "./template-review";
 
 /**
  * Review decisions.
@@ -53,9 +55,12 @@ export async function approve(
   // A blocker is not something a reason can wave through.
   if (submission.issues.some((issue) => issue.severity === "BLOCKER")) return {};
 
-  const published = await n8n.approveTemplate({
-    templateId: submission.product.templateId ?? submission.product.id,
-  });
+  const published =
+    env.review.driver === "platform"
+      ? await publishTemplateWorkflow(submission.product)
+      : await n8n.approveTemplate({
+          templateId: submission.product.templateId ?? submission.product.id,
+        });
   if (!published.ok) {
     return { error: published.error };
   }
@@ -186,12 +191,14 @@ export async function reject(
   });
   if (!submission) return {};
 
-  const rejected = await n8n.rejectTemplate({
-    templateId: submission.product.templateId ?? submission.product.id,
-    reason,
-  });
-  if (!rejected.ok) {
-    return { error: rejected.error };
+  if (env.review.driver === "n8n") {
+    const rejected = await n8n.rejectTemplate({
+      templateId: submission.product.templateId ?? submission.product.id,
+      reason,
+    });
+    if (!rejected.ok) {
+      return { error: rejected.error };
+    }
   }
 
   await prisma.$transaction([

@@ -282,6 +282,17 @@ export const env = {
       | "n8n",
   },
 
+  /**
+   * Who switches an approved template on: the MP · Review workflow ("n8n", the default)
+   * or the platform, through the n8n API. Rejections touch only the platform's record
+   * on the platform path.
+   */
+  review: {
+    driver: (process.env.REVIEW_DRIVER === "platform" ? "platform" : "n8n") as
+      | "platform"
+      | "n8n",
+  },
+
   n8n: {
     driver: (process.env.N8N_DRIVER === "live" ? "live" : "mock") as N8nDriver,
     baseUrl: process.env.N8N_BASE_URL ?? "",
