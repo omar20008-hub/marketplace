@@ -21,7 +21,7 @@ import { TelegramLinkCard } from "./telegram-link-card";
 import { telegramLinkFor } from "@/server/channel-links";
 import { env } from "@/lib/env";
 
-export const metadata = { title: "Connected accounts · Builder" };
+export const metadata = { title: "Connectors · Builder" };
 
 /**
  * What each connection is allowed to do, in the user's words. The design puts
@@ -174,7 +174,7 @@ export default async function AccountsPage({
 
   return (
     <div className="px-5 py-5 lg:px-7">
-      <PageTitle title="Connected accounts" meta={`· ${connected} connected`} />
+      <PageTitle title="Connectors" meta={`· ${connected} connected`} />
 
       {connectError ? (
         <p role="alert" className="mt-3 text-[13px] text-danger-ink">
