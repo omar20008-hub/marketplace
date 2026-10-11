@@ -18,6 +18,11 @@ export type ToolCall = {
   id: string;
   name: string;
   args: Record<string, unknown>;
+  /**
+   * Provider data the model needs back on the next request (Gemini's thought
+   * signature). Only the adapter reads it; the engine passes it through untouched.
+   */
+  providerState?: unknown;
 };
 
 export type ChatMessage =

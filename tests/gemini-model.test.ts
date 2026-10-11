@@ -174,3 +174,59 @@ describe("createGeminiModel — failures", () => {
     expect((error as Error).message).not.toContain("test-key");
   });
 });
+
+describe("createGeminiModel — thought signatures", () => {
+  it("keeps the signature from a function call and sends it back on the next request", async () => {
+    const fetchImpl = vi.fn(async () =>
+      respond(200, {
+        candidates: [
+          {
+            content: {
+              parts: [{ functionCall: { name: "web_search", args: { query: "q" } }, thoughtSignature: "sig-1" }],
+            },
+          },
+        ],
+      }),
+    );
+    const reply = await adapter(fetchImpl as unknown as typeof fetch).generate(REQUEST);
+    expect(reply.toolCalls[0].providerState).toEqual({ thoughtSignature: "sig-1" });
+
+    const next: ModelRequest = {
+      ...REQUEST,
+      messages: [
+        { role: "user", content: "سؤال" },
+        { role: "assistant", content: "", toolCalls: reply.toolCalls },
+        { role: "tool", toolCallId: reply.toolCalls[0].id, name: "web_search", content: "نتيجة" },
+      ],
+    };
+    fetchImpl.mockImplementationOnce(async () => respond(200, { candidates: [{ content: { parts: [{ text: "ok" }] } }] }));
+    await adapter(fetchImpl as unknown as typeof fetch).generate(next);
+
+    const body = JSON.parse(((fetchImpl.mock.calls[1] as unknown as [string, RequestInit])[1]).body as string);
+    expect(body.contents[1].parts[0]).toEqual({
+      functionCall: { name: "web_search", args: { query: "q" } },
+      thoughtSignature: "sig-1",
+    });
+  });
+
+  it("gives the first of several calls the turn's signature when it sits on a text part", async () => {
+    const fetchImpl = vi.fn(async () =>
+      respond(200, {
+        candidates: [
+          {
+            content: {
+              parts: [
+                { text: "", thoughtSignature: "turn-sig" },
+                { functionCall: { name: "web_search", args: {} } },
+                { functionCall: { name: "web_search", args: { query: "b" } } },
+              ],
+            },
+          },
+        ],
+      }),
+    );
+    const reply = await adapter(fetchImpl as unknown as typeof fetch).generate(REQUEST);
+    expect(reply.toolCalls[0].providerState).toEqual({ thoughtSignature: "turn-sig" });
+    expect(reply.toolCalls[1].providerState).toBeUndefined();
+  });
+});

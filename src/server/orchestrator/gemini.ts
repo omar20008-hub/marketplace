@@ -15,9 +15,17 @@ import {
 
 type Part = {
   text?: string;
+  /** Gemini 3 sends this with a function call and rejects the next request without it. */
+  thoughtSignature?: string;
   functionCall?: { name: string; args?: Record<string, unknown> };
   functionResponse?: { name: string; response: { result: string } };
 };
+
+type GeminiState = { thoughtSignature?: string };
+
+function signatureOf(call: ToolCall): string | undefined {
+  return (call.providerState as GeminiState | undefined)?.thoughtSignature;
+}
 
 type Content = { role: "user" | "model"; parts: Part[] };
 
@@ -38,7 +46,11 @@ function toContents(messages: ChatMessage[]): Content[] {
       const parts: Part[] = [];
       if (message.content) parts.push({ text: message.content });
       for (const call of message.toolCalls) {
-        parts.push({ functionCall: { name: call.name, args: call.args } });
+        const signature = signatureOf(call);
+        parts.push({
+          functionCall: { name: call.name, args: call.args },
+          ...(signature ? { thoughtSignature: signature } : {}),
+        });
       }
       contents.push({ role: "model", parts });
     } else {
@@ -69,11 +81,20 @@ function toReply(body: GeminiResponse): ModelReply {
     .map((part) => part.text ?? "")
     .join("")
     .trim();
-  const toolCalls: ToolCall[] = parts.flatMap((part, index) =>
-    part.functionCall
-      ? [{ id: `call_${index}`, name: part.functionCall.name, args: part.functionCall.args ?? {} }]
-      : [],
-  );
+  // Gemini may put the signature on a text part that comes before the calls; it
+  // belongs to the turn, so the first call carries it when its own part has none.
+  const turnSignature = parts.find((part) => part.thoughtSignature)?.thoughtSignature;
+  const toolCalls: ToolCall[] = [];
+  parts.forEach((part, index) => {
+    if (!part.functionCall) return;
+    const own = part.thoughtSignature ?? (toolCalls.length === 0 ? turnSignature : undefined);
+    toolCalls.push({
+      id: `call_${index}`,
+      name: part.functionCall.name,
+      args: part.functionCall.args ?? {},
+      ...(own ? { providerState: { thoughtSignature: own } satisfies GeminiState } : {}),
+    });
+  });
 
   if (!text && toolCalls.length === 0) {
     throw new ModelError(`Gemini ended without an answer (${candidate.finishReason ?? "no reason"})`);
