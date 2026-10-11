@@ -1,24 +1,17 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { Button, Field, FootNote, Input } from "@/components/ds";
+import { Button, Field, Input } from "@/components/ds";
 import { login, type LoginState } from "@/server/auth-actions";
 import { GoogleIcon } from "./google-icon";
-
-// Seeded accounts. Two roles, so every screen is reachable without a signup flow
-// the design has not been drawn yet.
-const DEMO = [
-  { email: "nora@acme.co", who: "Nora Haddad — user and admin" },
-  { email: "rami@studio.co", who: "Rami K. — creator" },
-];
 
 export function LoginForm() {
   const [state, formAction, pending] = useActionState<LoginState, FormData>(
     login,
     {},
   );
-  const [email, setEmail] = useState(DEMO[0].email);
-  const [password, setPassword] = useState("builder");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
   return (
     <>
@@ -65,26 +58,6 @@ export function LoginForm() {
         Sign in with Google
       </a>
 
-      <div className="mt-8 rounded-card border border-selected p-4">
-        <p className="text-[13px] font-medium">Seeded accounts</p>
-        <div className="mt-3 flex flex-col gap-2">
-          {DEMO.map((account) => (
-            <button
-              key={account.email}
-              type="button"
-              onClick={() => {
-                setEmail(account.email);
-                setPassword("builder");
-              }}
-              className="flex flex-col rounded-row px-2.5 py-2 text-left hover:bg-fill"
-            >
-              <span className="font-mono text-xs text-ink-2">{account.email}</span>
-              <span className="text-xs text-ink-3">{account.who}</span>
-            </button>
-          ))}
-        </div>
-        <FootNote>Password for both is `builder`.</FootNote>
-      </div>
     </>
   );
 }
