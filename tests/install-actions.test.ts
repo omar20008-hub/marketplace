@@ -590,3 +590,88 @@ describe("activate — the knowledge key", () => {
     spy.mockRestore();
   });
 });
+
+describe("activate — a tool signed into through the connector sign-in", () => {
+  it("sends its token to n8n in the credential shape n8n's own node reads", async () => {
+    const user = await seedUser();
+    await prisma.connector.create({
+      data: {
+        userId: user.id,
+        credentialType: "asanaOAuth2Api",
+        displayName: "Nora (Asana)",
+        initials: "AS",
+        accountRef: "nora@acme.co",
+        status: "ACTIVE",
+        secretJson: sealCredential({ access_token: "at-live", refresh_token: "rt-1" }),
+        expiresAt: new Date(Date.now() + 30 * 60_000),
+      },
+    });
+    const product = await prisma.product.create({
+      data: productData(user.id, "PUBLISHED", [
+        {
+          kind: "CONNECTION",
+          label: "Asana",
+          credentialType: "asanaOAuth2Api",
+          providedBy: "USER",
+        },
+      ]),
+    });
+    const install = vi.spyOn(n8n, "install");
+
+    const result = await submit({ productId: product.id, storageBackend: "platform" });
+
+    expect(result.redirectedTo).toBe("/workspace");
+    const sent = JSON.parse(install.mock.calls[0][0].credentialsJson);
+    expect(sent.asanaOAuth2Api.oauthTokenData).toEqual({
+      access_token: "at-live",
+      refresh_token: "rt-1",
+      token_type: "bearer",
+    });
+    expect(sent.asanaOAuth2Api.accessTokenUrl).toBe("https://app.asana.com/-/oauth_token");
+    expect(sent.asanaOAuth2Api.access_token).toBeUndefined();
+    install.mockRestore();
+  });
+
+  it("asks for a reconnect and installs nothing when Asana refuses to renew the token", async () => {
+    const user = await seedUser();
+    await prisma.connector.create({
+      data: {
+        userId: user.id,
+        credentialType: "asanaOAuth2Api",
+        displayName: "Nora (Asana)",
+        initials: "AS",
+        accountRef: "nora@acme.co",
+        status: "ACTIVE",
+        secretJson: sealCredential({ access_token: "at-old", refresh_token: "rt-revoked" }),
+        expiresAt: new Date(Date.now() - 60_000),
+      },
+    });
+    const product = await prisma.product.create({
+      data: productData(user.id, "PUBLISHED", [
+        {
+          kind: "CONNECTION",
+          label: "Asana",
+          credentialType: "asanaOAuth2Api",
+          providedBy: "USER",
+        },
+      ]),
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify({ error: "invalid_grant" }), {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
+    const install = vi.spyOn(n8n, "install");
+
+    const result = await submit({ productId: product.id, storageBackend: "platform" });
+
+    expect(install).not.toHaveBeenCalled();
+    expect(result.error).toContain("Asana did not hand over a working connection");
+    install.mockRestore();
+    vi.unstubAllGlobals();
+  });
+});

@@ -10,6 +10,8 @@ import { env } from "@/lib/env";
 import { DriveError, getFolder } from "@/lib/drive";
 import { GOOGLE_DRIVE_CREDENTIAL } from "@/lib/google-oauth";
 import { getGoogleAccessToken } from "./google-account";
+import { findProviderByCredentialType } from "@/lib/connectors/providers";
+import { getConnectorAccessToken } from "./connector-tokens";
 import { newKnowledgeKey } from "./knowledge/keys";
 import { createKnowledgeSource } from "./knowledge/sources";
 import { stopWatch } from "./knowledge/watch";
@@ -177,16 +179,26 @@ export async function activate(
   // of this call, on its way into n8n's own credential store.
   // Platform-held OAuth connections (Drive) count as satisfied above, but their
   // tokens are not n8n's to have: whatever needs them asks the platform.
-  const credentialsJson = JSON.stringify(
-    Object.fromEntries(
-      needed
-        .filter((type) => !isPlatformOAuth(type))
-        .map((type) => [
-          type,
-          openCredential(byType.get(type)?.secretJson ?? null),
-        ]),
-    ),
-  );
+  const credentialEntries: [string, Record<string, unknown>][] = [];
+  for (const type of needed) {
+    if (isPlatformOAuth(type)) continue;
+    const account = byType.get(type);
+    const provider = findProviderByCredentialType(type);
+    if (provider && account) {
+      try {
+        await getConnectorAccessToken(account.id);
+      } catch {
+        return {
+          error: `${provider.displayName} did not hand over a working connection. Check Connected accounts, then retry.`,
+        };
+      }
+      const fresh = await prisma.connector.findUnique({ where: { id: account.id } });
+      credentialEntries.push([type, provider.n8nCredential(openCredential(fresh?.secretJson ?? null))]);
+    } else {
+      credentialEntries.push([type, openCredential(account?.secretJson ?? null)]);
+    }
+  }
+  const credentialsJson = JSON.stringify(Object.fromEntries(credentialEntries));
 
   // A new key every activation: the instance about to be built gets it, and any
   // earlier one stops working the moment the hash is replaced below.
