@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { findProviderByCredentialType, type ConnectorProvider } from "@/lib/connectors/providers";
 import { openCredential, sealCredential } from "@/lib/secrets";
+import { refreshInstallationStates } from "./installation-state";
 
 /**
  * A usable access token for a connection made through the generic sign-in,
@@ -18,6 +19,7 @@ const SKEW_MS = 60_000;
 export class ConnectorAuthError extends Error {
   constructor(
     message: string,
+    readonly code: string,
     readonly permanent: boolean,
   ) {
     super(message);
@@ -44,6 +46,7 @@ async function refresh(provider: ConnectorProvider, refreshToken: string) {
   if (!response.ok || !json?.access_token) {
     throw new ConnectorAuthError(
       `${provider.displayName} token refresh: ${json?.error ?? response.status}`,
+      json?.error ?? String(response.status),
       json?.error === "invalid_grant",
     );
   }
@@ -94,7 +97,7 @@ export async function getConnectorAccessToken(connectorId: string): Promise<stri
         return {
           kind: "expired" as const,
           userId: connector.userId,
-          error: new ConnectorAuthError("No refresh token was issued for this connection.", true),
+          error: new ConnectorAuthError("No refresh token was issued for this connection.", "no_refresh", true),
         };
       }
 
@@ -127,6 +130,7 @@ export async function getConnectorAccessToken(connectorId: string): Promise<stri
   );
 
   if (outcome.kind === "ok") return outcome.token;
+  if (outcome.userId) await refreshInstallationStates(outcome.userId);
   if (outcome.kind === "expired" && outcome.error) throw outcome.error;
-  throw new ConnectorAuthError("This connection is no longer active.", true);
+  throw new ConnectorAuthError("This connection is no longer active.", "not_connected", true);
 }
