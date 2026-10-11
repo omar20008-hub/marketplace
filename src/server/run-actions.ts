@@ -52,11 +52,15 @@ export async function startTask(formData: FormData) {
       title: titleFor(task),
       messages: { create: [{ role: "USER", body: shown }] },
     },
+    include: { messages: { select: { id: true } } },
   });
+  const [question] = thread.messages;
 
   // The reply is made after the redirect; the thread page shows the question and
   // "Thinking…" meanwhile.
-  await replyInBackground(() => answerThread(user.id, thread.id, task, chatInput));
+  await replyInBackground(() =>
+    answerThread(user.id, thread.id, task, question.id, chatInput),
+  );
 
   revalidatePath("/", "layout");
   redirect(`/tasks/${thread.id}`);

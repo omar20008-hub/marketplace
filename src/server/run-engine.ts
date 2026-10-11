@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/db";
 import type { Viewer } from "@/lib/auth";
-import { n8n } from "@/lib/n8n";
+import { n8n, type DispatchOutput } from "@/lib/n8n";
 import { readinessFor } from "@/lib/readiness";
 import { fitsInPlan, storageFullMessage, storageUsedBytes } from "@/server/storage-quota";
 import type { Prisma } from "@/generated/prisma";
@@ -127,11 +127,14 @@ export async function executeRun({
   installationId,
   args,
   threadId,
+  onDispatch,
 }: {
-  user: Viewer;
+  user: Pick<Viewer, "id" | "plan">;
   installationId: string;
   args: Record<string, unknown>;
   threadId?: string;
+  /** Receives the dispatcher's full reply, which the stored run keeps only in part. */
+  onDispatch?: (reply: DispatchOutput) => void;
 }) {
   const installation = await prisma.installation.findFirst({
     where: { id: installationId, userId: user.id },
@@ -224,6 +227,7 @@ export async function executeRun({
     installationId: installation.installationId ?? installation.id,
     args: { ...args, __schema: schema },
   });
+  onDispatch?.(reply);
 
   const durationMs = Date.now() - startedAt;
   const labels = stepLabels(installation.product);

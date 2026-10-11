@@ -32,11 +32,13 @@ export async function followUp(formData: FormData) {
   const shown = attachments.shown ? `${body}\n\n${attachments.shown}` : body;
   const chatInput = attachments.forAssistant ? `${body}\n\n${attachments.forAssistant}` : body;
 
-  await prisma.message.create({
+  const message = await prisma.message.create({
     data: { threadId: thread.id, role: "USER", body: shown },
   });
 
   revalidatePath(`/tasks/${thread.id}`);
   // The memory commands read what was typed, not the attachment note.
-  await replyInBackground(() => answerThread(user.id, thread.id, body, chatInput));
+  await replyInBackground(() =>
+    answerThread(user.id, thread.id, body, message.id, chatInput),
+  );
 }

@@ -148,6 +148,16 @@ export const env = {
   telegramBotUsername: process.env.TELEGRAM_BOT_USERNAME?.replace(/^@/, "") || null,
 
   /**
+   * The bot's API token, and the secret Telegram echoes back on every update
+   * (set with setWebhook as secret_token). Empty secret refuses every update, so
+   * the receiver at /api/channels/telegram/webhook stays closed until it is set.
+   */
+  telegram: {
+    botToken: process.env.TELEGRAM_BOT_TOKEN ?? "",
+    webhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET ?? "",
+  },
+
+  /**
    * The platform's own Google OAuth client, for connections the platform holds
    * itself (Drive). Not required to boot — the connect route says so and does
    * nothing, rather than the whole app refusing to start over a feature.
@@ -238,6 +248,21 @@ export const env = {
     model: process.env.MEMORY_MODEL ?? "gemini-3.1-flash-lite",
   },
 
+  /**
+   * Which Orchestrator answers chat. "n8n" (the default) sends each message to the
+   * MP · Orchestrator workflow. "platform" answers in this app with Gemini, and
+   * still runs the product workflows through n8n. It needs GEMINI_API_KEY, and the
+   * app refuses to start with the flag set and no key.
+   */
+  orchestrator: {
+    driver: (process.env.ORCHESTRATOR_DRIVER === "platform" ? "platform" : "n8n") as
+      | "platform"
+      | "n8n",
+    model: process.env.ORCHESTRATOR_MODEL ?? "gemini-3.1-flash-lite",
+    fallbackModel: process.env.ORCHESTRATOR_FALLBACK_MODEL ?? "gemini-2.5-flash-lite",
+    geminiApiKey: process.env.GEMINI_API_KEY ?? "",
+  },
+
   n8n: {
     driver: (process.env.N8N_DRIVER === "live" ? "live" : "mock") as N8nDriver,
     baseUrl: process.env.N8N_BASE_URL ?? "",
@@ -267,3 +292,7 @@ export const env = {
     ),
   },
 } as const;
+
+if (env.orchestrator.driver === "platform" && !env.orchestrator.geminiApiKey) {
+  throw new Error("ORCHESTRATOR_DRIVER=platform needs GEMINI_API_KEY.");
+}

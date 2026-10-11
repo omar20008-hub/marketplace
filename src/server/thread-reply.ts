@@ -1,7 +1,7 @@
 import "server-only";
 import { after } from "next/server";
 import { prisma } from "@/lib/db";
-import { askOrchestrator } from "./run-engine";
+import { answerMessage } from "./orchestrator/assistant";
 import { handleMemoryCommand, learnAfterResponse, withMemories } from "./memory";
 
 /**
@@ -14,12 +14,24 @@ import { handleMemoryCommand, learnAfterResponse, withMemories } from "./memory"
  * with what the person has asked to be remembered in front of it. The stored
  * user message stays exactly what they wrote.
  */
-export async function answerThread(userId: string, threadId: string, text: string, chatInput = text) {
+export async function answerThread(
+  userId: string,
+  threadId: string,
+  text: string,
+  currentMessageId: string,
+  chatInput = text,
+) {
   let output: string;
   try {
     const command = await handleMemoryCommand(userId, text);
     output =
-      command ?? (await askOrchestrator(userId, await withMemories(userId, chatInput), threadId));
+      command ??
+      (await answerMessage({
+        userId,
+        chatInput: await withMemories(userId, chatInput),
+        threadId,
+        currentMessageId,
+      }));
     if (command === null) learnAfterResponse(userId, text);
   } catch (error) {
     console.error("Reply failed", error instanceof Error ? error.name : "error");

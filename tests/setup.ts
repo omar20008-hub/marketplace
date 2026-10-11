@@ -25,6 +25,8 @@ process.env.SECRETS_KEY =
 
 process.env.SCHEDULE_TOKEN = "test-schedule-token";
 process.env.CHANNEL_TOKEN = "test-channel-token";
+process.env.TELEGRAM_BOT_TOKEN = "123456:test-bot-token";
+process.env.TELEGRAM_WEBHOOK_SECRET = "test-telegram-webhook-secret";
 
 process.env.GOOGLE_CLIENT_ID = "test-client-id.apps.googleusercontent.com";
 process.env.GOOGLE_CLIENT_SECRET = "test-client-secret";

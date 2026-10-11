@@ -21,9 +21,9 @@ import type {
 } from "./contracts";
 
 /**
- * One interface over the five workflows the platform calls, plus the two REST
- * endpoints it needs. Publish Sync and Lifecycle Sweep are absent on purpose:
- * nobody calls them, they run on a schedule inside n8n.
+ * One interface over the five workflows the platform calls, plus the REST
+ * endpoints it needs. Publish Sync is absent on purpose: nobody calls it, it runs
+ * on a schedule inside n8n.
  */
 export interface N8nDriver {
   readonly name: "mock" | "live";
@@ -44,4 +44,10 @@ export interface N8nDriver {
 
   /** Pull of mp_templates, for the marketplace mirror. */
   listTemplates(): Promise<TemplateRow[]>;
+
+  /**
+   * Switches one user's copy off in n8n. ok=false means n8n refused or could not be
+   * reached; the caller still records the installation as disabled.
+   */
+  deactivateInstance(instanceWorkflowId: string): Promise<{ ok: boolean }>;
 }
