@@ -460,10 +460,7 @@ describe("activate — a completed install", () => {
     });
   });
 
-  it("refuses a credential type the platform cannot collect yet", async () => {
-    // Google Sheets needs a consent flow that does not exist, so the mock
-    // refuses it exactly as Install Template does. The user should be told,
-    // not handed a broken installation.
+  it("asks for Google Drive when Sheets is needed and Drive is not connected, installing nothing", async () => {
     const user = await seedUser();
     const product = await prisma.product.create({
       data: productData(user.id, "PUBLISHED", [
@@ -475,16 +472,54 @@ describe("activate — a completed install", () => {
         },
       ]),
     });
+    const install = vi.spyOn(n8n, "install");
 
-    const result = await submit({
-      productId: product.id,
-      storageBackend: "platform",
-      "cred.googleSheetsOAuth2Api.token": "pretend",
+    const result = await submit({ productId: product.id, storageBackend: "platform" });
+
+    expect(install).not.toHaveBeenCalled();
+    expect(result.redirectedTo).toBe("/workspace");
+    const partial = await prisma.installation.findFirstOrThrow();
+    expect(partial.status).toBe("PARTIAL");
+    expect(partial.attentionNote).toContain("Google Sheets");
+    install.mockRestore();
+  });
+
+  it("serves Sheets through the Drive connection and never sends its tokens to n8n", async () => {
+    const user = await seedUser();
+    const drive = await prisma.connector.create({
+      data: {
+        userId: user.id,
+        credentialType: "googleDriveOAuth2Api",
+        displayName: "Google Drive",
+        initials: "GD",
+        accountRef: "nora@acme.co",
+        status: "ACTIVE",
+        secretJson: sealCredential({ refresh_token: "1//drive-secret", access_token: "ya29.drive" }),
+        expiresAt: new Date(Date.now() + 30 * 60_000),
+      },
     });
+    const product = await prisma.product.create({
+      data: productData(user.id, "PUBLISHED", [
+        {
+          kind: "CONNECTION",
+          label: "Sheets",
+          credentialType: "googleSheetsOAuth2Api",
+          providedBy: "USER",
+        },
+      ]),
+    });
+    const install = vi.spyOn(n8n, "install");
 
-    expect(result.redirectedTo).toBeNull();
-    expect(result.error).toMatch(/googleSheetsOAuth2Api/);
-    expect(await prisma.installation.count()).toBe(0);
+    await submit({ productId: product.id, storageBackend: "platform" });
+
+    const sent = install.mock.calls[0][0].credentialsJson;
+    expect(sent).not.toContain("drive-secret");
+    expect(sent).not.toContain("googleSheetsOAuth2Api");
+    const link = await prisma.installationCredential.findFirstOrThrow({
+      where: { credentialType: "googleSheetsOAuth2Api" },
+    });
+    expect(link.connectorId).toBe(drive.id);
+    install.mockRestore();
   });
 
   it("ignores an empty field rather than storing a blank secret", async () => {

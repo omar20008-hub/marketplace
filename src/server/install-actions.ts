@@ -152,7 +152,9 @@ export async function activate(
     .filter((r) => r.providedBy === "USER" && r.credentialType)
     .map((r) => r.credentialType!);
 
-  const missing = needed.filter((type) => byType.get(type)?.status !== "ACTIVE");
+  const connectionFor = (type: string) =>
+    byType.get(findProviderByCredentialType(type)?.sourceCredentialType ?? type);
+  const missing = needed.filter((type) => connectionFor(type)?.status !== "ACTIVE");
 
   // Partially ready: recorded here, not sent to n8n. Install Template refuses an
   // incomplete credential set, and rightly so — there is nothing to install yet.
@@ -182,9 +184,11 @@ export async function activate(
   const credentialEntries: [string, Record<string, unknown>][] = [];
   for (const type of needed) {
     if (isPlatformOAuth(type)) continue;
-    const account = byType.get(type);
     const provider = findProviderByCredentialType(type);
-    if (provider && account) {
+    // Reached through another connection, which n8n is never given; the platform serves them.
+    if (provider?.sourceCredentialType) continue;
+    const account = byType.get(type);
+    if (provider?.n8nCredential && account) {
       try {
         await getConnectorAccessToken(account.id);
       } catch {
@@ -262,7 +266,7 @@ export async function activate(
   await attachFolder(installation.id);
 
   for (const type of needed) {
-    const account = byType.get(type);
+    const account = connectionFor(type);
     await prisma.installationCredential.upsert({
       where: {
         installationId_credentialType: {

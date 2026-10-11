@@ -141,6 +141,66 @@ describe("the connector token endpoint", () => {
     expect(await response.json()).toEqual({ access_token: "at-live", token_type: "bearer" });
   });
 
+  it("serves Sheets from the Drive connection the installation was built with", async () => {
+    await prisma.plan.upsert({
+      where: { id: PLAN_ID },
+      create: { id: PLAN_ID, name: "T", monthlyRuns: 1, storageBytes: BigInt(1), monthlyCredits: 0 },
+      update: {},
+    });
+    const user = await prisma.user.create({
+      data: { email: "s@example.test", name: "S", passwordHash: "x", initials: "S", planId: PLAN_ID },
+    });
+    const product = await prisma.product.create({
+      data: {
+        slug: `p-${Math.random().toString(36).slice(2, 8)}`,
+        creatorId: user.id,
+        title: "Sheets digest",
+        summary: "s",
+        description: "d",
+        needsFromYou: "n",
+        kind: "WORKFLOW",
+        category: "Reporting",
+        status: "PUBLISHED",
+        templateId: `tpl_${Math.random().toString(36).slice(2, 8)}`,
+      },
+    });
+    const key = newKnowledgeKey();
+    const installation = await prisma.installation.create({
+      data: {
+        userId: user.id,
+        productId: product.id,
+        pinnedVersion: product.version,
+        storageBackend: "platform",
+        status: "ACTIVE",
+        knowledgeKeyHash: key.hash,
+      },
+    });
+    const drive = await prisma.connector.create({
+      data: {
+        userId: user.id,
+        credentialType: "googleDriveOAuth2Api",
+        displayName: "Google Drive",
+        initials: "GD",
+        accountRef: "s@example.test",
+        status: "ACTIVE",
+        secretJson: sealCredential({ access_token: "ya29.live", refresh_token: "1//rt" }),
+        expiresAt: new Date(Date.now() + 30 * 60_000),
+      },
+    });
+    await prisma.installationCredential.create({
+      data: {
+        installationId: installation.id,
+        credentialType: "googleSheetsOAuth2Api",
+        connectorId: drive.id,
+      },
+    });
+
+    const response = await ask(key.key, { credentialType: "googleSheetsOAuth2Api" });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ access_token: "ya29.live", token_type: "bearer" });
+  });
+
   it("tells the template to reconnect when the connection has ended", async () => {
     const key = await seed({ linked: true, expired: true });
     expect((await ask(key, { credentialType: ASANA })).status).toBe(409);
