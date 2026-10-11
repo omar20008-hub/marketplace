@@ -211,7 +211,7 @@ describe("activate with a folder", () => {
     const user = await seedUser("a@example.test", { drive: false });
     const product = await seedProduct(user.id);
     const res = await submit({ productId: product.id, storageBackend: "platform", knowledgeFolderId: "f-contracts-0001" });
-    expect(res.error).toMatch(/Connect your Google Drive/);
+    expect(res.error).toMatch(/Connect your Google Suite/);
   });
 
   it("installs without a folder when none is chosen, and ignores a folder sent for a product that has no files", async () => {

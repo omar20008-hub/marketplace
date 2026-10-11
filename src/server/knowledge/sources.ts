@@ -33,7 +33,7 @@ export async function createKnowledgeSource(
     where: { id: accountId, userId, credentialType: GOOGLE_DRIVE_CREDENTIAL },
   });
   if (!account || account.status !== "ACTIVE") {
-    return { ok: false, error: "Connect your Google Drive first." };
+    return { ok: false, error: "Connect your Google Suite first." };
   }
 
   let folder;

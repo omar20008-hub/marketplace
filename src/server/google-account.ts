@@ -85,7 +85,7 @@ export async function saveGoogleConnection({
     create: {
       userId,
       credentialType: GOOGLE_DRIVE_CREDENTIAL,
-      displayName: "Google Drive",
+      displayName: "Google Suite",
       initials: "GD",
       accountRef: email,
       status: "ACTIVE",

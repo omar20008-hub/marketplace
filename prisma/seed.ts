@@ -623,7 +623,7 @@ async function main() {
   await prisma.requirement.createMany({
     data: [
       { productId: ig.id, kind: "MODEL", label: "AI model", providedBy: "PLATFORM", sortOrder: 0 },
-      { productId: ig.id, kind: "CONNECTION", label: "Google Drive", note: "— read product images", credentialType: "googleDriveOAuth2Api", providedBy: "PLATFORM_OR_OWN", sortOrder: 1 },
+      { productId: ig.id, kind: "CONNECTION", label: "Google Suite", note: "— read product images", credentialType: "googleDriveOAuth2Api", providedBy: "PLATFORM_OR_OWN", sortOrder: 1 },
       { productId: ig.id, kind: "CONNECTION", label: "Instagram", note: "— publish posts", credentialType: "facebookGraphApi", providedBy: "USER", sortOrder: 2 },
       { productId: ig.id, kind: "STORAGE", label: "Results storage", note: "Platform storage (default)", providedBy: "PLATFORM", sortOrder: 3 },
     ],
@@ -685,7 +685,7 @@ async function main() {
       { credentialType: "hubspotApi", displayName: "HubSpot", initials: "Hs", accountRef: "acme-crm", status: "EXPIRED" as const, scope: "OWN" as const, expiresAt: d(16, 9, 0) },
       { credentialType: "googleSheetsOAuth2Api", displayName: "Google Sheets", initials: "Sh", accountRef: "nora@acme.co", status: "ACTIVE" as const, scope: "OWN" as const },
       { credentialType: "microsoftTeamsOAuth2Api", displayName: "Microsoft Teams", initials: "Tm", accountRef: null, status: "ACTIVE" as const, scope: "PLATFORM" as const },
-      { credentialType: "googleDriveOAuth2Api", displayName: "Google Drive", initials: "Dr", accountRef: null, status: "ACTIVE" as const, scope: "PLATFORM" as const },
+      { credentialType: "googleDriveOAuth2Api", displayName: "Google Suite", initials: "Dr", accountRef: null, status: "ACTIVE" as const, scope: "PLATFORM" as const },
       { credentialType: "slackApi", displayName: "Slack", initials: "Sl", accountRef: "acme.slack.com", status: "ACTIVE" as const, scope: "OWN" as const },
     ].map((a) =>
       prisma.connector.create({
@@ -1139,7 +1139,7 @@ async function main() {
 function credentialLabel(credentialType: string) {
   const labels: Record<string, string> = {
     googleSheetsOAuth2Api: "Google Sheets",
-    googleDriveOAuth2Api: "Google Drive",
+    googleDriveOAuth2Api: "Google Suite",
     facebookGraphApi: "Instagram",
     slackApi: "Slack",
     microsoftTeamsOAuth2Api: "Microsoft Teams",

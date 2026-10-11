@@ -132,7 +132,7 @@ export async function disconnectAccount(formData: FormData) {
       await stopWatch(id);
       await prisma.knowledgeSource.update({
         where: { id },
-        data: { status: "NEEDS_RECONNECT", lastError: "Google Drive was disconnected." },
+        data: { status: "NEEDS_RECONNECT", lastError: "Google Suite was disconnected." },
       });
     }
   }

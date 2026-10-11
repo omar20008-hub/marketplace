@@ -225,7 +225,7 @@ describe("disconnecting Google", () => {
 
     expect(stopWatch).toHaveBeenCalledWith(s.id);
     const after = await prisma.knowledgeSource.findUniqueOrThrow({ where: { id: s.id } });
-    expect(after).toMatchObject({ status: "NEEDS_RECONNECT", lastError: "Google Drive was disconnected." });
+    expect(after).toMatchObject({ status: "NEEDS_RECONNECT", lastError: "Google Suite was disconnected." });
     expect(await prisma.knowledgeChunk.count()).toBe(1);
   });
 });
