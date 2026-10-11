@@ -135,11 +135,14 @@ export function authorizationUrl({
   challenge,
   redirectUri = googleRedirectUri(),
   scopes = SCOPES,
+  lasting = true,
 }: {
   state: string;
   challenge: string;
   redirectUri?: string;
   scopes?: string[];
+  /** A connection that must be renewed later; sign-in does not need one. */
+  lasting?: boolean;
 }) {
   const url = new URL(AUTH_URL);
   url.search = new URLSearchParams({
@@ -147,12 +150,11 @@ export function authorizationUrl({
     redirect_uri: redirectUri,
     response_type: "code",
     scope: scopes.join(" "),
-    access_type: "offline",
-    prompt: "consent",
     include_granted_scopes: "true",
     state,
     code_challenge: challenge,
     code_challenge_method: "S256",
+    ...(lasting ? { access_type: "offline", prompt: "consent" } : {}),
   }).toString();
   return url.toString();
 }
