@@ -176,6 +176,21 @@ export const env = {
   },
 
   /**
+   * Stripe, for the paid plans (see lib/billing.ts). Not required to boot: without a
+   * secret key the upgrade buttons say billing is not set up yet. The price ids are
+   * the Stripe prices for each paid plan; the webhook secret checks that a request
+   * really came from Stripe.
+   */
+  stripe: {
+    secretKey: process.env.STRIPE_SECRET_KEY ?? "",
+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
+    priceIds: {
+      pro: process.env.STRIPE_PRICE_PRO ?? "",
+      team: process.env.STRIPE_PRICE_TEAM ?? "",
+    },
+  },
+
+  /**
    * The address n8n uses to call back into the platform (knowledge search). It
    * is written into each installed workflow, so it must be reachable from n8n,
    * not merely from a browser. Defaults to the origin of the OAuth redirect.

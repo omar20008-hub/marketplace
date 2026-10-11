@@ -44,6 +44,9 @@ model User {
   plan     Plan      @relation(fields: [planId], references: [id])
   renewsAt DateTime?
   credits  Int       @default(0)
+  // Stripe ids, set by the billing webhook. Null for a user on the free plan.
+  stripeCustomerId     String? @unique
+  stripeSubscriptionId String? @unique
 
   // Creator-facing identity, shown on product cards.
   creatorName     String?
