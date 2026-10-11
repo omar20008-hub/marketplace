@@ -176,6 +176,16 @@ export const env = {
   },
 
   /**
+   * Asana, the first tool signed into through the generic connector sign-in
+   * (lib/connectors). Each tool gets its own app registration and its own pair of
+   * these; the redirect is always PUBLIC_URL + /api/connectors/<tool>/callback.
+   */
+  asana: {
+    clientId: process.env.ASANA_CLIENT_ID ?? "",
+    clientSecret: process.env.ASANA_CLIENT_SECRET ?? "",
+  },
+
+  /**
    * The address n8n uses to call back into the platform (knowledge search). It
    * is written into each installed workflow, so it must be reachable from n8n,
    * not merely from a browser. Defaults to the origin of the OAuth redirect.

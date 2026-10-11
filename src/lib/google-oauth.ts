@@ -3,6 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { GOOGLE_DRIVE_CREDENTIAL } from "./credentials";
 import { env } from "./env";
 import { facebookConnectErrorText, isFacebookConnectError } from "./facebook-oauth";
+import { TOOL_CONNECT_ERRORS, isToolConnectError } from "./connectors/messages";
 import { appUrl } from "./public-origin";
 
 export { GOOGLE_DRIVE_CREDENTIAL, appUrl };
@@ -108,6 +109,7 @@ export const CONNECT_ERRORS: Record<string, string> = {
 export function connectErrorText(code: string | undefined): string {
   // The same banner serves Facebook's sign-in; its codes all start with fb_.
   if (isFacebookConnectError(code)) return facebookConnectErrorText(code);
+  if (isToolConnectError(code)) return TOOL_CONNECT_ERRORS[code!];
   if (code === "not_configured") {
     const missing = googleMissingConfig();
     if (missing.length > 0) {
