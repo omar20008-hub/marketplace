@@ -11,7 +11,12 @@ import { connectErrorText } from "@/lib/google-oauth";
 import { Badge, ButtonAnchor, ButtonLink, Card, PageTitle } from "@/components/ds";
 import { disconnectAccount } from "@/server/account-actions";
 import { ConnectPanel, type Connectable } from "./connect-panel";
-import { connectorStartUrl, listProviders, missingSettings } from "@/lib/connectors/providers";
+import {
+  connectorStartUrl,
+  editorsWithoutGrant,
+  listProviders,
+  missingSettings,
+} from "@/lib/connectors/providers";
 import { TelegramLinkCard } from "./telegram-link-card";
 import { telegramLinkFor } from "@/server/channel-links";
 import { env } from "@/lib/env";
@@ -154,6 +159,17 @@ export default async function AccountsPage({
 
   const telegram = await telegramLinkFor(user.id);
 
+  // Read on the server only: what leaves it is the names of the editors to reconnect for.
+  const driveSecrets = await prisma.connector.findMany({
+    where: { userId: user.id, credentialType: GOOGLE_DRIVE_CREDENTIAL, status: "ACTIVE" },
+    select: { id: true, secretJson: true },
+  });
+  const reconnectFor = new Map<string, string[]>();
+  for (const drive of driveSecrets) {
+    const names = editorsWithoutGrant(drive.secretJson);
+    if (names.length > 0) reconnectFor.set(drive.id, names);
+  }
+
   const connected = accounts.filter((a) => a.status !== "PENDING").length;
 
   return (
@@ -181,6 +197,11 @@ export default async function AccountsPage({
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium">{account.displayName}</div>
+                  {reconnectFor.has(account.id) ? (
+                    <div className="mt-0.5 text-xs text-danger-ink">
+                      Reconnect to allow {reconnectFor.get(account.id)!.join(", ")}.
+                    </div>
+                  ) : null}
                   <div className="mt-0.5 text-xs text-ink-3">
                     {account.status === "EXPIRED"
                       ? "Access expired. Scheduled runs that need it are blocked."
@@ -239,6 +260,11 @@ export default async function AccountsPage({
                 ) : (
                   <>
                     <Badge tone="ready">Active</Badge>
+                    {reconnectFor.has(account.id) ? (
+                      <ButtonAnchor href={oauthStartUrl("/accounts", account.credentialType)} size="sm">
+                        Reconnect
+                      </ButtonAnchor>
+                    ) : null}
                     <form action={disconnectAccount}>
                       <input type="hidden" name="accountId" value={account.id} />
                       <button

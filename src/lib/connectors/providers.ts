@@ -140,6 +140,13 @@ export function listProviders(): ConnectorProvider[] {
   return SIGN_IN;
 }
 
+/** The names of the Google editors a Drive connection does not yet have the scope for. */
+export function editorsWithoutGrant(secretJson: string | null): string[] {
+  return ALL.filter(
+    (p) => p.sourceCredentialType === GOOGLE_DRIVE_CREDENTIAL && !editorIsGranted(p, secretJson),
+  ).map((p) => p.displayName);
+}
+
 export function connectorStartUrl(provider: ConnectorProvider, returnTo = "/accounts"): string {
   return `/api/connectors/${provider.id}/start?returnTo=${encodeURIComponent(returnTo)}`;
 }
