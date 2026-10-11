@@ -92,6 +92,14 @@ async function postWebhook<T>(url: string, body: unknown): Promise<T> {
   }
 }
 
+async function restPost(path: string): Promise<Response> {
+  return fetch(`${env.n8n.baseUrl}${path}`, {
+    method: "POST",
+    headers: { "X-N8N-API-KEY": env.n8n.apiKey },
+    cache: "no-store",
+  });
+}
+
 async function restGet<T>(path: string): Promise<T> {
   const response = await fetch(`${env.n8n.baseUrl}${path}`, {
     headers: { "X-N8N-API-KEY": env.n8n.apiKey },
@@ -181,5 +189,16 @@ export const liveDriver: N8nDriver = {
       "/data-tables/mp_templates/rows?limit=500",
     );
     return rows.data ?? [];
+  },
+
+  async deactivateInstance(instanceWorkflowId: string) {
+    try {
+      const response = await restPost(
+        `/workflows/${encodeURIComponent(instanceWorkflowId)}/deactivate`,
+      );
+      return { ok: response.ok };
+    } catch {
+      return { ok: false };
+    }
   },
 };

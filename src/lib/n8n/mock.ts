@@ -371,6 +371,10 @@ export const mockDriver: N8nDriver = {
     // In mock mode the platform's own mirror is the only catalogue there is.
     return [];
   },
+
+  async deactivateInstance() {
+    return { ok: true };
+  },
 };
 
 export function contentHash(file: string) {
