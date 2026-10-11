@@ -148,6 +148,16 @@ export const env = {
   telegramBotUsername: process.env.TELEGRAM_BOT_USERNAME?.replace(/^@/, "") || null,
 
   /**
+   * The bot's API token, and the secret Telegram echoes back on every update
+   * (set with setWebhook as secret_token). Empty secret refuses every update, so
+   * the receiver at /api/channels/telegram/webhook stays closed until it is set.
+   */
+  telegram: {
+    botToken: process.env.TELEGRAM_BOT_TOKEN ?? "",
+    webhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET ?? "",
+  },
+
+  /**
    * The platform's own Google OAuth client, for connections the platform holds
    * itself (Drive). Not required to boot — the connect route says so and does
    * nothing, rather than the whole app refusing to start over a feature.
