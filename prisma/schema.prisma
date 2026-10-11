@@ -552,6 +552,25 @@ model Message {
 /// Per-user scheduling, which the workflow contracts have no answer for: there
 /// is no schedule table in n8n's side of the boundary, so the cadence, the
 /// saved inputs and the record of what happened all live here.
+/// Which node types a creator's workflow may use, and how each is treated.
+/// Read by the upload check; changed only by someone who owns the policy.
+model NodeRule {
+  nodeType String @id
+  verdict  String
+  note     String @default("")
+}
+
+/// Whether a credential type can be kept for an installation, and how it is
+/// connected. OAuth types need the platform's app registered with the provider.
+model CredentialRule {
+  credentialType String   @id
+  durability     String
+  appRegistered  Boolean  @default(false)
+  authFlow       String?
+  flowReady      Boolean?
+  note           String   @default("")
+}
+
 /// Files a product writes for one installation (the platform's own storage
 /// destination). Keyed by the platform installation, so one installation can never
 /// read another's files.

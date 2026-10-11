@@ -8,7 +8,7 @@
  * responders turned into pass-throughs. Nothing here creates anything in n8n.
  */
 
-export type NodeVerdict = "allow" | "review" | "deny";
+export type NodeVerdict = "allow" | "review" | "deny" | "transform";
 
 export type CredentialRule = {
   durability: string;
