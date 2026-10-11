@@ -30,6 +30,14 @@ type Row = {
   flaggedNodes?: string;
   credentialDurability?: string;
   rejectionReason?: string;
+  creatorId?: string;
+  title?: string;
+  description?: string;
+  category?: string;
+  actionType?: string;
+  invocationMode?: string;
+  inputSchema?: string;
+  version?: number;
 };
 
 function call(body: unknown, headers: Record<string, string> = { "x-sync-token": TOKEN! }) {
@@ -270,7 +278,7 @@ describe("a new template from n8n", () => {
       data: { id: PLAN_ID, name: "Test", monthlyRuns: 10, storageBytes: BigInt(1), monthlyCredits: 0 },
     });
     await prisma.user.create({
-      data: { id: platformUser, email: "owner@example.test", name: "Owner", passwordHash: "x", initials: "O", planId: PLAN_ID },
+      data: { id: platformUser, email: "owner@example.test", name: "Owner", passwordHash: "x", initials: "O", planId: PLAN_ID, roles: ["ADMIN"] },
     });
   });
 
@@ -307,6 +315,22 @@ describe("a new template from n8n", () => {
     });
     expect(product.publishedAt).not.toBeNull();
     expect(product.inputSchema).toEqual([{ name: "prompt", type: "string" }]);
+  });
+
+  it("does not create a product for a creator who is not an administrator", async () => {
+    await prisma.user.update({ where: { id: platformUser }, data: { roles: ["CREATOR"] } });
+
+    const body = await (await sync([row])).json();
+
+    expect(body).toMatchObject({ created: 0, unknown: 1 });
+    expect(await prisma.product.count()).toBe(0);
+  });
+
+  it("waits until the workflow is published before creating its product", async () => {
+    const body = await (await sync([{ ...row, status: "in_review" }])).json();
+
+    expect(body).toMatchObject({ created: 0, unknown: 1 });
+    expect(await prisma.product.count()).toBe(0);
   });
 
   it("reports a row whose creator is not a platform user", async () => {

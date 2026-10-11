@@ -98,15 +98,14 @@ export async function POST(request: Request) {
       where: { templateId: row.templateId },
     });
 
-    // A template the platform has never seen is reported, not invented: it needs
-    // a title, a description and a creator the platform knows. A workflow built
-    // for the platform itself names its creator, and that is the only case that
-    // creates a product here.
+    // A template the platform has never seen is reported, not invented. The one
+    // exception is a published workflow an administrator built for the platform:
+    // it carries its own title and description, so it can go live directly.
     if (!product) {
       const creator = row.creatorId
-        ? await prisma.user.findUnique({ where: { id: row.creatorId }, select: { id: true } })
+        ? await prisma.user.findUnique({ where: { id: row.creatorId }, select: { id: true, roles: true } })
         : null;
-      if (!creator || !row.title || !row.description) {
+      if (!creator?.roles.includes("ADMIN") || row.status !== "published" || !row.title || !row.description) {
         unknown += 1;
         continue;
       }
