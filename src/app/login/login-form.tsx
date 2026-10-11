@@ -1,23 +1,17 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { Button, Field, FootNote, Input } from "@/components/ds";
+import { Button, Field, Input } from "@/components/ds";
 import { login, type LoginState } from "@/server/auth-actions";
-
-// Seeded accounts. Two roles, so every screen is reachable without a signup flow
-// the design has not been drawn yet.
-const DEMO = [
-  { email: "nora@acme.co", who: "Nora Haddad — user and admin" },
-  { email: "rami@studio.co", who: "Rami K. — creator" },
-];
+import { GoogleIcon } from "./google-icon";
 
 export function LoginForm() {
   const [state, formAction, pending] = useActionState<LoginState, FormData>(
     login,
     {},
   );
-  const [email, setEmail] = useState(DEMO[0].email);
-  const [password, setPassword] = useState("builder");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
   return (
     <>
@@ -50,26 +44,20 @@ export function LoginForm() {
         </Button>
       </form>
 
-      <div className="mt-8 rounded-card border border-selected p-4">
-        <p className="text-[13px] font-medium">Seeded accounts</p>
-        <div className="mt-3 flex flex-col gap-2">
-          {DEMO.map((account) => (
-            <button
-              key={account.email}
-              type="button"
-              onClick={() => {
-                setEmail(account.email);
-                setPassword("builder");
-              }}
-              className="flex flex-col rounded-row px-2.5 py-2 text-left hover:bg-fill"
-            >
-              <span className="font-mono text-xs text-ink-2">{account.email}</span>
-              <span className="text-xs text-ink-3">{account.who}</span>
-            </button>
-          ))}
-        </div>
-        <FootNote>Password for both is `builder`.</FootNote>
+      <div className="mt-6 flex items-center gap-3">
+        <div className="flex-1 border-t border-selected" />
+        <p className="text-xs text-ink-3">or</p>
+        <div className="flex-1 border-t border-selected" />
       </div>
+
+      <a
+        href="/api/oauth/google/auth/start"
+        className="mt-6 flex w-full items-center justify-center gap-2 rounded-row border border-selected px-4 py-2.5 font-medium hover:bg-fill"
+      >
+        <GoogleIcon className="h-5 w-5" />
+        Sign in with Google
+      </a>
+
     </>
   );
 }

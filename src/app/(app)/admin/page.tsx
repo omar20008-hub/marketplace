@@ -20,6 +20,7 @@ import { formatDate, waitingFor } from "@/lib/readiness";
 import { toggleRole } from "@/server/admin-actions";
 import { CreateUserForm } from "./create-user-form";
 import { DecisionPanel } from "./decision-panel";
+import { PlatformKeys } from "./platform-keys";
 
 export const metadata = { title: "Admin · Builder" };
 
@@ -33,13 +34,14 @@ const TABS = [
   { key: "plans", label: "Plans" },
   { key: "audit", label: "Audit" },
   { key: "users", label: "Users" },
+  { key: "keys", label: "Platform keys" },
 ] as const;
 
 function AdminTabs({ active, openCount }: { active: string; openCount?: number }) {
   return (
     <nav className="mt-4 flex gap-1 overflow-x-auto text-sm">
       {TABS.map((tab) => {
-        const linkable = tab.key === "submissions" || tab.key === "users";
+        const linkable = tab.key === "submissions" || tab.key === "users" || tab.key === "keys";
         const isActive = tab.key === active;
         const className = isActive
           ? "flex items-center gap-1.5 rounded-full bg-fill px-3.5 py-[7px] font-medium whitespace-nowrap text-ink"
@@ -75,11 +77,34 @@ type Filter = "review" | "passed" | "failed";
 export default async function AdminPage({
   searchParams,
 }: {
-  searchParams: Promise<{ filter?: Filter; submission?: string; view?: string }>;
+  searchParams: Promise<{
+    filter?: Filter;
+    submission?: string;
+    view?: string;
+    saved?: string;
+    error?: string;
+    type?: string;
+  }>;
 }) {
-  const { filter = "review", submission: submissionId, view = "submissions" } =
-    await searchParams;
+  const {
+    filter = "review",
+    submission: submissionId,
+    view = "submissions",
+    saved,
+    error,
+    type,
+  } = await searchParams;
   const admin = await requireRole("ADMIN");
+
+  if (view === "keys") {
+    return (
+      <div className="px-5 py-5 lg:px-7">
+        <PageTitle title="Admin" />
+        <AdminTabs active="keys" />
+        <PlatformKeys saved={saved} error={error} errorType={type} />
+      </div>
+    );
+  }
 
   if (view === "users") {
     const [users, plans] = await Promise.all([

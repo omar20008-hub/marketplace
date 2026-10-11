@@ -293,7 +293,8 @@ describe("approve", () => {
         kind: "CONNECTION",
         label: "Google Gemini",
         credentialType: "googlePalmApi",
-        providedBy: "USER",
+        // The platform holds the Gemini key, so the person is never asked for it.
+        providedBy: "PLATFORM",
       },
     ]);
   });

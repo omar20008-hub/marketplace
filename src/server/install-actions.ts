@@ -14,7 +14,8 @@ import { editorIsGranted, findProviderByCredentialType } from "@/lib/connectors/
 import { newKnowledgeKey } from "./knowledge/keys";
 import { createKnowledgeSource } from "./knowledge/sources";
 import { stopWatch } from "./knowledge/watch";
-import { credentialLabel as labelFor, isPlatformOAuth } from "@/lib/credentials";
+import { credentialLabel as labelFor, isPlatformHeld, isPlatformOAuth } from "@/lib/credentials";
+import { platformCredential } from "@/lib/platform-secrets";
 
 /**
  * Adding a product to the workspace.
@@ -147,13 +148,16 @@ export async function activate(
     byType.set(credentialType, account);
   }
 
+  // Platform-held connections (the Gemini key) are supplied by the platform to every
+  // product, whatever a stored requirement row says, so they are never asked of the person.
   const needed = product.requirements
-    .filter((r) => r.providedBy === "USER" && r.credentialType)
+    .filter((r) => r.credentialType && (r.providedBy === "USER" || isPlatformHeld(r.credentialType)))
     .map((r) => r.credentialType!);
 
   const connectionFor = (type: string) =>
     byType.get(findProviderByCredentialType(type)?.sourceCredentialType ?? type);
   const missing = needed.filter((type) => {
+    if (isPlatformHeld(type)) return false;
     const connection = connectionFor(type);
     const provider = findProviderByCredentialType(type);
     return (
@@ -185,15 +189,31 @@ export async function activate(
 
   // Decrypted here and nowhere else: the plaintext exists only for the length
   // of this call, on its way into n8n's own credential store.
-  // Connections the platform holds (Drive, and every tool it signs into) count as
-  // satisfied above, but their tokens are never n8n's: a workflow asks the
-  // platform for a current token when it runs.
-  const credentialEntries: [string, Record<string, unknown>][] = [];
-  for (const type of needed) {
-    if (isPlatformOAuth(type) || findProviderByCredentialType(type)) continue;
-    credentialEntries.push([type, openCredential(byType.get(type)?.secretJson ?? null)]);
+  // Connections the platform holds (Drive, and every tool it signs into) are never
+  // n8n's: a workflow asks the platform for a current token when it runs. Platform
+  // keys (Gemini) come from the platform's own store, not a person's account.
+  const platformValues = new Map<string, Record<string, string>>();
+  for (const type of needed.filter(isPlatformHeld)) {
+    const values = await platformCredential(type);
+    if (!values) {
+      return {
+        error: `${labelFor(type)} is not set up on the platform yet. An administrator needs to add its key under Platform keys.`,
+      };
+    }
+    platformValues.set(type, values);
   }
-  const credentialsJson = JSON.stringify(Object.fromEntries(credentialEntries));
+  const credentialsJson = JSON.stringify(
+    Object.fromEntries(
+      needed
+        .filter((type) => !isPlatformOAuth(type) && !findProviderByCredentialType(type))
+        .map((type) => [
+          type,
+          isPlatformHeld(type)
+            ? platformValues.get(type)
+            : openCredential(byType.get(type)?.secretJson ?? null),
+        ]),
+    ),
+  );
 
   // A new key every activation: the instance about to be built gets it, and any
   // earlier one stops working the moment the hash is replaced below.
