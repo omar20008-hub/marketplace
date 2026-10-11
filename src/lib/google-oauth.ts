@@ -51,6 +51,8 @@ export class GoogleAuthError extends Error {
 }
 
 export const GOOGLE_CALLBACK_PATH = "/api/oauth/google/callback";
+export const GOOGLE_AUTH_CALLBACK_PATH = "/api/oauth/google/auth/callback";
+export const GOOGLE_LOGIN_SCOPES = ["openid", "email"];
 
 /**
  * The redirect URI registered in Google Cloud. GOOGLE_REDIRECT_URI exactly as
@@ -128,13 +130,23 @@ export function pkcePair() {
  * time, not just the first. Without it a reconnect returns none, and the
  * account can never be renewed.
  */
-export function authorizationUrl({ state, challenge }: { state: string; challenge: string }) {
+export function authorizationUrl({
+  state,
+  challenge,
+  redirectUri = googleRedirectUri(),
+  scopes = SCOPES,
+}: {
+  state: string;
+  challenge: string;
+  redirectUri?: string;
+  scopes?: string[];
+}) {
   const url = new URL(AUTH_URL);
   url.search = new URLSearchParams({
     client_id: env.google.clientId,
-    redirect_uri: googleRedirectUri(),
+    redirect_uri: redirectUri,
     response_type: "code",
-    scope: SCOPES.join(" "),
+    scope: scopes.join(" "),
     access_type: "offline",
     prompt: "consent",
     include_granted_scopes: "true",
@@ -185,11 +197,11 @@ async function tokenRequest(body: Record<string, string>): Promise<TokenSet> {
   };
 }
 
-export function exchangeCode(code: string, verifier: string) {
+export function exchangeCode(code: string, verifier: string, redirectUri = googleRedirectUri()) {
   return tokenRequest({
     grant_type: "authorization_code",
     code,
-    redirect_uri: googleRedirectUri(),
+    redirect_uri: redirectUri,
     code_verifier: verifier,
   });
 }
