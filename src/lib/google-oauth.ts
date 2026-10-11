@@ -19,8 +19,25 @@ export { GOOGLE_DRIVE_CREDENTIAL, appUrl };
  */
 
 export const DRIVE_READONLY_SCOPE = "https://www.googleapis.com/auth/drive.readonly";
+export const DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+export const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
+export const DOCS_SCOPE = "https://www.googleapis.com/auth/documents";
+export const SLIDES_SCOPE = "https://www.googleapis.com/auth/presentations";
 
-const SCOPES = ["openid", "email", DRIVE_READONLY_SCOPE];
+/**
+ * drive.file, not drive: the platform may create files and change the ones the
+ * person picks or it created, and nothing else in their Drive. Sheets, Docs and
+ * Slides are granted by their own scopes, because Google has no narrower one for them.
+ */
+const SCOPES = [
+  "openid",
+  "email",
+  DRIVE_READONLY_SCOPE,
+  DRIVE_FILE_SCOPE,
+  SHEETS_SCOPE,
+  DOCS_SCOPE,
+  SLIDES_SCOPE,
+];
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const REVOKE_URL = "https://oauth2.googleapis.com/revoke";

@@ -37,8 +37,11 @@ const ALLOWS: Record<string, { grants: string[]; denies: string[] }> = {
     denies: ["No access to billing or user administration"],
   },
   googleDriveOAuth2Api: {
-    grants: ["Read the files and folders you choose to index"],
-    denies: ["Cannot change, delete or share anything in your Drive"],
+    grants: [
+      "Read the folders you choose to index",
+      "Create files, and read and edit the Sheets, Docs and Slides you work with",
+    ],
+    denies: ["Reads only the folders you choose to index"],
   },
   googleSheetsOAuth2Api: {
     grants: ["Read and write the sheets you name"],
