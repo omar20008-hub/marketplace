@@ -4,6 +4,7 @@ import { openCredential } from "@/lib/secrets";
 import { FACEBOOK_CREDENTIAL } from "@/lib/facebook-oauth";
 import { createPausedAd, graphPost, MetaAdsError, type MetaAdIds } from "@/lib/ads/meta-ads";
 import { validateAdCampaign } from "@/lib/ads/validate";
+import { reviewCampaign, type CampaignReview } from "@/lib/ads/review";
 
 /**
  * Creates an ads campaign in Meta, left PAUSED.
@@ -24,7 +25,7 @@ const KEY: Partial<Record<keyof MetaAdIds, "metaCampaignId" | "metaAdSetId" | "m
 };
 
 export type CreateAdResult =
-  | { ok: true; campaignId: string; status: "PAUSED" }
+  | { ok: true; campaignId: string; status: "PAUSED"; review: CampaignReview }
   | { ok: false; errors: string[] };
 
 export async function createAdCampaign(
@@ -87,7 +88,16 @@ export async function createAdCampaign(
       where: { id: row.id },
       data: { status: "PAUSED", error: null },
     });
-    return { ok: true, campaignId: row.id, status: "PAUSED" };
+    const review = reviewCampaign({
+      name: input.name,
+      objective: input.objective,
+      dailyBudgetCents: input.dailyBudgetCents,
+      startsAt: input.startsAt,
+      endsAt: input.endsAt,
+      platforms: input.platforms,
+      targeting: input.targeting,
+    });
+    return { ok: true, campaignId: row.id, status: "PAUSED", review };
   } catch (error) {
     const message =
       error instanceof MetaAdsError

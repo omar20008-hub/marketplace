@@ -1,0 +1,295 @@
+{
+  "name": "Ads Campaign",
+  "nodes": [
+    {
+      "id": "a0000000-0000-4000-8000-000000000001",
+      "name": "Ads Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        192,
+        848
+      ],
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "action",
+              "type": "string"
+            },
+            {
+              "name": "adAccountId",
+              "type": "string"
+            },
+            {
+              "name": "pageId",
+              "type": "string"
+            },
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "objective",
+              "type": "string"
+            },
+            {
+              "name": "dailyBudgetCents",
+              "type": "string"
+            },
+            {
+              "name": "startsAt",
+              "type": "string"
+            },
+            {
+              "name": "endsAt",
+              "type": "string"
+            },
+            {
+              "name": "countries",
+              "type": "string"
+            },
+            {
+              "name": "ageMin",
+              "type": "string"
+            },
+            {
+              "name": "ageMax",
+              "type": "string"
+            },
+            {
+              "name": "platforms",
+              "type": "string"
+            },
+            {
+              "name": "caption",
+              "type": "string"
+            },
+            {
+              "name": "linkUrl",
+              "type": "string"
+            },
+            {
+              "name": "mediaUrl",
+              "type": "string"
+            },
+            {
+              "name": "campaignId",
+              "type": "string"
+            },
+            {
+              "name": "confirmedMaxTotalCents",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000002",
+      "name": "Is Create?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        416,
+        848
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "create",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000003",
+      "name": "Create Campaign",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        672,
+        752
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "__MP_PLATFORM_URL__/api/ads/campaigns",
+        "authentication": "none",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer __MP_KNOWLEDGE_KEY__"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ adAccountId: $json.adAccountId, pageId: $json.pageId, name: $json.name, objective: $json.objective, dailyBudgetCents: Number($json.dailyBudgetCents), startsAt: $json.startsAt, endsAt: $json.endsAt, targeting: { countries: String($json.countries).split(',').map(s => s.trim().toUpperCase()).filter(Boolean), ageMin: Number($json.ageMin), ageMax: Number($json.ageMax) }, platforms: String($json.platforms).split(',').map(s => s.trim().toLowerCase()).filter(Boolean), caption: $json.caption, linkUrl: $json.linkUrl, mediaUrl: ($json.mediaUrl && $json.mediaUrl !== 'none') ? $json.mediaUrl : undefined }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000004",
+      "name": "Reply Review",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        896,
+        752
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "o1",
+              "name": "output",
+              "type": "string",
+              "value": "={{ $json.id ? ('تم إنشاء الحملة (' + $json.id + ') بحالة متوقفة، ولم يُصرف شيء بعد. ' + 'المراجعة: ' + $json.review.lines.join(' | ') + '. أقصى إنفاق ممكن: ' + $json.review.maxTotalCents + ' (بالوحدة الصغرى). أكّد هذا المبلغ لأفعّلها.') : ('تعذّر إنشاء الحملة: ' + ($json.errors ? $json.errors.join(' ') : ($json.error || 'خطأ غير معروف'))) }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000005",
+      "name": "Activate Campaign",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        672,
+        944
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=__MP_PLATFORM_URL__/api/ads/campaigns/{{ encodeURIComponent($json.campaignId) }}/activate",
+        "authentication": "none",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer __MP_KNOWLEDGE_KEY__"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ confirmedMaxTotalCents: Number($json.confirmedMaxTotalCents) }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000006",
+      "name": "Reply Activated",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        896,
+        944
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "o1",
+              "name": "output",
+              "type": "string",
+              "value": "={{ $json.status === 'ACTIVE' ? ('تم تفعيل الحملة (' + $json.id + ')، وستُصرف الميزانية وفق المراجعة.') : ('لم تُفعَّل الحملة: ' + ($json.errors ? $json.errors.join(' ') : ($json.error || 'خطأ غير معروف'))) }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Ads Trigger": {
+      "main": [
+        [
+          {
+            "node": "Is Create?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Create?": {
+      "main": [
+        [
+          {
+            "node": "Create Campaign",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Activate Campaign",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Campaign": {
+      "main": [
+        [
+          {
+            "node": "Reply Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Activate Campaign": {
+      "main": [
+        [
+          {
+            "node": "Reply Activated",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
