@@ -17,7 +17,7 @@ export async function runInstalledProduct({
   args,
   threadId,
 }: {
-  user: Viewer;
+  user: Pick<Viewer, "id" | "plan">;
   installationId: string;
   args: Record<string, unknown>;
   threadId?: string;

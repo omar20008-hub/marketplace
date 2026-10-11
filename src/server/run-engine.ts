@@ -128,7 +128,7 @@ export async function executeRun({
   threadId,
   onDispatch,
 }: {
-  user: Viewer;
+  user: Pick<Viewer, "id" | "plan">;
   installationId: string;
   args: Record<string, unknown>;
   threadId?: string;

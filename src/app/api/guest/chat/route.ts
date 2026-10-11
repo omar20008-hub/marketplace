@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { hit } from "@/lib/rate-limit";
-import { askOrchestrator } from "@/server/run-engine";
+import { answerMessage } from "@/server/orchestrator/assistant";
 
 /**
  * The Orchestrator, for someone with no account at all.
@@ -93,7 +93,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const output = await askOrchestrator(sessionId, message);
+  const output = await answerMessage({ userId: sessionId, chatInput: message });
   return NextResponse.json({ output });
 }
 
