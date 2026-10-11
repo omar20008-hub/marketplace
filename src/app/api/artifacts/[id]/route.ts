@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { n8n } from "@/lib/n8n";
+import { storageOperation } from "@/server/storage";
 
 /**
  * Serves a stored result.
@@ -26,12 +26,13 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const reply = await n8n.storage({
-    installationId:
-      artifact.run.installation.installationId ?? artifact.run.installationId,
-    operation: "get",
-    path: artifact.path,
-  });
+  const reply = await storageOperation(
+    {
+      id: artifact.run.installation.id,
+      installationId: artifact.run.installation.installationId,
+    },
+    { operation: "get", path: artifact.path },
+  );
 
   if (!reply.ok || !("content" in reply)) {
     // Seeded rows describe files that were never written to the mock store.

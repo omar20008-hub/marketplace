@@ -271,6 +271,17 @@ export const env = {
       | "n8n",
   },
 
+  /**
+   * Where a product's files are kept: the platform's own database ("platform") or the
+   * n8n Storage API ("n8n", the default). Checked against the live instance before it
+   * is switched on.
+   */
+  storage: {
+    driver: (process.env.STORAGE_DRIVER === "platform" ? "platform" : "n8n") as
+      | "platform"
+      | "n8n",
+  },
+
   n8n: {
     driver: (process.env.N8N_DRIVER === "live" ? "live" : "mock") as N8nDriver,
     baseUrl: process.env.N8N_BASE_URL ?? "",

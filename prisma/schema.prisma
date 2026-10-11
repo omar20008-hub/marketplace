@@ -373,6 +373,7 @@ model Installation {
   /// is nothing to leak. A new one is issued on every activation.
   knowledgeKeyHash String?           @unique
   knowledgeSources KnowledgeSource[]
+  storageObjects   StorageObject[]
 
   @@unique([userId, productId])
 }
@@ -551,6 +552,22 @@ model Message {
 /// Per-user scheduling, which the workflow contracts have no answer for: there
 /// is no schedule table in n8n's side of the boundary, so the cadence, the
 /// saved inputs and the record of what happened all live here.
+/// Files a product writes for one installation (the platform's own storage
+/// destination). Keyed by the platform installation, so one installation can never
+/// read another's files.
+model StorageObject {
+  id             String       @id @default(cuid())
+  installationId String
+  installation   Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  path           String
+  mimeType       String
+  size           Int
+  content        Bytes
+  writtenAt      DateTime     @default(now())
+
+  @@unique([installationId, path])
+}
+
 model Schedule {
   id             String       @id @default(cuid())
   userId         String

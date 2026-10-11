@@ -5,6 +5,7 @@ import { env } from "@/lib/env";
 import { n8n, type DispatchOutput } from "@/lib/n8n";
 import { readinessFor } from "@/lib/readiness";
 import { dispatchInstance } from "./dispatch";
+import { storageOperation } from "./storage";
 import type { Prisma } from "@/generated/prisma";
 
 /**
@@ -309,13 +310,15 @@ export async function executeRun({
   if (outputs[0]) {
     const name = `${installation.product.slug}-${run.runId}.txt`;
     const content = Buffer.from(reply.toolOutput, "utf8").toString("base64");
-    const stored = await n8n.storage({
-      installationId: installation.installationId ?? installation.id,
-      operation: "put",
-      path: `results/${name}`,
-      content,
-      mimeType: "text/plain",
-    });
+    const stored = await storageOperation(
+      { id: installation.id, installationId: installation.installationId },
+      {
+        operation: "put",
+        path: `results/${name}`,
+        content,
+        mimeType: "text/plain",
+      },
+    );
 
     await prisma.artifact.create({
       data: {
