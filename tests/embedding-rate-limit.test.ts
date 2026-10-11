@@ -197,7 +197,7 @@ describe("a rate-limited file in the worker", () => {
     await prisma.knowledgeSource.deleteMany({});
     await prisma.installation.deleteMany({});
     await prisma.product.deleteMany({});
-    await prisma.connectedAccount.deleteMany({});
+    await prisma.connector.deleteMany({});
     await prisma.user.deleteMany({});
     await prisma.plan.deleteMany({});
   }
@@ -212,11 +212,11 @@ describe("a rate-limited file in the worker", () => {
     await prisma.plan.create({ data: { id: PLAN, name: "T", monthlyRuns: 1, storageBytes: BigInt(1), monthlyCredits: 0 } });
     const user = await prisma.user.create({ data: { email: "r@example.test", name: "R", passwordHash: "x", initials: "R", planId: PLAN } });
     const installation = await seedInstallation(user.id);
-    const account = await prisma.connectedAccount.create({
+    const account = await prisma.connector.create({
       data: { userId: user.id, credentialType: "googleDriveOAuth2Api", displayName: "G", initials: "G", accountRef: "r@example.test", status: "ACTIVE" },
     });
     const source = await prisma.knowledgeSource.create({
-      data: { userId: user.id, installationId: installation.id, accountId: account.id, folderId: "f", folderName: "F", lastSyncedAt: new Date() },
+      data: { userId: user.id, installationId: installation.id, connectorId: account.id, folderId: "f", folderName: "F", lastSyncedAt: new Date() },
     });
     return prisma.knowledgeFile.create({
       data: { sourceId: source.id, externalId: "e", name: "big.pdf", mimeType: "text/plain", revision: "r" },

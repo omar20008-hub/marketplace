@@ -68,7 +68,7 @@ async function wipe() {
   await prisma.installationCredential.deleteMany({});
   await prisma.installation.deleteMany({});
   await prisma.requirement.deleteMany({});
-  await prisma.connectedAccount.deleteMany({});
+  await prisma.connector.deleteMany({});
   await prisma.product.deleteMany({});
   await prisma.user.deleteMany({});
   await prisma.plan.deleteMany({});
@@ -80,7 +80,7 @@ async function seedUser(email: string, { drive: connected = true } = {}) {
     data: { email, name: email, passwordHash: "x", initials: "U", planId: PLAN_ID },
   });
   if (connected) {
-    await prisma.connectedAccount.create({
+    await prisma.connector.create({
       data: {
         userId: user.id,
         credentialType: GOOGLE_DRIVE_CREDENTIAL,
@@ -232,9 +232,9 @@ describe("managing a source", () => {
     const installation = await prisma.installation.create({
       data: { userId: user.id, productId: product.id, pinnedVersion: "1.0", status: "ACTIVE" },
     });
-    const account = await prisma.connectedAccount.findFirstOrThrow({ where: { userId: user.id } });
+    const account = await prisma.connector.findFirstOrThrow({ where: { userId: user.id } });
     const source = await prisma.knowledgeSource.create({
-      data: { userId: user.id, installationId: installation.id, accountId: account.id, folderId: "f-contracts-0001", folderName: "Contracts" },
+      data: { userId: user.id, installationId: installation.id, connectorId: account.id, folderId: "f-contracts-0001", folderName: "Contracts" },
     });
     return { user, installation, source };
   }
@@ -312,9 +312,9 @@ describe("trying a waiting file now", () => {
     const installation = await prisma.installation.create({
       data: { userId: user.id, productId: product.id, pinnedVersion: "1.0", status: "ACTIVE" },
     });
-    const account = await prisma.connectedAccount.findFirstOrThrow({ where: { userId: user.id } });
+    const account = await prisma.connector.findFirstOrThrow({ where: { userId: user.id } });
     const source = await prisma.knowledgeSource.create({
-      data: { userId: user.id, installationId: installation.id, accountId: account.id, folderId: "f-contracts-0001", folderName: "Contracts" },
+      data: { userId: user.id, installationId: installation.id, connectorId: account.id, folderId: "f-contracts-0001", folderName: "Contracts" },
     });
     const file = await prisma.knowledgeFile.create({
       data: { sourceId: source.id, externalId: "w", name: "w.pdf", mimeType: "application/pdf", revision: "r", status: "PENDING", error: "limiting requests" },
@@ -372,9 +372,9 @@ describe("leaving a file out", () => {
     const installation = await prisma.installation.create({
       data: { userId: user.id, productId: product.id, pinnedVersion: "1.0", status: "ACTIVE" },
     });
-    const account = await prisma.connectedAccount.findFirstOrThrow({ where: { userId: user.id } });
+    const account = await prisma.connector.findFirstOrThrow({ where: { userId: user.id } });
     const source = await prisma.knowledgeSource.create({
-      data: { userId: user.id, installationId: installation.id, accountId: account.id, folderId: "f-contracts-0001", folderName: "Contracts" },
+      data: { userId: user.id, installationId: installation.id, connectorId: account.id, folderId: "f-contracts-0001", folderName: "Contracts" },
     });
     const file = await prisma.knowledgeFile.create({
       data: { sourceId: source.id, externalId: "x", name: "x.pdf", mimeType: "application/pdf", revision: "r1", status: "READY", chunkCount: 1, indexedRevision: "r1" },
@@ -423,9 +423,9 @@ describe("trying a skipped file again", () => {
     const installation = await prisma.installation.create({
       data: { userId: user.id, productId: product.id, pinnedVersion: "1.0", status: "ACTIVE" },
     });
-    const account = await prisma.connectedAccount.findFirstOrThrow({ where: { userId: user.id } });
+    const account = await prisma.connector.findFirstOrThrow({ where: { userId: user.id } });
     const source = await prisma.knowledgeSource.create({
-      data: { userId: user.id, installationId: installation.id, accountId: account.id, folderId: "f-contracts-0001", folderName: "Contracts" },
+      data: { userId: user.id, installationId: installation.id, connectorId: account.id, folderId: "f-contracts-0001", folderName: "Contracts" },
     });
     const file = await prisma.knowledgeFile.create({
       data: { sourceId: source.id, externalId: "s", name: "s.csv", mimeType: "text/csv", revision: "r1", status: "UNSUPPORTED", error, indexedRevision: "r1" },
@@ -454,7 +454,7 @@ describe("trying a skipped file again", () => {
       await prisma.knowledgeSource.deleteMany({});
       await prisma.installation.deleteMany({});
       await prisma.product.deleteMany({});
-      await prisma.connectedAccount.deleteMany({});
+      await prisma.connector.deleteMany({});
       await prisma.user.deleteMany({});
       const { user, file } = await skipped(`${Math.random().toString(36).slice(2)}@example.test`, error);
       viewer.current = user;

@@ -86,7 +86,7 @@ async function main() {
     prisma.schedule.deleteMany(),
     prisma.installationCredential.deleteMany(),
     prisma.installation.deleteMany(),
-    prisma.connectedAccount.deleteMany(),
+    prisma.connector.deleteMany(),
     prisma.review.deleteMany(),
     prisma.requirement.deleteMany(),
     prisma.productVersion.deleteMany(),
@@ -688,7 +688,7 @@ async function main() {
       { credentialType: "googleDriveOAuth2Api", displayName: "Google Drive", initials: "Dr", accountRef: null, status: "ACTIVE" as const, scope: "PLATFORM" as const },
       { credentialType: "slackApi", displayName: "Slack", initials: "Sl", accountRef: "acme.slack.com", status: "ACTIVE" as const, scope: "OWN" as const },
     ].map((a) =>
-      prisma.connectedAccount.create({
+      prisma.connector.create({
         data: {
           userId: nora.id,
           credentialType: a.credentialType,
@@ -750,7 +750,7 @@ async function main() {
         data: {
           installationId: installation.id,
           credentialType,
-          accountId: account?.id ?? null,
+          connectorId: account?.id ?? null,
           n8nCredentialId: account ? `cred_${credentialType.slice(0, 6)}` : null,
         },
       });

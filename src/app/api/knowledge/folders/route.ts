@@ -15,7 +15,7 @@ import { getGoogleAccessToken } from "@/server/google-account";
  */
 export async function GET(request: Request) {
   const user = await requireUser();
-  const account = await prisma.connectedAccount.findFirst({
+  const account = await prisma.connector.findFirst({
     where: { userId: user.id, credentialType: GOOGLE_DRIVE_CREDENTIAL, status: "ACTIVE" },
   });
   if (!account) return NextResponse.json({ error: "not_connected" }, { status: 409 });

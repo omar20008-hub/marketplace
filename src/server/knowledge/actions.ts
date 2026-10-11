@@ -31,7 +31,7 @@ export async function attachFolder(
   const folderId = String(formData.get("folderId") ?? "");
   if (!folderId) return { error: "Choose a folder first." };
 
-  const account = await prisma.connectedAccount.findFirst({
+  const account = await prisma.connector.findFirst({
     where: { userId: user.id, credentialType: GOOGLE_DRIVE_CREDENTIAL, status: "ACTIVE" },
   });
   if (!account) return { error: "Connect your Google Drive first." };

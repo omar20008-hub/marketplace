@@ -57,7 +57,7 @@ async function wipe() {
   await prisma.knowledgeSource.deleteMany({});
   await prisma.installation.deleteMany({});
   await prisma.product.deleteMany({});
-  await prisma.connectedAccount.deleteMany({});
+  await prisma.connector.deleteMany({});
   await prisma.user.deleteMany({});
   await prisma.plan.deleteMany({});
 }
@@ -72,7 +72,7 @@ async function setup(limits: { knowledgeSources?: number; knowledgeFiles?: numbe
   userId = user.id;
   viewer.current = user;
   accountId = (
-    await prisma.connectedAccount.create({
+    await prisma.connector.create({
       data: { userId, credentialType: GOOGLE_DRIVE_CREDENTIAL, displayName: "Google Drive", initials: "GD", accountRef: "l@example.test", status: "ACTIVE" },
     })
   ).id;
@@ -118,7 +118,7 @@ describe("folder limit", () => {
 describe("file limit", () => {
   async function source() {
     return prisma.knowledgeSource.create({
-      data: { userId, installationId, accountId, folderId: "folder1", folderName: "F" },
+      data: { userId, installationId, connectorId: accountId, folderId: "folder1", folderName: "F" },
     });
   }
 
@@ -168,7 +168,7 @@ describe("changing the embedding model", () => {
   async function indexed() {
     await setup();
     const s = await prisma.knowledgeSource.create({
-      data: { userId, installationId, accountId, folderId: "folder1", folderName: "F" },
+      data: { userId, installationId, connectorId: accountId, folderId: "folder1", folderName: "F" },
     });
     drive.files = [file("a")];
     await syncSource(s.id);
@@ -213,7 +213,7 @@ describe("disconnecting Google", () => {
   it("stops watching its folders and marks them as waiting for a reconnect, keeping what was indexed", async () => {
     await setup();
     const s = await prisma.knowledgeSource.create({
-      data: { userId, installationId, accountId, folderId: "folder1", folderName: "F" },
+      data: { userId, installationId, connectorId: accountId, folderId: "folder1", folderName: "F" },
     });
     drive.files = [file("a")];
     await syncSource(s.id);

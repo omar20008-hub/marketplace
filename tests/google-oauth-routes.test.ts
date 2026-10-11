@@ -30,7 +30,7 @@ const PLAN_ID = "test-plan-oauth-routes";
 async function wipe() {
   await prisma.installationCredential.deleteMany({});
   await prisma.installation.deleteMany({});
-  await prisma.connectedAccount.deleteMany({});
+  await prisma.connector.deleteMany({});
   await prisma.user.deleteMany({});
   await prisma.plan.deleteMany({});
 }
@@ -138,7 +138,7 @@ describe("GET /api/oauth/google/callback", () => {
     const to = location(response);
     expect(to.origin + to.pathname).toBe(`${APP}/marketplace/kb/setup`);
     expect(to.searchParams.get("connected")).toBe(GOOGLE_DRIVE_CREDENTIAL);
-    const account = await prisma.connectedAccount.findFirstOrThrow();
+    const account = await prisma.connector.findFirstOrThrow();
     expect(account).toMatchObject({
       userId: user.id,
       accountRef: "nora@acme.co",
@@ -153,7 +153,7 @@ describe("GET /api/oauth/google/callback", () => {
     googleGrants(FULL_SCOPE);
     const response = await callback(callbackRequest("code=abc&state=whatever"));
     expect(location(response).searchParams.get("connect_error")).toBe("state");
-    expect(await prisma.connectedAccount.count()).toBe(0);
+    expect(await prisma.connector.count()).toBe(0);
   });
 
   it("refuses a state that does not match the cookie", async () => {
@@ -162,7 +162,7 @@ describe("GET /api/oauth/google/callback", () => {
     const { cookie } = issued(user.id);
     const response = await callback(callbackRequest("code=abc&state=forged", cookie));
     expect(location(response).searchParams.get("connect_error")).toBe("state");
-    expect(await prisma.connectedAccount.count()).toBe(0);
+    expect(await prisma.connector.count()).toBe(0);
   });
 
   it("refuses a sign-in that another user started", async () => {
@@ -171,7 +171,7 @@ describe("GET /api/oauth/google/callback", () => {
     const { nonce, cookie } = issued("someone-else");
     const response = await callback(callbackRequest(`code=abc&state=${nonce}`, cookie));
     expect(location(response).searchParams.get("connect_error")).toBe("state");
-    expect(await prisma.connectedAccount.count()).toBe(0);
+    expect(await prisma.connector.count()).toBe(0);
     expect(user.id).not.toBe("someone-else");
   });
 
@@ -180,7 +180,7 @@ describe("GET /api/oauth/google/callback", () => {
     const { nonce, cookie } = issued(user.id);
     const response = await callback(callbackRequest(`error=access_denied&state=${nonce}`, cookie));
     expect(location(response).searchParams.get("connect_error")).toBe("denied");
-    expect(await prisma.connectedAccount.count()).toBe(0);
+    expect(await prisma.connector.count()).toBe(0);
   });
 
   it("reports a missing Drive permission, and stores nothing", async () => {
@@ -189,7 +189,7 @@ describe("GET /api/oauth/google/callback", () => {
     const { nonce, cookie } = issued(user.id);
     const response = await callback(callbackRequest(`code=abc&state=${nonce}`, cookie));
     expect(location(response).searchParams.get("connect_error")).toBe("scope");
-    expect(await prisma.connectedAccount.count()).toBe(0);
+    expect(await prisma.connector.count()).toBe(0);
   });
 
   it("refuses an id_token issued to a different client", async () => {
@@ -198,7 +198,7 @@ describe("GET /api/oauth/google/callback", () => {
     const { nonce, cookie } = issued(user.id);
     const response = await callback(callbackRequest(`code=abc&state=${nonce}`, cookie));
     expect(location(response).searchParams.get("connect_error")).toBe("identity");
-    expect(await prisma.connectedAccount.count()).toBe(0);
+    expect(await prisma.connector.count()).toBe(0);
   });
 
   it("never returns the user anywhere but a path on this app", async () => {

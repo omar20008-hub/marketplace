@@ -73,7 +73,7 @@ export default async function AccountsPage({
   } = await searchParams;
   const user = await requireUser();
 
-  const accounts = await prisma.connectedAccount.findMany({
+  const accounts = await prisma.connector.findMany({
     where: { userId: user.id },
     // secretJson is deliberately absent from this selection.
     select: {

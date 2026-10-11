@@ -10,7 +10,7 @@ export { GOOGLE_DRIVE_CREDENTIAL, appUrl };
 /**
  * Google OAuth for the connections the platform holds itself.
  *
- * The refresh token stays here, encrypted in ConnectedAccount.secretJson —
+ * The refresh token stays here, encrypted in Connector.secretJson —
  * never in n8n, whose credential creation only knows plain key/value fields and
  * cannot renew an OAuth token. Whatever needs Drive asks the platform.
  *

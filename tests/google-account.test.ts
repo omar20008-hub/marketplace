@@ -25,7 +25,7 @@ async function wipe() {
   await prisma.installationCredential.deleteMany({});
   await prisma.installation.deleteMany({});
   await prisma.requirement.deleteMany({});
-  await prisma.connectedAccount.deleteMany({});
+  await prisma.connector.deleteMany({});
   await prisma.product.deleteMany({});
   await prisma.user.deleteMany({});
   await prisma.plan.deleteMany({});
@@ -89,7 +89,7 @@ describe("saveGoogleConnection", () => {
     const result = await saveGoogleConnection({ userId: user.id, email: EMAIL, tokens: tokens() });
     expect(result.ok).toBe(true);
 
-    const account = await prisma.connectedAccount.findFirstOrThrow();
+    const account = await prisma.connector.findFirstOrThrow();
     expect(account).toMatchObject({
       credentialType: GOOGLE_DRIVE_CREDENTIAL,
       accountRef: EMAIL,
@@ -111,7 +111,7 @@ describe("saveGoogleConnection", () => {
       tokens: tokens({ scope: ["openid", "email"] }),
     });
     expect(result).toEqual({ ok: false, reason: "scope" });
-    expect(await prisma.connectedAccount.count()).toBe(0);
+    expect(await prisma.connector.count()).toBe(0);
   });
 
   it("refuses a first connection that came without a refresh token", async () => {
@@ -135,8 +135,8 @@ describe("saveGoogleConnection", () => {
     });
     expect(again.ok).toBe(true);
 
-    expect(await prisma.connectedAccount.count()).toBe(1);
-    const account = await prisma.connectedAccount.findFirstOrThrow();
+    expect(await prisma.connector.count()).toBe(1);
+    const account = await prisma.connector.findFirstOrThrow();
     expect(openCredential(account.secretJson)).toMatchObject({
       refresh_token: "1//refresh-one",
       access_token: "ya29.second",
@@ -145,7 +145,7 @@ describe("saveGoogleConnection", () => {
 
   it("brings an EXPIRED account back to ACTIVE", async () => {
     const user = await seedUser();
-    await prisma.connectedAccount.create({
+    await prisma.connector.create({
       data: {
         userId: user.id,
         credentialType: GOOGLE_DRIVE_CREDENTIAL,
@@ -157,7 +157,7 @@ describe("saveGoogleConnection", () => {
       },
     });
     await saveGoogleConnection({ userId: user.id, email: EMAIL, tokens: tokens() });
-    expect((await prisma.connectedAccount.findFirstOrThrow()).status).toBe("ACTIVE");
+    expect((await prisma.connector.findFirstOrThrow()).status).toBe("ACTIVE");
   });
 });
 
@@ -184,7 +184,7 @@ describe("getGoogleAccessToken", () => {
     await expect(getGoogleAccessToken(id)).resolves.toBe("ya29.renewed");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const account = await prisma.connectedAccount.findFirstOrThrow();
+    const account = await prisma.connector.findFirstOrThrow();
     expect(account.expiresAt!.getTime()).toBeGreaterThan(Date.now() + 3_000_000);
     // The refresh token is untouched when Google does not rotate it.
     expect(openCredential(account.secretJson).refresh_token).toBe("1//refresh-one");
@@ -201,7 +201,7 @@ describe("getGoogleAccessToken", () => {
     );
 
     await getGoogleAccessToken(id);
-    const account = await prisma.connectedAccount.findFirstOrThrow();
+    const account = await prisma.connector.findFirstOrThrow();
     expect(openCredential(account.secretJson).refresh_token).toBe("1//refresh-two");
   });
 
@@ -255,7 +255,7 @@ describe("getGoogleAccessToken", () => {
 
     await expect(getGoogleAccessToken(id)).rejects.toMatchObject({ permanent: true });
 
-    const account = await prisma.connectedAccount.findFirstOrThrow();
+    const account = await prisma.connector.findFirstOrThrow();
     expect(account).toMatchObject({ status: "EXPIRED", secretJson: null });
     expect(await prisma.installation.findFirstOrThrow()).toMatchObject({
       status: "PARTIAL",
@@ -273,14 +273,14 @@ describe("getGoogleAccessToken", () => {
 
     await expect(getGoogleAccessToken(id)).rejects.toBeDefined();
 
-    const account = await prisma.connectedAccount.findFirstOrThrow();
+    const account = await prisma.connector.findFirstOrThrow();
     expect(account.status).toBe("ACTIVE");
     expect(openCredential(account.secretJson).refresh_token).toBe("1//refresh-one");
   });
 
   it("refuses an account that is not active without calling Google", async () => {
     const user = await seedUser();
-    const account = await prisma.connectedAccount.create({
+    const account = await prisma.connector.create({
       data: {
         userId: user.id,
         credentialType: GOOGLE_DRIVE_CREDENTIAL,
@@ -304,7 +304,7 @@ describe("keepGoogleAccountsAlive", () => {
   it("renews an account idle for a week and leaves a recently used one alone", async () => {
     const user = await seedUser();
     const idle = await connectStale(user.id, new Date(Date.now() - 10 * 86_400_000));
-    await prisma.connectedAccount.create({
+    await prisma.connector.create({
       data: {
         userId: user.id,
         credentialType: GOOGLE_DRIVE_CREDENTIAL,
@@ -325,7 +325,7 @@ describe("keepGoogleAccountsAlive", () => {
 
     expect(summary).toEqual({ checked: 1, renewed: 1, expired: 0, failed: 0 });
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const renewed = await prisma.connectedAccount.findUniqueOrThrow({ where: { id: idle } });
+    const renewed = await prisma.connector.findUniqueOrThrow({ where: { id: idle } });
     expect(openCredential(renewed.secretJson).access_token).toBe("ya29.kept");
   });
 

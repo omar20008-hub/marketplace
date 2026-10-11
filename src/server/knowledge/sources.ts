@@ -29,7 +29,7 @@ export async function createKnowledgeSource(
   });
   if (!installation) return { ok: false, error: "That installation no longer exists." };
 
-  const account = await prisma.connectedAccount.findFirst({
+  const account = await prisma.connector.findFirst({
     where: { id: accountId, userId, credentialType: GOOGLE_DRIVE_CREDENTIAL },
   });
   if (!account || account.status !== "ACTIVE") {
@@ -70,11 +70,11 @@ export async function createKnowledgeSource(
     create: {
       userId,
       installationId,
-      accountId: account.id,
+      connectorId: account.id,
       folderId: folder.id,
       folderName: folder.name,
     },
-    update: { accountId: account.id, folderName: folder.name, status: "ACTIVE", lastError: null },
+    update: { connectorId: account.id, folderName: folder.name, status: "ACTIVE", lastError: null },
   });
   await enqueue("SYNC_SOURCE", source.id);
   return { ok: true, sourceId: source.id, folderName: folder.name };

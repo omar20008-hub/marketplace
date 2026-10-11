@@ -50,7 +50,7 @@ export async function saveGoogleConnection({
     return { ok: false, reason: "scope" };
   }
 
-  const existing = await prisma.connectedAccount.findUnique({
+  const existing = await prisma.connector.findUnique({
     where: {
       userId_credentialType_accountRef: {
         userId,
@@ -75,7 +75,7 @@ export async function saveGoogleConnection({
   // Updated in place when it is the same Google account, so reconnecting never
   // piles up refresh tokens — Google invalidates the oldest past a fixed number
   // per user and client.
-  const account = await prisma.connectedAccount.upsert({
+  const account = await prisma.connector.upsert({
     where: {
       userId_credentialType_accountRef: {
         userId,
@@ -103,7 +103,7 @@ export async function saveGoogleConnection({
 }
 
 async function readUsable(accountId: string): Promise<string | null> {
-  const account = await prisma.connectedAccount.findUnique({ where: { id: accountId } });
+  const account = await prisma.connector.findUnique({ where: { id: accountId } });
   if (
     account?.status === "ACTIVE" &&
     account.secretJson &&
@@ -130,7 +130,7 @@ export async function getGoogleAccessToken(accountId: string): Promise<string> {
       // finds the token the first one just stored and uses it.
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${accountId}))`;
 
-      const account = await tx.connectedAccount.findUnique({ where: { id: accountId } });
+      const account = await tx.connector.findUnique({ where: { id: accountId } });
       if (!account || account.status !== "ACTIVE" || !account.secretJson) {
         return { kind: "unavailable" as const, userId: account?.userId };
       }
@@ -146,7 +146,7 @@ export async function getGoogleAccessToken(accountId: string): Promise<string> {
 
       try {
         const fresh = await refreshAccessToken(secret.refresh_token);
-        await tx.connectedAccount.update({
+        await tx.connector.update({
           where: { id: account.id },
           data: {
             secretJson: sealCredential({
@@ -162,7 +162,7 @@ export async function getGoogleAccessToken(accountId: string): Promise<string> {
         if (error instanceof GoogleAuthError && error.permanent) {
           // Committed with the transaction, so the marking cannot be lost to
           // the throw that follows.
-          await tx.connectedAccount.update({
+          await tx.connector.update({
             where: { id: account.id },
             data: { status: "EXPIRED", secretJson: null, expiresAt: null },
           });
@@ -191,7 +191,7 @@ export type KeepAliveSummary = { checked: number; renewed: number; expired: numb
  */
 export async function keepGoogleAccountsAlive(now = new Date()): Promise<KeepAliveSummary> {
   const cutoff = new Date(now.getTime() - IDLE_DAYS * 86_400_000);
-  const idle = await prisma.connectedAccount.findMany({
+  const idle = await prisma.connector.findMany({
     where: {
       credentialType: GOOGLE_DRIVE_CREDENTIAL,
       status: "ACTIVE",

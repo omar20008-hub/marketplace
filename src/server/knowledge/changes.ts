@@ -32,7 +32,7 @@ export async function processChanges(sourceId: string): Promise<{ again?: boolea
 
   let token: string;
   try {
-    token = await getGoogleAccessToken(source.accountId);
+    token = await getGoogleAccessToken(source.connectorId);
   } catch (error) {
     if (error instanceof GoogleAuthError && error.permanent) {
       await prisma.knowledgeSource.update({

@@ -138,7 +138,7 @@ export async function executeRun({
   });
   if (!installation) return null;
 
-  const accounts = await prisma.connectedAccount.findMany({
+  const accounts = await prisma.connector.findMany({
     where: { userId: user.id },
   });
 

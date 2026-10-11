@@ -47,7 +47,7 @@ async function wipe() {
   await prisma.installationCredential.deleteMany({});
   await prisma.installation.deleteMany({});
   await prisma.requirement.deleteMany({});
-  await prisma.connectedAccount.deleteMany({});
+  await prisma.connector.deleteMany({});
   await prisma.product.deleteMany({});
   await prisma.user.deleteMany({});
   await prisma.plan.deleteMany({});
@@ -304,7 +304,7 @@ describe("activate — a connection the platform holds itself", () => {
 
   it("counts a connected Drive as satisfied, but never sends its tokens to n8n", async () => {
     const user = await seedUser();
-    await prisma.connectedAccount.create({
+    await prisma.connector.create({
       data: {
         userId: user.id,
         credentialType: "googleDriveOAuth2Api",
@@ -351,7 +351,7 @@ describe("activate — a connection the platform holds itself", () => {
       "cred.googleDriveOAuth2Api.refresh_token": "1//forged",
     });
 
-    expect(await prisma.connectedAccount.count()).toBe(0);
+    expect(await prisma.connector.count()).toBe(0);
   });
 });
 
@@ -382,7 +382,7 @@ describe("activate — a completed install", () => {
     expect(installation).toMatchObject({ status: "ACTIVE" });
     expect(installation!.installationId).toMatch(/^inst_/);
 
-    const account = await prisma.connectedAccount.findFirst();
+    const account = await prisma.connector.findFirst();
     expect(account!.status).toBe("ACTIVE");
     // The plaintext must not be what is in the column.
     expect(account!.secretJson).not.toContain("xoxb-secret-value");
@@ -403,12 +403,12 @@ describe("activate — a completed install", () => {
 
     const link = await prisma.installationCredential.findFirst();
     expect(link).toMatchObject({ credentialType: "slackApi" });
-    expect(link!.accountId).toBeTruthy();
+    expect(link!.connectorId).toBeTruthy();
   });
 
   it("reuses an account the user already connected", async () => {
     const user = await seedUser();
-    await prisma.connectedAccount.create({
+    await prisma.connector.create({
       data: {
         userId: user.id,
         credentialType: "slackApi",
@@ -426,7 +426,7 @@ describe("activate — a completed install", () => {
     });
 
     expect(result.redirectedTo).toBe("/workspace");
-    expect(await prisma.connectedAccount.count()).toBe(1);
+    expect(await prisma.connector.count()).toBe(1);
     expect(await prisma.installation.findFirst()).toMatchObject({
       status: "ACTIVE",
     });
@@ -434,7 +434,7 @@ describe("activate — a completed install", () => {
 
   it("replaces an expired account in place rather than adding a second one", async () => {
     const user = await seedUser();
-    await prisma.connectedAccount.create({
+    await prisma.connector.create({
       data: {
         userId: user.id,
         credentialType: "slackApi",
@@ -452,7 +452,7 @@ describe("activate — a completed install", () => {
       "cred.slackApi.accessToken": "xoxb-fresh",
     });
 
-    const accounts = await prisma.connectedAccount.findMany();
+    const accounts = await prisma.connector.findMany();
     expect(accounts).toHaveLength(1);
     expect(accounts[0]).toMatchObject({ status: "ACTIVE", expiresAt: null });
     expect(openCredential(accounts[0].secretJson)).toEqual({
@@ -497,7 +497,7 @@ describe("activate — a completed install", () => {
       "cred.slackApi.accessToken": "",
     });
 
-    expect(await prisma.connectedAccount.count()).toBe(0);
+    expect(await prisma.connector.count()).toBe(0);
     expect(await prisma.installation.findFirst()).toMatchObject({
       status: "PARTIAL",
     });

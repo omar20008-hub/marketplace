@@ -16,7 +16,7 @@ export async function refreshInstallationStates(userId: string) {
       where: { userId, status: { in: ["ACTIVE", "PARTIAL"] } },
       include: { product: { include: { requirements: true } } },
     }),
-    prisma.connectedAccount.findMany({ where: { userId } }),
+    prisma.connector.findMany({ where: { userId } }),
   ]);
 
   const usable = new Set(

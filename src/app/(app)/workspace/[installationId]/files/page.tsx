@@ -32,7 +32,7 @@ export default async function FilesPage({
   });
   if (!installation || !installation.product.usesKnowledge) notFound();
 
-  const drive = await prisma.connectedAccount.findFirst({
+  const drive = await prisma.connector.findFirst({
     where: { userId: user.id, credentialType: "googleDriveOAuth2Api" },
   });
   const jobs = await prisma.knowledgeJob.count({

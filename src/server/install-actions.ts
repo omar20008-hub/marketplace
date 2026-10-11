@@ -72,7 +72,7 @@ export async function activate(
     (submitted[credentialType] ??= {})[field] = text;
   }
 
-  const existing = await prisma.connectedAccount.findMany({
+  const existing = await prisma.connector.findMany({
     where: { userId: user.id },
   });
   const byType = new Map(existing.map((account) => [account.credentialType, account]));
@@ -123,7 +123,7 @@ export async function activate(
     if (already?.status === "ACTIVE") continue;
 
     const account = already
-      ? await prisma.connectedAccount.update({
+      ? await prisma.connector.update({
           where: { id: already.id },
           data: {
             status: "ACTIVE",
@@ -132,7 +132,7 @@ export async function activate(
             ...(values.accountRef ? { accountRef: values.accountRef } : {}),
           },
         })
-      : await prisma.connectedAccount.create({
+      : await prisma.connector.create({
           data: {
             userId: user.id,
             credentialType,
@@ -261,9 +261,9 @@ export async function activate(
       create: {
         installationId: installation.id,
         credentialType: type,
-        accountId: account?.id,
+        connectorId: account?.id,
       },
-      update: { accountId: account?.id },
+      update: { connectorId: account?.id },
     });
   }
 

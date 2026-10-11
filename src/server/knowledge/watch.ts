@@ -82,7 +82,7 @@ export async function stopWatch(sourceId: string) {
   const source = await prisma.knowledgeSource.findUnique({ where: { id: sourceId } });
   if (!source?.channelId || !source.channelResourceId) return;
   try {
-    const token = await getGoogleAccessToken(source.accountId);
+    const token = await getGoogleAccessToken(source.connectorId);
     await stopChannel(token, source.channelId, source.channelResourceId);
   } catch {
     // Expires on its own.
@@ -115,13 +115,13 @@ export async function renewWatches({ force = false } = {}): Promise<{ renewed: n
         { channelExpiry: { lt: new Date(Date.now() + RENEW_BEFORE_MS) } },
       ],
     },
-    select: { id: true, accountId: true },
+    select: { id: true, connectorId: true },
     take: 100,
   });
 
   for (const source of due) {
     try {
-      await ensureWatch(source.id, await getGoogleAccessToken(source.accountId));
+      await ensureWatch(source.id, await getGoogleAccessToken(source.connectorId));
       summary.renewed++;
     } catch (error) {
       if (!(error instanceof GoogleAuthError)) summary.failed++;
