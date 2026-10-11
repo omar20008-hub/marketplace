@@ -130,3 +130,34 @@ export async function createPausedAd(
     adId: ad.id!,
   };
 }
+
+/**
+ * Sets one object's status (ACTIVE or PAUSED). Meta answers `{ success: true }`
+ * rather than an id, so this checks the answer itself and names the step it was
+ * for, so a refusal is reported against the object that refused.
+ */
+export async function setObjectStatus(
+  accessToken: string,
+  objectId: string,
+  status: "ACTIVE" | "PAUSED",
+  step: MetaAdsError["step"],
+  fetcher: typeof fetch = fetch,
+): Promise<void> {
+  const response = await fetcher(`${GRAPH}/${objectId}`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ status, access_token: accessToken }),
+    cache: "no-store",
+  });
+  const json = (await response.json().catch(() => ({}))) as {
+    success?: boolean;
+    error?: { message?: string; code?: number };
+  };
+  if (!response.ok || json.error || json.success !== true) {
+    throw new MetaAdsError(
+      json.error?.message ?? `Meta answered HTTP ${response.status} without confirming the change.`,
+      String(json.error?.code ?? response.status),
+      step,
+    );
+  }
+}
