@@ -58,6 +58,7 @@ model User {
   products      Product[]
   installations Installation[]
   accounts      ConnectedAccount[]
+  adCampaigns   AdCampaign[]
   runs          Run[]
   threads       Thread[]
   mediaUploads  MediaUpload[]
@@ -869,4 +870,55 @@ model MediaUpload {
 
   @@index([userId, expiresAt])
   @@index([expiresAt])
+}
+
+enum AdCampaignStatus {
+  /// Saved, not yet sent to Meta.
+  DRAFT
+  /// Being created in Meta; a claim so two requests cannot both create it.
+  CREATING
+  /// Created in Meta and left PAUSED. Nothing is spent until it is activated.
+  PAUSED
+  ACTIVE
+  FINISHED
+  FAILED
+}
+
+/// An ads campaign the user asked for in chat, mirrored to Meta's Marketing API.
+/// Written only by the server (src/server/ads/campaigns.ts). Money moves in Meta,
+/// never here: the budget below is what Meta is told to spend per day.
+model AdCampaign {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Meta's ad account, e.g. "act_123". Chosen by the user, never guessed.
+  adAccountId String
+  name        String
+  /// One of the OUTCOME_* objectives the server accepts (see lib/ads/validate.ts).
+  objective   String
+  /// Minor units of the ad account's currency (cents for USD).
+  dailyBudgetCents Int
+  startsAt  DateTime
+  endsAt    DateTime
+  /// { countries: string[], ageMin: number, ageMax: number }
+  targeting Json
+  /// Which placements to run on: any of "facebook", "instagram".
+  platforms String[]
+  caption   String
+  linkUrl   String
+  mediaUrl  String?
+
+  status      AdCampaignStatus @default(DRAFT)
+  metaCampaignId String?
+  metaAdSetId    String?
+  metaAdId       String?
+  /// Meta's own reason when a create call is refused. Never a token.
+  error     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([status])
 }
