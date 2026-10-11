@@ -13,7 +13,8 @@ import { getGoogleAccessToken } from "./google-account";
 import { newKnowledgeKey } from "./knowledge/keys";
 import { createKnowledgeSource } from "./knowledge/sources";
 import { stopWatch } from "./knowledge/watch";
-import { credentialLabel as labelFor, isPlatformOAuth } from "@/lib/credentials";
+import { credentialLabel as labelFor, isPlatformHeld, isPlatformOAuth } from "@/lib/credentials";
+import { platformCredential } from "@/lib/platform-secrets";
 
 /**
  * Adding a product to the workspace.
@@ -146,11 +147,15 @@ export async function activate(
     byType.set(credentialType, account);
   }
 
+  // Platform-held connections (the Gemini key) are supplied by the platform to every
+  // product, whatever a stored requirement row says, so they are never asked of the person.
   const needed = product.requirements
-    .filter((r) => r.providedBy === "USER" && r.credentialType)
+    .filter((r) => r.credentialType && (r.providedBy === "USER" || isPlatformHeld(r.credentialType)))
     .map((r) => r.credentialType!);
 
-  const missing = needed.filter((type) => byType.get(type)?.status !== "ACTIVE");
+  const missing = needed.filter(
+    (type) => !isPlatformHeld(type) && byType.get(type)?.status !== "ACTIVE",
+  );
 
   // Partially ready: recorded here, not sent to n8n. Install Template refuses an
   // incomplete credential set, and rightly so — there is nothing to install yet.
@@ -177,13 +182,26 @@ export async function activate(
   // of this call, on its way into n8n's own credential store.
   // Platform-held OAuth connections (Drive) count as satisfied above, but their
   // tokens are not n8n's to have: whatever needs them asks the platform.
+  // Platform keys (Gemini) come from the platform's own store, not a person's account.
+  const platformValues = new Map<string, Record<string, string>>();
+  for (const type of needed.filter(isPlatformHeld)) {
+    const values = await platformCredential(type);
+    if (!values) {
+      return {
+        error: `${labelFor(type)} is not set up on the platform yet. An administrator needs to add its key under Platform keys.`,
+      };
+    }
+    platformValues.set(type, values);
+  }
   const credentialsJson = JSON.stringify(
     Object.fromEntries(
       needed
         .filter((type) => !isPlatformOAuth(type))
         .map((type) => [
           type,
-          openCredential(byType.get(type)?.secretJson ?? null),
+          isPlatformHeld(type)
+            ? platformValues.get(type)
+            : openCredential(byType.get(type)?.secretJson ?? null),
         ]),
     ),
   );

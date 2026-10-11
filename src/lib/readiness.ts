@@ -1,4 +1,5 @@
 import type { BadgeTone } from "@/components/ds";
+import { isPlatformHeld } from "@/lib/credentials";
 import type {
   AccountStatus,
   InstallationStatus,
@@ -61,7 +62,9 @@ export function readinessFor({
   }
 
   const byType = new Map(accounts.map((a) => [a.credentialType, a.status]));
-  const mine = requirements.filter((r) => r.providedBy === "USER");
+  const mine = requirements.filter(
+    (r) => r.providedBy === "USER" && !(r.credentialType && isPlatformHeld(r.credentialType)),
+  );
 
   // Never connected at all, versus connected and since expired. The two look
   // the same to a set of active types, but they are different problems: one
