@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { splitList } from "@/lib/n8n";
-import type { ProductStatus } from "@/generated/prisma";
+import type { Prisma, ProductStatus } from "@/generated/prisma";
 
 /**
  * Inbound from MP · Publish Sync.
@@ -34,9 +34,35 @@ const Row = z.object({
   flaggedNodes: z.string().optional(),
   credentialDurability: z.string().optional(),
   rejectionReason: z.string().optional(),
+  creatorId: z.string().optional(),
+  title: z.string().optional(),
+  description: z.string().optional(),
+  category: z.string().optional(),
+  actionType: z.enum(["read", "write"]).optional(),
+  invocationMode: z.string().optional(),
+  inputSchema: z.string().optional(),
+  version: z.number().optional(),
 });
 
 const Body = z.object({ rows: z.array(Row) });
+
+function slugify(title: string) {
+  return title
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+}
+
+function parseInputSchema(raw: string | undefined): Prisma.InputJsonValue {
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw) as Prisma.InputJsonValue;
+  } catch {
+    return [];
+  }
+}
 
 const STATUS: Record<z.infer<typeof Row>["status"], ProductStatus> = {
   in_review: "IN_REVIEW",
@@ -64,6 +90,7 @@ export async function POST(request: Request) {
   }
 
   let updated = 0;
+  let created = 0;
   let unknown = 0;
 
   for (const row of parsed.data.rows) {
@@ -71,10 +98,44 @@ export async function POST(request: Request) {
       where: { templateId: row.templateId },
     });
 
-    // A template the platform has never seen is reported, not invented. A
-    // product needs a title, a category and a creator that only the platform has.
+    // A template the platform has never seen is reported, not invented: it needs
+    // a title, a description and a creator the platform knows. A workflow built
+    // for the platform itself names its creator, and that is the only case that
+    // creates a product here.
     if (!product) {
-      unknown += 1;
+      const creator = row.creatorId
+        ? await prisma.user.findUnique({ where: { id: row.creatorId }, select: { id: true } })
+        : null;
+      if (!creator || !row.title || !row.description) {
+        unknown += 1;
+        continue;
+      }
+      await prisma.product.create({
+        data: {
+          slug: `${slugify(row.title)}-${row.templateId}`,
+          templateId: row.templateId,
+          n8nWorkflowId: row.n8nWorkflowId ?? null,
+          creatorId: creator.id,
+          title: row.title,
+          summary: row.description.split("\n")[0].slice(0, 200),
+          description: row.description,
+          needsFromYou: "",
+          kind: "WORKFLOW",
+          category: row.category ?? "general",
+          actionType: row.actionType === "write" ? "WRITE" : "READ",
+          status: STATUS[row.status],
+          version: String(row.version ?? 1),
+          invocationMode: row.invocationMode ?? "on_demand",
+          inputSchema: parseInputSchema(row.inputSchema),
+          requiredCredentials: splitList(row.requiredCredentials ?? ""),
+          externalHosts: splitList(row.externalHosts ?? ""),
+          flaggedNodes: splitList(row.flaggedNodes ?? ""),
+          credentialDurability: row.credentialDurability ?? "durable",
+          rejectionReason: row.rejectionReason ?? null,
+          publishedAt: row.status === "published" ? new Date() : null,
+        },
+      });
+      created += 1;
       continue;
     }
 
@@ -109,5 +170,5 @@ export async function POST(request: Request) {
     updated += 1;
   }
 
-  return NextResponse.json({ ok: true, updated, unknown });
+  return NextResponse.json({ ok: true, updated, created, unknown });
 }

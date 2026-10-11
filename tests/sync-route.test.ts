@@ -260,3 +260,73 @@ describe("what it refuses to write", () => {
     expect(after?.status).toBe("PUBLISHED");
   });
 });
+
+describe("a new template from n8n", () => {
+  const platformUser = "test-platform-owner";
+
+  beforeEach(async () => {
+    await wipe();
+    await prisma.plan.create({
+      data: { id: PLAN_ID, name: "Test", monthlyRuns: 10, storageBytes: BigInt(1), monthlyCredits: 0 },
+    });
+    await prisma.user.create({
+      data: { id: platformUser, email: "owner@example.test", name: "Owner", passwordHash: "x", initials: "O", planId: PLAN_ID },
+    });
+  });
+
+  const row = {
+    templateId: "tpl_new",
+    status: "published",
+    n8nWorkflowId: "wf_new",
+    creatorId: platformUser,
+    title: "إنشاء المحتوى",
+    description: "ينشئ نصاً من وصف المستخدم\nتفاصيل إضافية",
+    actionType: "read",
+    invocationMode: "on_demand",
+    inputSchema: '[{"name":"prompt","type":"string"}]',
+    requiredCredentials: "googlePalmApi",
+    externalHosts: "generativelanguage.googleapis.com",
+    version: 1,
+  };
+
+  it("creates the product for a creator the platform knows", async () => {
+    const body = await (await sync([row])).json();
+
+    expect(body).toMatchObject({ created: 1, updated: 0, unknown: 0 });
+    const product = await prisma.product.findUniqueOrThrow({ where: { templateId: "tpl_new" } });
+    expect(product).toMatchObject({
+      creatorId: platformUser,
+      n8nWorkflowId: "wf_new",
+      title: "إنشاء المحتوى",
+      summary: "ينشئ نصاً من وصف المستخدم",
+      kind: "WORKFLOW",
+      invocationMode: "on_demand",
+      status: "PUBLISHED",
+      requiredCredentials: ["googlePalmApi"],
+      externalHosts: ["generativelanguage.googleapis.com"],
+    });
+    expect(product.publishedAt).not.toBeNull();
+    expect(product.inputSchema).toEqual([{ name: "prompt", type: "string" }]);
+  });
+
+  it("reports a row whose creator is not a platform user", async () => {
+    const body = await (await sync([{ ...row, creatorId: "nobody" }])).json();
+
+    expect(body).toMatchObject({ created: 0, unknown: 1 });
+    expect(await prisma.product.count()).toBe(0);
+  });
+
+  it("does not create a product without a title and description", async () => {
+    const body = await (await sync([{ ...row, description: undefined }])).json();
+
+    expect(body).toMatchObject({ created: 0, unknown: 1 });
+    expect(await prisma.product.count()).toBe(0);
+  });
+
+  it("gives two products with the same title their own slugs", async () => {
+    await sync([row, { ...row, templateId: "tpl_new_2", n8nWorkflowId: "wf_new_2" }]);
+
+    const slugs = (await prisma.product.findMany({ select: { slug: true } })).map((p) => p.slug);
+    expect(new Set(slugs).size).toBe(2);
+  });
+});
