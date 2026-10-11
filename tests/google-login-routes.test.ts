@@ -87,6 +87,9 @@ describe("GET /api/oauth/google/auth/start", () => {
       `${APP}/api/oauth/google/auth/callback`,
     );
     expect(target.searchParams.get("scope")).not.toContain(DRIVE_READONLY_SCOPE);
+    // No forced consent: Google asks once, then signs the person straight in.
+    expect(target.searchParams.get("prompt")).toBeNull();
+    expect(target.searchParams.get("access_type")).toBeNull();
     expect(response.headers.get("set-cookie")).toContain(`${OAUTH_COOKIE}=`);
   });
 });

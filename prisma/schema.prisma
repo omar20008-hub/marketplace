@@ -268,6 +268,16 @@ model Requirement {
   sortOrder      Int             @default(0)
 }
 
+// Credentials the platform owns and hands to whichever runtime needs them (n8n now,
+// Hermes or another platform later). Encrypted with SECRETS_KEY, like connected
+// accounts. Written only from the admin screen; never read back to a page.
+model PlatformSecret {
+  name        String   @id
+  secretJson  String
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+}
+
 model Review {
   id        String   @id @default(cuid())
   productId String

@@ -52,6 +52,7 @@ async function wipe() {
   await prisma.user.deleteMany({});
   await prisma.plan.deleteMany({});
   await prisma.storageAdapter.deleteMany({});
+  await prisma.platformSecret.deleteMany({});
 }
 
 async function seedUser() {
@@ -588,5 +589,55 @@ describe("activate — the knowledge key", () => {
     const rotated = await prisma.installation.findFirstOrThrow();
     expect(rotated.knowledgeKeyHash).toBe(hashKnowledgeKey(second.knowledgeKey!));
     spy.mockRestore();
+  });
+});
+
+describe("activate — platform-held keys", () => {
+  it("never asks the person for the Gemini key, and sends the platform's key to n8n", async () => {
+    const { storePlatformSecret } = await import("@/lib/platform-secrets");
+    const user = await seedUser();
+    await storePlatformSecret("googlePalmApi", "AIzaTestPlatformKeyNotReal0002", "admin-1");
+    const product = await prisma.product.create({
+      data: productData(user.id, "PUBLISHED", [
+        // Stored as USER by an older approval: the platform still supplies it.
+        { kind: "CONNECTION", label: "Google Gemini", credentialType: "googlePalmApi", providedBy: "USER" },
+      ]),
+    });
+    const install = vi.spyOn(n8n, "install").mockResolvedValueOnce({
+      installationId: "inst_gemini",
+      instanceWorkflowId: "wf_gemini",
+      storageBackend: "platform",
+      activationStatus: "active",
+    } as never);
+
+    const result = await submit({ productId: product.id, storageBackend: "platform" });
+
+    expect(result.redirectedTo).toBe("/workspace");
+    const sent = JSON.parse(install.mock.calls[0][0].credentialsJson);
+    expect(sent.googlePalmApi).toMatchObject({ apiKey: "AIzaTestPlatformKeyNotReal0002" });
+    install.mockRestore();
+  });
+
+  it("refuses to install, and says so, while the platform has no key", async () => {
+    const user = await seedUser();
+    const product = await prisma.product.create({
+      data: productData(user.id, "PUBLISHED", [
+        { kind: "CONNECTION", label: "Google Gemini", credentialType: "googlePalmApi", providedBy: "PLATFORM" },
+      ]),
+    });
+    const install = vi.spyOn(n8n, "install");
+    // No stored key and no environment key: the only place the platform could get one.
+    const { env } = await import("@/lib/env");
+    const environmentKey = env.embeddings.apiKey;
+    (env.embeddings as { apiKey: string }).apiKey = "";
+
+    try {
+      const result = await submit({ productId: product.id, storageBackend: "platform" });
+      expect(result.error).toMatch(/administrator/);
+      expect(install).not.toHaveBeenCalled();
+    } finally {
+      (env.embeddings as { apiKey: string }).apiKey = environmentKey;
+      install.mockRestore();
+    }
   });
 });

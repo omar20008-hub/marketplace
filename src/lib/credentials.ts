@@ -123,3 +123,14 @@ export function credentialLabel(credentialType: string) {
   };
   return labels[credentialType] ?? credentialType;
 }
+
+/**
+ * Connections the platform supplies itself, to every product that needs them. The
+ * person connects nothing: the value comes from the platform's own store (see
+ * lib/platform-secrets.ts) and goes wherever the runtime is, at install time.
+ */
+export const PLATFORM_HELD_CREDENTIALS: ReadonlySet<string> = new Set(["googlePalmApi"]);
+
+export function isPlatformHeld(credentialType: string) {
+  return PLATFORM_HELD_CREDENTIALS.has(credentialType);
+}
