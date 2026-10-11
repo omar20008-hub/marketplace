@@ -57,8 +57,29 @@ export interface N8nDriver {
    * n8n. An error here is a failed run, not a refusal.
    */
   runInstance(instanceWorkflowId: string, inputs: Record<string, unknown>): Promise<RunInstanceResult>;
+
+  /** The nodes and connections of a published template; null when it cannot be read. */
+  getWorkflow(workflowId: string): Promise<TemplateWorkflow | null>;
+
+  /** Stores a credential in n8n's own store. Null when n8n refuses it. */
+  createCredential(input: {
+    name: string;
+    type: string;
+    data: Record<string, unknown>;
+  }): Promise<{ id: string } | null>;
+  deleteCredential(id: string): Promise<{ ok: boolean }>;
+
+  /** Creates a copy in n8n, not yet active. Null when n8n refuses it. */
+  createWorkflow(workflow: Record<string, unknown>): Promise<{ id: string } | null>;
+  activateWorkflow(workflowId: string): Promise<{ ok: boolean }>;
+  deleteWorkflow(workflowId: string): Promise<{ ok: boolean }>;
 }
 
 export type RunInstanceResult =
   | { ok: true; items: Record<string, unknown>[] }
   | { ok: false; error: string };
+
+export type TemplateWorkflow = {
+  nodes: Array<Record<string, unknown>>;
+  connections: Record<string, unknown>;
+};

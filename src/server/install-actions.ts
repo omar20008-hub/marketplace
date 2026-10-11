@@ -14,6 +14,7 @@ import { newKnowledgeKey } from "./knowledge/keys";
 import { createKnowledgeSource } from "./knowledge/sources";
 import { stopWatch } from "./knowledge/watch";
 import { credentialLabel as labelFor, isPlatformOAuth } from "@/lib/credentials";
+import { deployCopy } from "./template-deploy";
 
 /**
  * Adding a product to the workspace.
@@ -24,6 +25,77 @@ import { credentialLabel as labelFor, isPlatformOAuth } from "@/lib/credentials"
  * The secret is encrypted before it is stored (see lib/secrets.ts), decrypted
  * only on the way into n8n, and never read back out to a page.
  */
+
+type InstallReply =
+  | {
+      ok: true;
+      installationId: string;
+      instanceWorkflowId: string;
+      activationStatus: "active" | "activation_failed";
+      n8nCredentialIds: string[];
+    }
+  | { ok: false; errorText: string };
+
+/**
+ * Creates the person's copy by whichever driver is selected. The n8n path keeps its
+ * own refusal texts; the platform path gets the same reply shape.
+ */
+async function installCopy(input: {
+  userId: string;
+  templateId: string;
+  n8nWorkflowId: string;
+  requiredCredentials: string[];
+  storageBackend: string;
+  credentialsJson: string;
+  schedule: string;
+  knowledgeKey: string;
+  platformUrl: string;
+}): Promise<InstallReply> {
+  if (env.template.driver === "platform") {
+    if (input.storageBackend !== "platform") {
+      return { ok: false, errorText: `Installing to "${input.storageBackend}" is not supported on the platform yet.` };
+    }
+    const result = await deployCopy({
+      userId: input.userId,
+      templateId: input.templateId,
+      n8nWorkflowId: input.n8nWorkflowId,
+      requiredCredentials: input.requiredCredentials,
+      schedule: input.schedule,
+      supplied: JSON.parse(input.credentialsJson) as Record<string, unknown>,
+      knowledgeKey: input.knowledgeKey,
+      platformUrl: input.platformUrl,
+    });
+    return result.ok ? result : { ok: false, errorText: result.errorText };
+  }
+
+  try {
+    const reply = await n8n.install({
+      userId: input.userId,
+      templateId: input.templateId,
+      storageBackend: input.storageBackend,
+      credentialsJson: input.credentialsJson,
+      schedule: input.schedule,
+      knowledgeKey: input.knowledgeKey,
+      platformUrl: input.platformUrl,
+    });
+    if ("ok" in reply) return { ok: false, errorText: reply.errorText };
+    return {
+      ok: true,
+      installationId: reply.installationId,
+      instanceWorkflowId: reply.instanceWorkflowId,
+      activationStatus: reply.activationStatus,
+      n8nCredentialIds: [],
+    };
+  } catch (error) {
+    console.error("Install Template failed", error instanceof Error ? error.message : "unknown");
+    return {
+      ok: false,
+      errorText:
+        "Setting this up failed, and nothing was installed. If you just connected an account, " +
+        "remove it from Connected accounts and connect it again, then retry.",
+    };
+  }
+}
 
 export type ActivateState = { error?: string };
 
@@ -192,34 +264,18 @@ export async function activate(
   // earlier one stops working the moment the hash is replaced below.
   const knowledge = newKnowledgeKey();
 
-  // n8n can fail inside the install (it refuses a credential body, say) and answer
-  // with an error rather than the contract's reply. That used to escape as an
-  // exception and replace the wizard with the generic "This screen did not load".
-  // Nothing has been written for the installation at this point, so say so, and
-  // keep the cause in the server log for whoever has to read it.
-  let reply: Awaited<ReturnType<typeof n8n.install>>;
-  try {
-    reply = await n8n.install({
-      userId: user.id,
-      templateId: product.templateId ?? product.id,
-      storageBackend,
-      credentialsJson,
-      schedule,
-      knowledgeKey: knowledge.key,
-      platformUrl: env.publicUrl,
-    });
-  } catch (error) {
-    console.error("Install Template failed", error instanceof Error ? error.message : "unknown");
-    return {
-      error:
-        "Setting this up failed, and nothing was installed. If you just connected an account, " +
-        "remove it from Connected accounts and connect it again, then retry.",
-    };
-  }
-
-  if ("ok" in reply) {
-    return { error: reply.errorText };
-  }
+  const reply = await installCopy({
+    userId: user.id,
+    templateId: product.templateId ?? product.id,
+    n8nWorkflowId: product.n8nWorkflowId ?? "",
+    requiredCredentials: product.requiredCredentials,
+    storageBackend,
+    credentialsJson,
+    schedule,
+    knowledgeKey: knowledge.key,
+    platformUrl: env.publicUrl,
+  });
+  if (!reply.ok) return { error: reply.errorText };
 
   const installation = await prisma.installation.upsert({
     where: { userId_productId: { userId: user.id, productId: product.id } },
@@ -229,21 +285,23 @@ export async function activate(
       productId: product.id,
       pinnedVersion: product.version,
       instanceWorkflowId: reply.instanceWorkflowId,
-      storageBackend: reply.storageBackend,
+      storageBackend,
       status: "ACTIVE",
       schedule: schedule || null,
       activationStatus: reply.activationStatus,
       knowledgeKeyHash: knowledge.hash,
+      n8nCredentialIds: reply.n8nCredentialIds,
     },
     update: {
       installationId: reply.installationId,
       instanceWorkflowId: reply.instanceWorkflowId,
-      storageBackend: reply.storageBackend,
+      storageBackend,
       status: "ACTIVE",
       attentionNote: null,
       schedule: schedule || null,
       activationStatus: reply.activationStatus,
       knowledgeKeyHash: knowledge.hash,
+      n8nCredentialIds: reply.n8nCredentialIds,
     },
   });
 

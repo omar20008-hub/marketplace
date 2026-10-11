@@ -260,6 +260,17 @@ export const env = {
       | "n8n",
   },
 
+  /**
+   * Who installs a template for a person: the MP · Install Template workflow ("n8n",
+   * the default) or the platform, which creates the copy and its credentials in n8n
+   * itself. Checked against the live instance before it is switched on.
+   */
+  template: {
+    driver: (process.env.TEMPLATE_DRIVER === "platform" ? "platform" : "n8n") as
+      | "platform"
+      | "n8n",
+  },
+
   n8n: {
     driver: (process.env.N8N_DRIVER === "live" ? "live" : "mock") as N8nDriver,
     baseUrl: process.env.N8N_BASE_URL ?? "",
