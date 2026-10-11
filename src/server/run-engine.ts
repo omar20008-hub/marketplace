@@ -1,8 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/db";
 import type { Viewer } from "@/lib/auth";
+import { env } from "@/lib/env";
 import { n8n, type DispatchOutput } from "@/lib/n8n";
 import { readinessFor } from "@/lib/readiness";
+import { dispatchInstance } from "./dispatch";
 import type { Prisma } from "@/generated/prisma";
 
 /**
@@ -201,11 +203,23 @@ export async function executeRun({
   const schema = fields(installation.product);
 
   // userId comes from the session. Never from the form, never from a model.
-  const reply = await n8n.dispatch({
-    userId: user.id,
-    installationId: installation.installationId ?? installation.id,
-    args: { ...args, __schema: schema },
-  });
+  const copyId = installation.installationId ?? installation.id;
+  const reply =
+    env.dispatcher.driver === "platform"
+      ? await dispatchInstance({
+          userId: user.id,
+          installationId: copyId,
+          instanceWorkflowId: installation.instanceWorkflowId,
+          invocationMode: installation.product.invocationMode,
+          title: installation.product.title,
+          inputSchema: installation.product.inputSchema,
+          args,
+        })
+      : await n8n.dispatch({
+          userId: user.id,
+          installationId: copyId,
+          args: { ...args, __schema: schema },
+        });
   onDispatch?.(reply);
 
   const durationMs = Date.now() - startedAt;

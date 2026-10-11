@@ -248,6 +248,18 @@ export const env = {
     geminiApiKey: process.env.GEMINI_API_KEY ?? "",
   },
 
+  /**
+   * Who checks and runs a person's product copy when they use it. "n8n" (the default)
+   * sends the call to the MP · Dispatcher workflow. "platform" does the checks here
+   * and runs the copy through the n8n API. Checked against the live instance before
+   * it is switched on.
+   */
+  dispatcher: {
+    driver: (process.env.DISPATCHER_DRIVER === "platform" ? "platform" : "n8n") as
+      | "platform"
+      | "n8n",
+  },
+
   n8n: {
     driver: (process.env.N8N_DRIVER === "live" ? "live" : "mock") as N8nDriver,
     baseUrl: process.env.N8N_BASE_URL ?? "",

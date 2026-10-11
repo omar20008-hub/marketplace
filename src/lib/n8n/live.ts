@@ -92,10 +92,14 @@ async function postWebhook<T>(url: string, body: unknown): Promise<T> {
   }
 }
 
-async function restPost(path: string): Promise<Response> {
+async function restPost(path: string, body?: unknown): Promise<Response> {
   return fetch(`${env.n8n.baseUrl}${path}`, {
     method: "POST",
-    headers: { "X-N8N-API-KEY": env.n8n.apiKey },
+    headers: {
+      "X-N8N-API-KEY": env.n8n.apiKey,
+      ...(body === undefined ? {} : { "content-type": "application/json" }),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
     cache: "no-store",
   });
 }
@@ -200,5 +204,34 @@ export const liveDriver: N8nDriver = {
     } catch {
       return { ok: false };
     }
+  },
+
+  async runInstance(instanceWorkflowId: string, inputs: Record<string, unknown>) {
+    let response: Response;
+    try {
+      response = await restPost(`/workflows/${encodeURIComponent(instanceWorkflowId)}/run`, {
+        inputData: inputs,
+      });
+    } catch (error) {
+      return { ok: false as const, error: `n8n unreachable: ${(error as Error).message}` };
+    }
+    if (!response.ok) {
+      return { ok: false as const, error: `n8n answered ${response.status}` };
+    }
+
+    const body = (await response.json().catch(() => null)) as
+      | { error?: unknown; data?: unknown }
+      | unknown[]
+      | null;
+    if (body && !Array.isArray(body) && body.error !== undefined) {
+      return { ok: false as const, error: String(body.error).slice(0, 200) };
+    }
+    const rows = Array.isArray(body) ? body : Array.isArray(body?.data) ? body.data : [];
+    const items = rows.map((row) =>
+      row && typeof row === "object" && "json" in row
+        ? (row as { json: Record<string, unknown> }).json
+        : (row as Record<string, unknown>),
+    );
+    return { ok: true as const, items };
   },
 };

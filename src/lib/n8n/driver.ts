@@ -50,4 +50,15 @@ export interface N8nDriver {
    * reached; the caller still records the installation as disabled.
    */
   deactivateInstance(instanceWorkflowId: string): Promise<{ ok: boolean }>;
+
+  /**
+   * Runs one user's copy with the given inputs and returns the items it produced.
+   * Used by the platform's own dispatch path; the n8n Dispatcher does the same inside
+   * n8n. An error here is a failed run, not a refusal.
+   */
+  runInstance(instanceWorkflowId: string, inputs: Record<string, unknown>): Promise<RunInstanceResult>;
 }
+
+export type RunInstanceResult =
+  | { ok: true; items: Record<string, unknown>[] }
+  | { ok: false; error: string };

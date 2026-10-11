@@ -375,6 +375,10 @@ export const mockDriver: N8nDriver = {
   async deactivateInstance() {
     return { ok: true };
   },
+
+  async runInstance(instanceWorkflowId: string) {
+    return { ok: true, items: [{ mock: true, instanceWorkflowId }] };
+  },
 };
 
 export function contentHash(file: string) {
