@@ -6,6 +6,9 @@ import { GOOGLE_DRIVE_CREDENTIAL } from "@/lib/credentials";
  * The tools the platform connects to, and how each one authenticates. Adding one
  * is data, not code: its endpoints, scopes, and how to read who the person is.
  *
+ * The platform keeps every token and gives one to a workflow when it runs, through
+ * the connector token endpoint. Nothing here is sent to n8n.
+ *
  * Two kinds. A sign-in provider is a tool a person connects from Connected
  * accounts, with a redirect to the tool's own sign-in. A shared provider has no
  * sign-in of its own: it reaches the tool through another connection, such as
@@ -34,13 +37,6 @@ export type ConnectorProvider = {
   accountFrom: (json: unknown) => { accountRef: string; label: string } | null;
   /** The provider whose connection this one uses, when it has no connection of its own. */
   sourceCredentialType?: string;
-  /**
-   * The credential body n8n's own node for this tool expects, built from the
-   * stored tokens. n8n renews an OAuth2 credential itself when it is given the
-   * client and the refresh token. Absent where the tokens must not leave the
-   * platform.
-   */
-  n8nCredential?: (secret: Record<string, string>) => Record<string, unknown>;
   /** Whether the person connects this tool from Connected accounts. */
   signIn: boolean;
 };
@@ -63,24 +59,10 @@ const asana: ConnectorProvider = {
     if (!accountRef) return null;
     return { accountRef, label: data?.name ? `${data.name} (Asana)` : "Asana" };
   },
-  n8nCredential: (secret) => ({
-    oauthTokenData: {
-      access_token: secret.access_token,
-      ...(secret.refresh_token ? { refresh_token: secret.refresh_token } : {}),
-      token_type: "bearer",
-    },
-    clientId: env.asana.clientId,
-    clientSecret: env.asana.clientSecret,
-    authUrl: asana.authorizeUrl,
-    accessTokenUrl: asana.tokenUrl,
-  }),
   signIn: true,
 };
 
-/**
- * The Google connection itself, held by the platform. Its tokens are never given
- * to n8n (see lib/credentials.ts), so it has no n8nCredential.
- */
+/** The Google connection itself, held by the platform and served to workflows on request. */
 const googleDrive: ConnectorProvider = {
   id: "google-drive",
   credentialType: GOOGLE_DRIVE_CREDENTIAL,
@@ -109,7 +91,6 @@ function googleEditor(credentialType: string, displayName: string, initials: str
     displayName,
     initials,
     sourceCredentialType: GOOGLE_DRIVE_CREDENTIAL,
-    n8nCredential: undefined,
     signIn: false,
   };
 }

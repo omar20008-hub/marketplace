@@ -627,9 +627,9 @@ describe("activate — the knowledge key", () => {
 });
 
 describe("activate — a tool signed into through the connector sign-in", () => {
-  it("sends its token to n8n in the credential shape n8n's own node reads", async () => {
+  it("keeps the tool's tokens out of n8n and links the installation to the connection", async () => {
     const user = await seedUser();
-    await prisma.connector.create({
+    const asana = await prisma.connector.create({
       data: {
         userId: user.id,
         credentialType: "asanaOAuth2Api",
@@ -656,18 +656,18 @@ describe("activate — a tool signed into through the connector sign-in", () => 
     const result = await submit({ productId: product.id, storageBackend: "platform" });
 
     expect(result.redirectedTo).toBe("/workspace");
-    const sent = JSON.parse(install.mock.calls[0][0].credentialsJson);
-    expect(sent.asanaOAuth2Api.oauthTokenData).toEqual({
-      access_token: "at-live",
-      refresh_token: "rt-1",
-      token_type: "bearer",
+    const sent = install.mock.calls[0][0].credentialsJson;
+    expect(sent).not.toContain("rt-1");
+    expect(sent).not.toContain("at-live");
+    expect(JSON.parse(sent)).not.toHaveProperty("asanaOAuth2Api");
+    const link = await prisma.installationCredential.findFirstOrThrow({
+      where: { credentialType: "asanaOAuth2Api" },
     });
-    expect(sent.asanaOAuth2Api.accessTokenUrl).toBe("https://app.asana.com/-/oauth_token");
-    expect(sent.asanaOAuth2Api.access_token).toBeUndefined();
+    expect(link.connectorId).toBe(asana.id);
     install.mockRestore();
   });
 
-  it("asks for a reconnect and installs nothing when Asana refuses to renew the token", async () => {
+  it("installs with a lapsed tool token, because the platform renews it when the workflow runs", async () => {
     const user = await seedUser();
     await prisma.connector.create({
       data: {
@@ -691,22 +691,13 @@ describe("activate — a tool signed into through the connector sign-in", () => 
         },
       ]),
     });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () =>
-        new Response(JSON.stringify({ error: "invalid_grant" }), {
-          status: 400,
-          headers: { "content-type": "application/json" },
-        }),
-      ),
-    );
     const install = vi.spyOn(n8n, "install");
 
     const result = await submit({ productId: product.id, storageBackend: "platform" });
 
-    expect(install).not.toHaveBeenCalled();
-    expect(result.error).toContain("Asana did not hand over a working connection");
+    expect(install).toHaveBeenCalledTimes(1);
+    expect(result.redirectedTo).toBe("/workspace");
+    expect(install.mock.calls[0][0].credentialsJson).not.toContain("rt-revoked");
     install.mockRestore();
-    vi.unstubAllGlobals();
   });
 });

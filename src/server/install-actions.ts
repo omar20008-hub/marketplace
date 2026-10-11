@@ -11,7 +11,6 @@ import { DriveError, getFolder } from "@/lib/drive";
 import { GOOGLE_DRIVE_CREDENTIAL } from "@/lib/google-oauth";
 import { getGoogleAccessToken } from "./google-account";
 import { findProviderByCredentialType } from "@/lib/connectors/providers";
-import { getConnectorAccessToken } from "./connector-tokens";
 import { newKnowledgeKey } from "./knowledge/keys";
 import { createKnowledgeSource } from "./knowledge/sources";
 import { stopWatch } from "./knowledge/watch";
@@ -179,28 +178,13 @@ export async function activate(
 
   // Decrypted here and nowhere else: the plaintext exists only for the length
   // of this call, on its way into n8n's own credential store.
-  // Platform-held OAuth connections (Drive) count as satisfied above, but their
-  // tokens are not n8n's to have: whatever needs them asks the platform.
+  // Connections the platform holds (Drive, and every tool it signs into) count as
+  // satisfied above, but their tokens are never n8n's: a workflow asks the
+  // platform for a current token when it runs.
   const credentialEntries: [string, Record<string, unknown>][] = [];
   for (const type of needed) {
-    if (isPlatformOAuth(type)) continue;
-    const provider = findProviderByCredentialType(type);
-    // Reached through another connection, which n8n is never given; the platform serves them.
-    if (provider?.sourceCredentialType) continue;
-    const account = byType.get(type);
-    if (provider?.n8nCredential && account) {
-      try {
-        await getConnectorAccessToken(account.id);
-      } catch {
-        return {
-          error: `${provider.displayName} did not hand over a working connection. Check Connected accounts, then retry.`,
-        };
-      }
-      const fresh = await prisma.connector.findUnique({ where: { id: account.id } });
-      credentialEntries.push([type, provider.n8nCredential(openCredential(fresh?.secretJson ?? null))]);
-    } else {
-      credentialEntries.push([type, openCredential(account?.secretJson ?? null)]);
-    }
+    if (isPlatformOAuth(type) || findProviderByCredentialType(type)) continue;
+    credentialEntries.push([type, openCredential(byType.get(type)?.secretJson ?? null)]);
   }
   const credentialsJson = JSON.stringify(Object.fromEntries(credentialEntries));
 
