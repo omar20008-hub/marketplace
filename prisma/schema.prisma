@@ -338,6 +338,10 @@ model Installation {
 
   pinnedVersion      String
   instanceWorkflowId String?
+  /// n8n credential ids created for this copy (one per credential type, plus the
+  /// knowledge key's). Uninstall deletes them with the copy. Empty for installations
+  /// made before this was recorded, which uninstall handles through n8n.
+  n8nCredentialIds   String[]           @default([])
   storageBackend     String             @default("platform")
   status             InstallationStatus @default(PARTIAL)
   failureCount       Int                @default(0)
