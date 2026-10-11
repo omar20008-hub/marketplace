@@ -10,6 +10,7 @@ import {
   oauthStartUrl,
 } from "@/lib/credentials";
 import { connectErrorText, GOOGLE_DRIVE_CREDENTIAL } from "@/lib/google-oauth";
+import { isPlatformHeld } from "@/lib/credentials";
 import { SetupWizard, type SetupRequirement } from "./wizard";
 
 export const metadata = { title: "Add to workspace · Builder" };
@@ -68,8 +69,13 @@ export default async function SetupPage({
         hasFacebookSignIn(requirement.credentialType) &&
         account?.status !== "ACTIVE";
 
+      // A key the platform holds has no fields for the person either.
+      const platformHeld =
+        requirement.credentialType !== null && isPlatformHeld(requirement.credentialType);
+
       const schema =
         !platformOAuth &&
+        !platformHeld &&
         requirement.providedBy === "USER" &&
         requirement.credentialType &&
         account?.status !== "ACTIVE"
@@ -84,8 +90,8 @@ export default async function SetupPage({
         label: requirement.label,
         note: requirement.note,
         credentialType: requirement.credentialType,
-        providedBy: requirement.providedBy,
-        connected: account?.status === "ACTIVE",
+        providedBy: platformHeld ? "PLATFORM" : requirement.providedBy,
+        connected: platformHeld || account?.status === "ACTIVE",
         accountRef: account?.accountRef ?? null,
         connectUrl:
           platformOAuth || facebookSignIn
