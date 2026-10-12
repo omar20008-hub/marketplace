@@ -253,7 +253,7 @@ export default async function WorkspacePage({
             <div className="mt-2 flex flex-col">
               <RailLink
                 href="/accounts"
-                label="Connectors"
+                label="Connected accounts"
                 value={String(accounts.filter((a) => a.status !== "PENDING").length)}
               />
               <RailLink

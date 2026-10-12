@@ -79,7 +79,7 @@ export function Sidebar({
       : []),
     {
       href: "/accounts",
-      label: "Connectors",
+      label: "Connected accounts",
       icon: <Link2 {...iconProps} />,
       trailing: counts.accountsNeedAttention ? (
         <span className="size-[7px] rounded-full bg-warn" />

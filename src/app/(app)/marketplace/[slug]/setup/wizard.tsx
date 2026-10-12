@@ -220,8 +220,8 @@ export function SetupWizard({
                               </div>
                               <div className="mt-0.5 text-xs leading-snug text-ink-3">
                                 {done
-                                  ? `Connected${requirement.accountRef ? ` · ${requirement.accountRef}` : ""}. Revoke any time from Connectors.`
-                                  : "Used on your behalf while a run needs it. Revoke any time from Connectors."}
+                                  ? `Connected${requirement.accountRef ? ` · ${requirement.accountRef}` : ""}. Revoke any time from Connected accounts.`
+                                  : "Used on your behalf while a run needs it. Revoke any time from Connected accounts."}
                               </div>
                             </div>
                             {done ? (
@@ -358,7 +358,7 @@ export function SetupWizard({
                       <div className="text-sm font-medium">Google Suite</div>
                       <div className="mt-0.5 text-xs leading-snug text-ink-3">
                         Read access to the folder you choose, for indexing, and access to the
-                        Sheets, Docs and Slides you work with. Revoke any time from Connectors.
+                        Sheets, Docs and Slides you work with. Revoke any time from Connected accounts.
                       </div>
                     </div>
                     <ButtonAnchor href={knowledge.connectUrl} size="sm">

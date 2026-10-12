@@ -153,7 +153,7 @@ describe("activate — when n8n fails inside the install", () => {
 
     expect(result.redirectedTo).toBeNull();
     expect(result.error).toMatch(/nothing was installed/);
-    expect(result.error).toMatch(/Connectors/);
+    expect(result.error).toMatch(/Connected accounts/);
     expect(await prisma.installation.count()).toBe(0);
     // The cause goes to the server log, not to the person.
     expect(logged).toHaveBeenCalledWith("Install Template failed", expect.stringContaining("apiKey"));
