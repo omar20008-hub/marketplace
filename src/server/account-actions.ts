@@ -150,7 +150,7 @@ export async function disconnectAccount(formData: FormData) {
 
   await prisma.connector.update({
     where: { id: account.id },
-    data: { status: "PENDING", secretJson: null },
+    data: { status: "REVOKED", secretJson: null },
   });
 
   await refreshInstallationStates(user.id);

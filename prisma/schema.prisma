@@ -305,6 +305,7 @@ enum AccountStatus {
   ACTIVE
   EXPIRED
   PENDING
+  REVOKED
 }
 
 // A reusable connection to an outside tool. The design lets one connector serve

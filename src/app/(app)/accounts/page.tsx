@@ -87,7 +87,7 @@ export default async function AccountsPage({
   const user = await requireUser();
 
   const accounts = await prisma.connector.findMany({
-    where: { userId: user.id },
+    where: { userId: user.id, status: { not: "REVOKED" } },
     // secretJson is deliberately absent from this selection.
     select: {
       id: true,

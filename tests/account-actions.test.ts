@@ -274,7 +274,7 @@ describe("disconnectAccount", () => {
     await disconnectAccount(form({ accountId: account!.id }));
 
     const after = await prisma.connector.findUnique({ where: { id: account!.id } });
-    expect(after).toMatchObject({ status: "PENDING" });
+    expect(after).toMatchObject({ status: "REVOKED" });
     // The bytes are gone, not merely marked unusable.
     expect(after!.secretJson).toBeNull();
   });

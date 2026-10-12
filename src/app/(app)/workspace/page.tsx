@@ -40,7 +40,7 @@ export default async function WorkspacePage({
         include: { product: { include: { requirements: true } } },
         orderBy: { installedAt: "asc" },
       }),
-      prisma.connector.findMany({ where: { userId: user.id } }),
+      prisma.connector.findMany({ where: { userId: user.id, status: { not: "REVOKED" } } }),
       prisma.run.groupBy({
         by: ["installationId"],
         where: { userId: user.id },
