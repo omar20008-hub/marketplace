@@ -184,6 +184,19 @@ export const env = {
     clientId: process.env.ASANA_CLIENT_ID ?? "",
     clientSecret: process.env.ASANA_CLIENT_SECRET ?? "",
   },
+  notion: {
+    clientId: process.env.NOTION_CLIENT_ID ?? "",
+    clientSecret: process.env.NOTION_CLIENT_SECRET ?? "",
+  },
+  airtable: {
+    clientId: process.env.AIRTABLE_CLIENT_ID ?? "",
+    clientSecret: process.env.AIRTABLE_CLIENT_SECRET ?? "",
+  },
+  /** Trello's Power-Up API key and secret, under the names the provider's settings use. */
+  trello: {
+    clientId: process.env.TRELLO_API_KEY ?? "",
+    clientSecret: process.env.TRELLO_API_SECRET ?? "",
+  },
 
   /**
    * Stripe, for the paid plans (see lib/billing.ts). Not required to boot: without a

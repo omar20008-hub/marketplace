@@ -45,8 +45,14 @@ export function safeReturnTo(value: string | null | undefined, fallback = "/acco
   return value;
 }
 
-export function newOAuthState(input: { userId: string; verifier: string; returnTo: string }) {
-  const nonce = randomBytes(16).toString("base64url");
+export function newOAuthState(input: {
+  userId: string;
+  verifier: string;
+  returnTo: string;
+  /** Reuses an earlier nonce, so a state can be re-signed once more is known (OAuth 1.0a). */
+  nonce?: string;
+}) {
+  const nonce = input.nonce ?? randomBytes(16).toString("base64url");
   const payload: Payload = {
     nonce,
     userId: input.userId,

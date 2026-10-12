@@ -59,6 +59,18 @@ const ALLOWS: Record<string, { grants: string[]; denies: string[] }> = {
     grants: ["Read and update the Asana work your account can already reach"],
     denies: ["Nothing beyond what your Asana account is allowed to do"],
   },
+  notionOAuth2Api: {
+    grants: ["Read and update the pages and databases you share with the platform"],
+    denies: ["No access to pages you do not share"],
+  },
+  airtableOAuth2Api: {
+    grants: ["Read and write the bases and records you grant"],
+    denies: ["No access to bases you do not grant"],
+  },
+  trelloApi: {
+    grants: ["Read and update the boards and cards your account can reach"],
+    denies: ["Nothing beyond what your Trello account is allowed to do"],
+  },
   openAiApi: {
     grants: ["Send prompts on your behalf"],
     denies: ["No access to your account settings"],
