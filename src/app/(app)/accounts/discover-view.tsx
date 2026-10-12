@@ -3,11 +3,12 @@ import clsx from "clsx";
 import { Plus } from "lucide-react";
 import { Badge, Card, Meta, SectionLabel } from "@/components/ds";
 import { CATALOG, type CatalogEntry } from "@/lib/connectors/catalog";
+import { BrandMark } from "./brand-mark";
 
-/** The two views of the Connectors tab. "Yours" is the default and has no query value. */
+/** The two views of the Connectors tab. "My connections" is the default and has no query value. */
 export function ConnectorsTabs({ active }: { active: "yours" | "discover" }) {
   const tabs = [
-    { key: "yours", label: "Yours", href: "/accounts" },
+    { key: "yours", label: "My connections", href: "/accounts" },
     { key: "discover", label: "Discover", href: "/accounts?tab=discover" },
   ] as const;
   return (
@@ -34,7 +35,7 @@ export function ConnectorsTabs({ active }: { active: "yours" | "discover" }) {
 
 /**
  * Every tool the platform lists. Connectable ones link into the Connect panel on
- * Yours; the rest are listed as coming soon. Search is a plain GET form, so it
+ * My connections; the rest are listed as coming soon. Search is a plain GET form, so it
  * works without script and survives a reload.
  */
 export function DiscoverView({
@@ -112,9 +113,7 @@ function DiscoverCard({ entry, state }: { entry: CatalogEntry; state: CardState 
 
   return (
     <Card className="flex items-start gap-3 p-4">
-      <span className="flex size-10 flex-none items-center justify-center rounded-row bg-fill text-xs font-medium text-ink-2">
-        {entry.initials}
-      </span>
+      <BrandMark slug={entry.slug} initials={entry.initials} />
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium">{entry.name}</div>
         <div className="mt-0.5 text-[13px] text-ink-2">{entry.description}</div>
