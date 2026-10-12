@@ -355,10 +355,10 @@ export function SetupWizard({
                       GD
                     </span>
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium">Google Drive</div>
+                      <div className="text-sm font-medium">Google Suite</div>
                       <div className="mt-0.5 text-xs leading-snug text-ink-3">
-                        Read-only access, so the platform can index the folder you
-                        choose. Revoke any time from Connectors.
+                        Read access to the folder you choose, for indexing, and access to the
+                        Sheets, Docs and Slides you work with. Revoke any time from Connectors.
                       </div>
                     </div>
                     <ButtonAnchor href={knowledge.connectUrl} size="sm">

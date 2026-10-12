@@ -86,7 +86,7 @@ export async function activate(
   const driveAccount = byType.get(GOOGLE_DRIVE_CREDENTIAL);
   if (folderId) {
     if (driveAccount?.status !== "ACTIVE") {
-      return { error: "Connect your Google Drive to choose a folder." };
+      return { error: "Connect your Google Suite to choose a folder." };
     }
     try {
       await getFolder(await getGoogleAccessToken(driveAccount.id), folderId);

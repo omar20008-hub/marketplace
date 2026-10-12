@@ -110,7 +110,7 @@ export function fallbackCredentialSchema(credentialType: string): CredentialSche
 export function credentialLabel(credentialType: string) {
   const labels: Record<string, string> = {
     googleSheetsOAuth2Api: "Google Sheets",
-    googleDriveOAuth2Api: "Google Drive",
+    googleDriveOAuth2Api: "Google Suite",
     // One Facebook access token serves Pages and the Instagram Business account linked
     // to them, and more than one product uses it, so the label names the connection
     // rather than whichever product it was first written for.

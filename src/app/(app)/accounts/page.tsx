@@ -67,7 +67,7 @@ const CONNECTABLE: { credentialType: string; displayName: string }[] = [
   { credentialType: "slackApi", displayName: "Slack" },
   { credentialType: "hubspotApi", displayName: "HubSpot" },
   { credentialType: "openAiApi", displayName: "AI model" },
-  { credentialType: GOOGLE_DRIVE_CREDENTIAL, displayName: "Google Drive" },
+  { credentialType: GOOGLE_DRIVE_CREDENTIAL, displayName: "Google Suite" },
 ];
 
 export default async function AccountsPage({

@@ -70,7 +70,7 @@ const asana: ConnectorProvider = {
 const googleDrive: ConnectorProvider = {
   id: "google-drive",
   credentialType: GOOGLE_DRIVE_CREDENTIAL,
-  displayName: "Google Drive",
+  displayName: "Google Suite",
   initials: "GD",
   authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
   tokenUrl: GOOGLE_TOKEN_URL,
@@ -81,7 +81,7 @@ const googleDrive: ConnectorProvider = {
   settingNames: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"],
   accountFrom: (json) => {
     const email = (json as { email?: string }).email?.toLowerCase();
-    return email ? { accountRef: email, label: "Google Drive" } : null;
+    return email ? { accountRef: email, label: "Google Suite" } : null;
   },
   signIn: false,
 };
