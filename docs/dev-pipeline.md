@@ -1,0 +1,166 @@
+# خط التطوير الآلي: Tracker ← Claude Code ← Pull Request
+
+تنقل مهمة في المتتبّع (Asana اليوم، وقد تصير Trello أو Notion) إلى قسم **Ready for Claude**.
+يلتقطها الـ dispatcher في n8n ويرسلها إلى GitHub. هناك يعمل Claude Code بوضع headless
+على اشتراكك (بدون Anthropic API)، فيكتب المواصفات وينفذ ويختبر ويراجع عبر أربعة subagents،
+ثم يُفتح Pull Request، ويعود الملخص ورابط الـ PR تعليقًا على المهمة نفسها.
+
+## المعمارية
+
+```
+Tracker (Ready for Claude)
+   │  كل 15 دقيقة
+   ▼
+n8n ① Dispatcher ──repository_dispatch(task-ready)──► GitHub Actions
+   │ ينقل المهمة إلى In Progress                         │
+   │                                                     ▼
+   │                          Claude Code (headless، OAuth token)
+   │                          ├─ spec-writer   → spec.md
+   │                          ├─ implementer   → الكود
+   │                          ├─ test-runner   → test-report.md   (حتى 3 جولات)
+   │                          └─ reviewer      → review            (قراءة فقط، حتى جولتين)
+   │                                                     │
+   │                          بوابة اختبار مستقلة + فحص المسارات المحمية
+   │                                                     │
+   │                          commit + push + PR  (خطوات CI حتمية، لا Claude)
+   ▼                                                     ▼
+n8n ② Result Handler ◄──────────── callback webhook
+   ├─ success → قسم Review + تعليق برابط الـ PR
+   └─ failed / blocked → قسم Needs Attention + السبب أو الأسئلة
+```
+
+## الفصل بين المتتبّع والتطوير
+
+العقد بين الأجزاء هو شكل واحد محايد لا يعرف اسم المتتبّع:
+
+| الحقل | المعنى |
+|---|---|
+| `tracker` | اسم المتتبّع: `asana`، `trello`، `notion` |
+| `task_id` | معرّف المهمة عند المتتبّع |
+| `task_title` / `task_description` | العنوان ونص المواصفات |
+| `task_url` | رابط المهمة للتعليق والـ PR |
+
+الذي يعرف المتتبّع هو عقد n8n فقط. داخل كل workflow، العقد الخاص بالمتتبّع معزول:
+
+**`n8n/1-task-dispatcher.json`**
+- `Tracker: list ready tasks`: جلب المهام الجاهزة.
+- `Normalize Task`: تحويل مهمة المتتبّع إلى الشكل المحايد.
+- `Tracker: mark in progress` و`Tracker: comment started`: تحريك المهمة وتعليق البداية.
+
+**`n8n/2-result-handler.json`**
+- `Build Update`: يقرر القسم الهدف ونص التعليق (محايد).
+- `Tracker: move task` و`Tracker: comment result`: نقل المهمة وتعليق النتيجة.
+
+**ما تغيّر عند استبدال المتتبّع:** استبدل العقد `Tracker:` و`Normalize Task` فقط، وأنشئ
+ملف workflow جديدًا (مثل `n8n/1-task-dispatcher-trello.json`). الـ GitHub workflow والـ
+pipeline وملفات `.claude/` لا تتغير. اعمل فقط على التعيين:
+
+| مفهوم أسانا | Trello | Notion |
+|---|---|---|
+| Section | List | قيمة في خاصية Status |
+| Task | Card | Page في قاعدة بيانات |
+| Comment (stories) | Comment على الـ Card | Comment على الـ Page |
+
+## محتويات الحزمة
+
+| الملف | الغرض |
+|---|---|
+| `.github/workflows/claude-dev-agent.yml` | الـ Action الكامل (محايد للمتتبّع) |
+| `.claude/pipeline.md` | تعليمات المنسّق (الجلسة الرئيسية) |
+| `.claude/pipeline-rules.md` | قواعد المشروع للوكلاء (أوامر، بنية، ممنوعات) |
+| `.claude/agents/*.md` | الـ subagents الأربعة |
+| `.claude/pipeline-settings.json` | صلاحيات الـ CI (تُمرَّر بـ `--settings`) |
+| `n8n/1-task-dispatcher.json` | workflow الالتقاط والإرسال (محول Asana) |
+| `n8n/2-result-handler.json` | workflow استقبال النتيجة (محول Asana) |
+
+**لماذا `pipeline-rules.md` وليس `CLAUDE.md`؟** ملف `CLAUDE.md` في الجذر دليل المشروع
+للتطوير التفاعلي، وفيه شرط gstack الذي يوقف العمل إذا لم يكن مثبتًا. gstack غير مثبت في CI،
+فالقواعد الخاصة بالـ pipeline وضعتها في ملف منفصل.
+
+## خطوات الإعداد
+
+### 1. المتتبّع (Asana الآن)
+1. أنشئ 4 أقسام: `Ready for Claude`، `Claude In Progress`، `Review`، `Needs Attention`.
+2. احصل على GID لكل قسم من `https://app.asana.com/api/1.0/projects/<PROJECT_GID>/sections`.
+3. أنشئ Personal Access Token من إعدادات المطورين.
+
+### 2. المستودع
+1. عدّل `pipeline-rules.md` إذا تغيّرت أوامر المشروع.
+2. قائمة `allow` في `.claude/settings.json` تخص التطوير التفاعلي. صلاحيات الـ CI في `pipeline-settings.json`.
+
+### 3. توكن الاشتراك
+على جهازك:
+```bash
+claude setup-token
+```
+احفظ التوكن (يبدأ بـ `sk-ant-oat01-`)، صالح لسنة، ويُعرض مرة واحدة.
+
+### 4. GitHub Secrets و Variables
+**Settings → Secrets and variables → Actions**
+
+Secrets:
+- `CLAUDE_CODE_OAUTH_TOKEN`: التوكن من الخطوة 3
+- `N8N_CALLBACK_URL`: رابط الـ production لـ webhook الـ Result Handler
+- `N8N_CALLBACK_TOKEN`: كلمة سر عشوائية طويلة (نفسها في n8n)
+
+Variables (اختيارية):
+- `TEST_COMMAND`: الافتراضي `npm run typecheck && npm run lint && npm test`
+
+> لا تضف `ANTHROPIC_API_KEY` إلى المستودع، حتى لا يُحتسب الاستخدام على الحساب الخطأ.
+
+### 5. n8n
+1. استورد الملفين من مجلد `n8n/`.
+2. أنشئ Credentials:
+   - **Asana API**: الـ Personal Access Token
+   - **GitHub API**: Fine-grained token على هذا المستودع فقط بصلاحية `Contents: Read and write`
+   - **Header Auth**: الاسم `X-Callback-Token` والقيمة = `N8N_CALLBACK_TOKEN`
+3. اربط كل HTTP node بالـ credential المناسب، والـ Webhook بالـ Header Auth.
+4. عبّئ عقدة **Config** في الـ workflow الأول بأرقام الأقسام الحقيقية، وعقدة **Config** في الثاني بأرقام الأقسام الثلاثة.
+5. فعّل الـ Result Handler أولًا، ثم انسخ رابط الـ Production URL إلى `N8N_CALLBACK_URL`، ثم فعّل الـ Dispatcher.
+
+### 6. اختبار تجريبي
+1. من GitHub: **Actions → Claude Dev Agent → Run workflow** بمهمة بسيطة جدًا (مثل إضافة دالة مع اختبارها)، ومعرّف مهمة حقيقي.
+2. تأكد من: فتح الـ PR، وصول التعليق في المتتبّع، انتقال المهمة إلى Review.
+3. بعدها جرّب المسار الكامل بنقل مهمة إلى `Ready for Claude`.
+
+## كيف تكتب مهمة ينجزها Claude جيدًا
+```
+العنوان: إضافة فلتر الحالة في صفحة الطلبات
+
+الوصف:
+المستخدم يحتاج تصفية الطلبات حسب الحالة.
+
+معايير القبول:
+1. قائمة منسدلة بالحالات: جديد، قيد التنفيذ، مكتمل.
+2. الفلتر يُطبَّق على الـ API عبر الباراميتر status.
+3. عند عدم الاختيار تظهر كل الطلبات.
+
+خارج النطاق: تعديل تصميم الصفحة.
+```
+القاعدة: مهمة واحدة = PR واحد قابل للمراجعة في 15 دقيقة. المهام الضخمة قسّمها.
+
+## الأمان
+- **نص المهمة مدخل غير موثوق:** أي شخص يعدّل المهام يستطيع توجيه الوكيل. اجعل المتتبّع مقتصرًا عليك أو على فريق موثوق.
+- الصلاحيات في `pipeline-settings.json` تمنع: `git commit` و`git push` و`git checkout` و`gh` و`curl` و`docker` و`prisma migrate` و`npm run migrate` و`WebFetch` وقراءة `.env` وتعديل `.github/` و`.claude/` و`CLAUDE.md`.
+- حتى لو تجاوز Claude هذه القيود، بوابة الـ workflow ترفض أي تغيير على المسارات المحمية (`.github/`، `.claude/`، `CLAUDE.md`، `.env*`، `Dockerfile`، `docker-compose.yml`).
+- الدمج إلى الفرع الرئيسي دائمًا قرارك أنت. فعّل Branch protection على الفرع الرئيسي.
+- الـ PR المفتوح بـ `GITHUB_TOKEN` لا يشغّل workflows أخرى تلقائيًا، فلا يعمل `ci.yml` عليه. لو تريد CI على هذه الـ PRs، استخدم PAT في خطوة الـ PR.
+
+## استكشاف الأخطاء
+| العرض | السبب المحتمل |
+|---|---|
+| لا يحدث شيء بعد نقل المهمة | الـ Dispatcher غير مفعّل، أو معرّف القسم خاطئ |
+| 404 من GitHub dispatch | التوكن لا يملك `Contents: Read and write` على المستودع |
+| `result.json` غير موجود | وصل لحد `--max-turns`. قسّم المهمة أو ارفع الحد |
+| أوامر مرفوضة في السجل | أضف الأمر المطلوب إلى `allow` في `pipeline-settings.json` (ولا تضف أوامر المسارات المحمية) |
+| "Changed protected paths" | الوكيل عدّل ملفًا محميًا. راجع المهمة وأعد صياغتها |
+| فشل callback بـ 403 | قيمة `X-Callback-Token` لا تطابق |
+| الاستخدام يُحتسب على API | وجود `ANTHROPIC_API_KEY` في البيئة |
+
+ملفات `spec.md` و`test-report.md` و`review.md` وسجل Claude محفوظة كـ artifact في كل تشغيل للتتبع.
+
+## خارطة التطوير لاحقًا
+1. **المرحلة 1 (الآن):** مهمة واحدة، مراجعة يدوية لكل PR.
+2. **المرحلة 2:** قياس نسبة الـ PRs المقبولة بدون تعديل، وتحسين `pipeline-rules.md` والـ subagents بناءً على أسباب الرفض.
+3. **المرحلة 3:** رفع `max_tasks_per_run` أو التشغيل الليلي بعد استقرار الجودة.
+4. **عند تغيير المتتبّع:** استبدل عقد `Tracker:` فقط، حسب الجدول في هذا الملف.

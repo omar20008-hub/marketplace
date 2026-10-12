@@ -1,0 +1,162 @@
+{
+  "name": "Claude Dev — Task Dispatcher (Asana adapter)",
+  "nodes": [
+    {
+      "id": "59fb6c19-32c3-417c-b46e-fd7b7e48dfb7",
+      "name": "Every 15 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0],
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 15 }]
+        }
+      }
+    },
+    {
+      "id": "9e40b71a-8056-4d7d-9ddf-b87dcc8659ad",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [220, 0],
+      "notes": "Tracker-specific values live here, plus the GitHub target. Only the Tracker nodes read the section ids.",
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "09f5a215-2737-40b7-bcb2-9e7d05852cf2", "name": "ready_section_id", "value": "REPLACE_READY_SECTION_GID", "type": "string" },
+            { "id": "9cbef1e8-6364-4f46-bf1b-98d4b0d33d06", "name": "in_progress_section_id", "value": "REPLACE_IN_PROGRESS_SECTION_GID", "type": "string" },
+            { "id": "00ef5e5b-3ca0-4f8a-b4c5-62d96578277c", "name": "github_owner", "value": "omar20008-hub", "type": "string" },
+            { "id": "b5c6f400-b333-489d-b7b5-9aad7b612407", "name": "github_repo", "value": "marketplace", "type": "string" },
+            { "id": "5654db47-91d0-4a26-bafc-aa65b5769b66", "name": "max_tasks_per_run", "value": 1, "type": "number" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "1229cd1f-4863-46bc-86d2-9c030133c234",
+      "name": "Tracker: list ready tasks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 0],
+      "parameters": {
+        "method": "GET",
+        "url": "https://app.asana.com/api/1.0/tasks",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "asanaApi",
+        "options": {},
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "section", "value": "={{ $json.ready_section_id }}" },
+            { "name": "opt_fields", "value": "name,notes,permalink_url,completed" },
+            { "name": "completed_since", "value": "now" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "a56fc6a5-9ac8-452e-8712-12a33793ffeb",
+      "name": "Split Tasks",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [660, 0],
+      "parameters": {
+        "fieldToSplitOut": "data",
+        "options": {}
+      }
+    },
+    {
+      "id": "2e569ba3-7ef3-4e25-8e76-284000d65262",
+      "name": "Take One",
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [880, 0],
+      "parameters": {
+        "maxItems": "={{ $('Config').first().json.max_tasks_per_run }}"
+      }
+    },
+    {
+      "id": "7c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f",
+      "name": "Normalize Task",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 0],
+      "notes": "Converts the tracker's task into the neutral shape the pipeline reads. Replace this when the tracker changes.",
+      "parameters": {
+        "jsCode": "return $input.all().map(item => {\n  const t = item.json;\n  return { json: {\n    tracker: 'asana',\n    task_id: String(t.gid),\n    task_title: t.name || '',\n    task_description: (t.notes || '').slice(0, 20000),\n    task_url: t.permalink_url || ''\n  } };\n});"
+      }
+    },
+    {
+      "id": "27d22bb7-b588-4976-af86-013c1958b532",
+      "name": "Dispatch to GitHub",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1320, 0],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.github.com/repos/{{ $('Config').first().json.github_owner }}/{{ $('Config').first().json.github_repo }}/dispatches",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Accept", "value": "application/vnd.github+json" },
+            { "name": "X-GitHub-Api-Version", "value": "2022-11-28" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ event_type: 'task-ready', client_payload: { tracker: $json.tracker, task_id: $json.task_id, task_title: $json.task_title, task_description: $json.task_description, task_url: $json.task_url } }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "e117c95b-27d2-4a12-81df-05f136904804",
+      "name": "Tracker: mark in progress",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1540, 0],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://app.asana.com/api/1.0/sections/{{ $('Config').first().json.in_progress_section_id }}/addTask",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "asanaApi",
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ data: { task: $('Normalize Task').item.json.task_id } }) }}"
+      }
+    },
+    {
+      "id": "b2523660-8cd0-4efd-ac54-b76336e80d6a",
+      "name": "Tracker: comment started",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1760, 0],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://app.asana.com/api/1.0/tasks/{{ $('Normalize Task').item.json.task_id }}/stories",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "asanaApi",
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ data: { text: '🤖 بدأ Claude العمل على هذه المهمة. ستصلك النتيجة هنا مع رابط الـ PR بعد التطوير والاختبار.' } }) }}"
+      }
+    }
+  ],
+  "connections": {
+    "Every 15 min": { "main": [[{ "node": "Config", "type": "main", "index": 0 }]] },
+    "Config": { "main": [[{ "node": "Tracker: list ready tasks", "type": "main", "index": 0 }]] },
+    "Tracker: list ready tasks": { "main": [[{ "node": "Split Tasks", "type": "main", "index": 0 }]] },
+    "Split Tasks": { "main": [[{ "node": "Take One", "type": "main", "index": 0 }]] },
+    "Take One": { "main": [[{ "node": "Normalize Task", "type": "main", "index": 0 }]] },
+    "Normalize Task": { "main": [[{ "node": "Dispatch to GitHub", "type": "main", "index": 0 }]] },
+    "Dispatch to GitHub": { "main": [[{ "node": "Tracker: mark in progress", "type": "main", "index": 0 }]] },
+    "Tracker: mark in progress": { "main": [[{ "node": "Tracker: comment started", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
