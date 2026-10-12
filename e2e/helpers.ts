@@ -8,10 +8,10 @@ export const ACCOUNTS = {
 
 export const PASSWORD = "builder";
 
-export async function signIn(page: Page, email: string) {
+export async function signIn(page: Page, email: string, password: string = PASSWORD) {
   await page.goto("/login");
   await page.fill('input[type="email"]', email);
-  await page.fill('input[type="password"]', PASSWORD);
+  await page.fill('input[type="password"]', password);
   await Promise.all([
     page.waitForURL((url) => !url.pathname.startsWith("/login")),
     // The sidebar's sign-out is also a submit button, so this has to name the
