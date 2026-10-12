@@ -19,6 +19,8 @@ import {
 } from "@/lib/connectors/providers";
 import { TelegramLinkCard } from "./telegram-link-card";
 import { ConnectorsTabs, DiscoverView } from "./discover-view";
+import { BrandMark } from "./brand-mark";
+import { slugForCredentialType } from "@/lib/connectors/catalog";
 import { telegramLinkFor } from "@/server/channel-links";
 import { env } from "@/lib/env";
 
@@ -220,9 +222,10 @@ export default async function AccountsPage({
             const uses = useCount.get(account.credentialType) ?? 0;
             return (
               <Card key={account.id} className="flex flex-wrap items-center gap-3 p-3.5">
-                <span className="flex size-10 flex-none items-center justify-center rounded-row bg-fill text-xs font-medium text-ink-2">
-                  {account.initials}
-                </span>
+                <BrandMark
+                  slug={slugForCredentialType(account.credentialType)}
+                  initials={account.initials}
+                />
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium">{account.displayName}</div>
                   {reconnectFor.has(account.id) ? (

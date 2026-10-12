@@ -3,6 +3,7 @@ import clsx from "clsx";
 import { Plus } from "lucide-react";
 import { Badge, Card, Meta, SectionLabel } from "@/components/ds";
 import { CATALOG, type CatalogEntry } from "@/lib/connectors/catalog";
+import { BrandMark } from "./brand-mark";
 
 /** The two views of the Connectors tab. "My connections" is the default and has no query value. */
 export function ConnectorsTabs({ active }: { active: "yours" | "discover" }) {
@@ -112,9 +113,7 @@ function DiscoverCard({ entry, state }: { entry: CatalogEntry; state: CardState 
 
   return (
     <Card className="flex items-start gap-3 p-4">
-      <span className="flex size-10 flex-none items-center justify-center rounded-row bg-fill text-xs font-medium text-ink-2">
-        {entry.initials}
-      </span>
+      <BrandMark slug={entry.slug} initials={entry.initials} />
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium">{entry.name}</div>
         <div className="mt-0.5 text-[13px] text-ink-2">{entry.description}</div>
