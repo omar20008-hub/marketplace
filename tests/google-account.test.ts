@@ -240,7 +240,7 @@ describe("getGoogleAccessToken", () => {
         requirements: {
           create: {
             kind: "CONNECTION",
-            label: "Google Drive",
+            label: "Google Suite",
             credentialType: GOOGLE_DRIVE_CREDENTIAL,
             providedBy: "USER",
           },
@@ -259,7 +259,7 @@ describe("getGoogleAccessToken", () => {
     expect(account).toMatchObject({ status: "EXPIRED", secretJson: null });
     expect(await prisma.installation.findFirstOrThrow()).toMatchObject({
       status: "PARTIAL",
-      attentionNote: "Google Drive still needs connecting.",
+      attentionNote: "Google Suite still needs connecting.",
     });
   });
 

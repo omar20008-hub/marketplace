@@ -34,7 +34,7 @@ export async function attachFolder(
   const account = await prisma.connector.findFirst({
     where: { userId: user.id, credentialType: GOOGLE_DRIVE_CREDENTIAL, status: "ACTIVE" },
   });
-  if (!account) return { error: "Connect your Google Drive first." };
+  if (!account) return { error: "Connect your Google Suite first." };
 
   const result = await createKnowledgeSource(user.id, {
     installationId,
