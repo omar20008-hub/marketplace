@@ -18,6 +18,7 @@ import {
   missingSettings,
 } from "@/lib/connectors/providers";
 import { TelegramLinkCard } from "./telegram-link-card";
+import { ConnectorsTabs, DiscoverView } from "./discover-view";
 import { telegramLinkFor } from "@/server/channel-links";
 import { env } from "@/lib/env";
 
@@ -77,12 +78,16 @@ export default async function AccountsPage({
     connect?: string;
     connected?: string;
     connect_error?: string;
+    tab?: string;
+    q?: string;
   }>;
 }) {
   const {
     connect,
     connected: justConnected,
     connect_error: connectError,
+    tab,
+    q,
   } = await searchParams;
   const user = await requireUser();
 
@@ -121,6 +126,26 @@ export default async function AccountsPage({
       oauthLabel: provider.displayName,
       fields: [],
     }));
+
+  if (tab === "discover") {
+    // Discover needs only what is connectable today, not the n8n schemas Yours reads.
+    const available = new Set([
+      ...CONNECTABLE.map((item) => item.credentialType),
+      ...connectorOptions.map((option) => option.credentialType),
+    ]);
+    const connectedTypes = new Set(
+      accounts.filter((a) => a.status === "ACTIVE").map((a) => a.credentialType),
+    );
+    return (
+      <div className="px-5 py-5 lg:px-7">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+          <PageTitle title="Connectors" />
+          <ConnectorsTabs active="discover" />
+        </div>
+        <DiscoverView q={q ?? ""} available={available} connectedTypes={connectedTypes} />
+      </div>
+    );
+  }
 
   const connectable: Connectable[] = [
     ...(await Promise.all(
@@ -174,7 +199,10 @@ export default async function AccountsPage({
 
   return (
     <div className="px-5 py-5 lg:px-7">
-      <PageTitle title="Connectors" meta={`· ${connected} connected`} />
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+        <PageTitle title="Connectors" meta={`· ${connected} connected`} />
+        <ConnectorsTabs active="yours" />
+      </div>
 
       {connectError ? (
         <p role="alert" className="mt-3 text-[13px] text-danger-ink">
