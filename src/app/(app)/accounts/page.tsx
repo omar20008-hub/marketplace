@@ -128,7 +128,7 @@ export default async function AccountsPage({
     }));
 
   if (tab === "discover") {
-    // Discover needs only what is connectable today, not the n8n schemas Yours reads.
+    // Discover needs only what is connectable today, not the n8n schemas My connections reads.
     const available = new Set([
       ...CONNECTABLE.map((item) => item.credentialType),
       ...connectorOptions.map((option) => option.credentialType),

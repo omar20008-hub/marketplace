@@ -4,10 +4,10 @@ import { Plus } from "lucide-react";
 import { Badge, Card, Meta, SectionLabel } from "@/components/ds";
 import { CATALOG, type CatalogEntry } from "@/lib/connectors/catalog";
 
-/** The two views of the Connectors tab. "Yours" is the default and has no query value. */
+/** The two views of the Connectors tab. "My connections" is the default and has no query value. */
 export function ConnectorsTabs({ active }: { active: "yours" | "discover" }) {
   const tabs = [
-    { key: "yours", label: "Yours", href: "/accounts" },
+    { key: "yours", label: "My connections", href: "/accounts" },
     { key: "discover", label: "Discover", href: "/accounts?tab=discover" },
   ] as const;
   return (
@@ -34,7 +34,7 @@ export function ConnectorsTabs({ active }: { active: "yours" | "discover" }) {
 
 /**
  * Every tool the platform lists. Connectable ones link into the Connect panel on
- * Yours; the rest are listed as coming soon. Search is a plain GET form, so it
+ * My connections; the rest are listed as coming soon. Search is a plain GET form, so it
  * works without script and survives a reload.
  */
 export function DiscoverView({
