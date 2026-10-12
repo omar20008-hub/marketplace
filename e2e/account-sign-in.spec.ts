@@ -45,7 +45,7 @@ test.describe("signed in with E2E_EMAIL and E2E_PASSWORD", () => {
     for (const path of ["/", "/marketplace", "/workspace", "/accounts"]) {
       await page.goto(path);
       await expect(page, `${path} should not require signing in again`).not.toHaveURL(/\/login/);
-      await expect(page.locator("h1").first(), `${path} should have a heading`).not.toBeEmpty();
+      await expect(page.getByRole("heading").first(), `${path} should have a heading`).not.toBeEmpty();
     }
 
     assertNoProblems();
