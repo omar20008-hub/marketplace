@@ -144,6 +144,47 @@ describe("account readers", () => {
     expect(airtable.accountFrom({ id: "usrX" })).toEqual({ accountRef: "usrx", label: "Airtable" });
   });
 
+  it("reads a Stripe connected account from the token answer, by its account id", () => {
+    const stripe = findProvider("stripe")!;
+    expect(stripe.identityUrl).toBeUndefined();
+    expect(stripe.identityFromToken!({ stripe_user_id: "acct_123", access_token: "x" })).toEqual({
+      accountRef: "acct_123",
+      label: "Stripe account acct_123",
+    });
+    expect(stripe.identityFromToken!({})).toBeNull();
+  });
+
+  it("reads a Microsoft 365 account by mail, else user principal name", () => {
+    const microsoft = findProvider("microsoft365")!;
+    expect(microsoft.accountFrom({ id: "g1", mail: "Nora@Acme.co", displayName: "Nora" })).toEqual({
+      accountRef: "nora@acme.co",
+      label: "Nora (Microsoft 365)",
+    });
+    expect(microsoft.accountFrom({ id: "g1", userPrincipalName: "nora@acme.onmicrosoft.com" })).toEqual({
+      accountRef: "nora@acme.onmicrosoft.com",
+      label: "Microsoft 365",
+    });
+  });
+
+  it("leaves out the client id on Stripe's token request, and keeps it elsewhere", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: { body: string }) => {
+        calls.push(init.body);
+        return new Response("{}", { status: 200 });
+      }),
+    );
+    await postToTokenEndpoint(findProvider("stripe")!, { grant_type: "authorization_code", code: "ac_1" });
+    await postToTokenEndpoint(findProvider("microsoft365")!, { grant_type: "authorization_code", code: "ac_1" });
+    const stripeBody = new URLSearchParams(calls[0]);
+    const microsoftBody = new URLSearchParams(calls[1]);
+    expect(stripeBody.get("client_id")).toBeNull();
+    expect(stripeBody.get("client_secret")).not.toBeNull();
+    expect(microsoftBody.get("client_id")).not.toBeNull();
+    vi.unstubAllGlobals();
+  });
+
   it("reads a Trello member by username", () => {
     const trello = findProvider("trello")!;
     expect(trello.accountFrom({ username: "NoraH", fullName: "Nora Haddad" })).toEqual({

@@ -120,6 +120,8 @@ export function credentialLabel(credentialType: string) {
     airtableOAuth2Api: "Airtable",
     trelloApi: "Trello",
     asanaOAuth2Api: "Asana",
+    microsoftGraphOAuth2Api: "Microsoft 365",
+    stripeConnectOAuth2Api: "Stripe",
     microsoftTeamsOAuth2Api: "Microsoft Teams",
     hubspotApi: "HubSpot",
     openAiApi: "OpenAI",

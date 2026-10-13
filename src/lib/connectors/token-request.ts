@@ -16,7 +16,11 @@ export function postToTokenEndpoint(
 
   const fields: Record<string, string> = basic
     ? params
-    : { ...params, client_id: clientId, client_secret: clientSecret };
+    : {
+        ...params,
+        ...(provider.omitClientIdOnToken ? {} : { client_id: clientId }),
+        client_secret: clientSecret,
+      };
 
   const headers: Record<string, string> = {};
   if (basic) {

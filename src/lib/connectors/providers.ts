@@ -36,6 +36,8 @@ export type ConnectorProvider = {
   tokenAuth?: "body" | "basic";
   /** Form-encoded is the default; a few tools want JSON. */
   tokenBody?: "form" | "json";
+  /** Stripe's token request takes only the secret, so the client id is left out of it. */
+  omitClientIdOnToken?: boolean;
   /** Sends a PKCE challenge on authorize and the verifier on the token request. */
   pkce?: boolean;
   /** For tools that return the person inside the token answer, rather than at an identity endpoint. */
@@ -218,7 +220,59 @@ const trello: ConnectorProvider = {
   signIn: true,
 };
 
-const SIGN_IN: ConnectorProvider[] = [asana, airtable, notion, trello];
+/**
+ * Microsoft 365 through Microsoft's identity platform. The common endpoint takes
+ * work and personal accounts. offline_access is what makes it issue a refresh
+ * token. Admin consent may be needed in some work tenants.
+ */
+const microsoft365: ConnectorProvider = {
+  id: "microsoft365",
+  credentialType: "microsoftGraphOAuth2Api",
+  displayName: "Microsoft 365",
+  initials: "MS",
+  authorizeUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+  tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+  identityUrl: "https://graph.microsoft.com/v1.0/me",
+  scopes: ["offline_access", "User.Read", "Files.ReadWrite.All", "Sites.ReadWrite.All"],
+  clientId: () => env.microsoft.clientId,
+  clientSecret: () => env.microsoft.clientSecret,
+  settingNames: ["MICROSOFT_CLIENT_ID", "MICROSOFT_CLIENT_SECRET"],
+  accountFrom: (json) => {
+    const data = json as { id?: string; mail?: string; userPrincipalName?: string; displayName?: string };
+    const accountRef = (data.mail ?? data.userPrincipalName ?? data.id ?? "").toLowerCase();
+    if (!accountRef) return null;
+    return { accountRef, label: data.displayName ? `${data.displayName} (Microsoft 365)` : "Microsoft 365" };
+  },
+  signIn: true,
+};
+
+/**
+ * Stripe Connect, OAuth for Standard accounts: the person connects their own
+ * Stripe account. The token answer names the account (stripe_user_id), so there
+ * is no identity call. The client secret is the platform's secret key.
+ */
+const stripe: ConnectorProvider = {
+  id: "stripe",
+  credentialType: "stripeConnectOAuth2Api",
+  displayName: "Stripe",
+  initials: "ST",
+  authorizeUrl: "https://connect.stripe.com/oauth/authorize",
+  tokenUrl: "https://connect.stripe.com/oauth/token",
+  scopes: ["read_write"],
+  omitClientIdOnToken: true,
+  clientId: () => env.stripe.connectClientId,
+  clientSecret: () => env.stripe.secretKey,
+  settingNames: ["STRIPE_CONNECT_CLIENT_ID", "STRIPE_SECRET_KEY"],
+  accountFrom: () => null,
+  identityFromToken: (json) => {
+    const accountId = (json as { stripe_user_id?: string }).stripe_user_id;
+    if (!accountId) return null;
+    return { accountRef: accountId, label: `Stripe account ${accountId}` };
+  },
+  signIn: true,
+};
+
+const SIGN_IN: ConnectorProvider[] = [asana, airtable, notion, trello, microsoft365, stripe];
 const ALL: ConnectorProvider[] = [
   ...SIGN_IN,
   googleDrive,
