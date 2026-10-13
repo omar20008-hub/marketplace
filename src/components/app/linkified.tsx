@@ -36,3 +36,50 @@ export function linkify(text: string): ReactNode[] {
 export function Linkified({ text }: { text: string }) {
   return <>{linkify(text)}</>;
 }
+
+/**
+ * The stored pictures and clips a message points at: only links to this platform's
+ * own media path, with an extension the platform actually serves. Anything else in
+ * a message stays a plain link.
+ */
+const MEDIA = /https?:\/\/[^\s<>()'"]+?\/api\/media\/[A-Za-z0-9_-]{43}\.(jpg|png|mp4|webm)(?![A-Za-z0-9_.-])/g;
+
+export type MediaPreview = { url: string; kind: "image" | "video" };
+
+export function mediaPreviews(text: string): MediaPreview[] {
+  const seen = new Set<string>();
+  const out: MediaPreview[] = [];
+  for (const match of text.matchAll(MEDIA)) {
+    const url = match[0];
+    if (seen.has(url)) continue;
+    seen.add(url);
+    out.push({ url, kind: match[1] === "mp4" || match[1] === "webm" ? "video" : "image" });
+  }
+  return out;
+}
+
+/** The pictures and clips a message carries, shown under its text. */
+export function MediaPreviews({ text }: { text: string }) {
+  const items = mediaPreviews(text);
+  if (items.length === 0) return null;
+  return (
+    <div className="mt-3 flex flex-col gap-3">
+      {items.map((item) =>
+        item.kind === "video" ? (
+          // A clip is shown with its own controls and never plays by itself.
+          <video key={item.url} src={item.url} controls preload="metadata" className="max-h-[420px] w-full max-w-[560px] rounded-card" />
+        ) : (
+          // The platform serves these links itself, so there is no optimizer to hand them to.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            key={item.url}
+            src={item.url}
+            alt=""
+            loading="lazy"
+            className="max-h-[420px] w-auto max-w-full rounded-card"
+          />
+        ),
+      )}
+    </div>
+  );
+}
