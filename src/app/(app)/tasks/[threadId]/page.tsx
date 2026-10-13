@@ -75,8 +75,11 @@ export default async function ThreadPage({
           return (
             <div key={message.id} className="flex flex-col gap-4">
               {message.role === "USER" ? (
-                <div className="self-end rounded-card rounded-br-[6px] bg-fill px-4 py-2.5 text-[15px]">
-                  {message.body}
+                <div className="flex flex-col items-end gap-2 self-end">
+                  <div className="rounded-card rounded-br-[6px] bg-fill px-4 py-2.5 text-[15px]">
+                    {message.body}
+                  </div>
+                  <MediaPreviews text={message.body} />
                 </div>
               ) : (
                 <div>
