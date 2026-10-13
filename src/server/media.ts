@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { prisma } from "@/lib/db";
-import { sniffImage, type ImageKind } from "@/lib/image-sniff";
+import { sniffImage, sniffMedia, type MediaKind } from "@/lib/image-sniff";
 
 /**
  * Images attached in the chat.
@@ -16,6 +16,8 @@ import { sniffImage, type ImageKind } from "@/lib/image-sniff";
  */
 
 export const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // Instagram's own limit
+/** Generated video (a clip of a few seconds) — larger than an image, far from the size of a film. */
+export const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 export const MAX_IMAGES_PER_MESSAGE = 4;
 const MAX_ACTIVE_IMAGES = 50;
 const MAX_ACTIVE_BYTES = 200 * 1024 * 1024;
@@ -24,19 +26,51 @@ const KEEP_MS = 90 * 24 * 60 * 60 * 1000;
 const hash = (token: string) => createHash("sha256").update(token).digest("hex");
 
 export type SaveResult =
-  | { ok: true; token: string; kind: ImageKind; name: string; sizeBytes: number }
+  | { ok: true; token: string; kind: MediaKind; name: string; sizeBytes: number }
   | { ok: false; error: string };
 
+/** A picture a person attaches in the chat: JPEG or PNG only. */
 export async function saveMedia(
   userId: string,
   fileName: string,
   bytes: Uint8Array,
   now = new Date(),
 ): Promise<SaveResult> {
+  return store(userId, fileName, bytes, now, "image");
+}
+
+/**
+ * Something the platform generated for a reply (an image or a short video). Stored
+ * the same way, and reached through the same unguessable link, so the chat can show it.
+ */
+export async function saveGeneratedMedia(
+  userId: string,
+  fileName: string,
+  bytes: Uint8Array,
+  now = new Date(),
+): Promise<SaveResult> {
+  return store(userId, fileName, bytes, now, "any");
+}
+
+async function store(
+  userId: string,
+  fileName: string,
+  bytes: Uint8Array,
+  now: Date,
+  accept: "image" | "any",
+): Promise<SaveResult> {
   if (bytes.length === 0) return { ok: false, error: "The file is empty." };
-  if (bytes.length > MAX_IMAGE_BYTES) return { ok: false, error: "The image is larger than 8 MB." };
-  const kind = sniffImage(bytes);
-  if (!kind) return { ok: false, error: "Only JPEG and PNG images can be attached." };
+  if (bytes.length > MAX_VIDEO_BYTES) return { ok: false, error: "The file is larger than 50 MB." };
+  const kind: MediaKind | null = accept === "image" ? sniffImage(bytes) : sniffMedia(bytes);
+  if (!kind) {
+    return {
+      ok: false,
+      error: accept === "image" ? "Only JPEG and PNG images can be attached." : "Only JPEG, PNG, MP4 and WebM files can be stored.",
+    };
+  }
+  if (kind.mime.startsWith("video/") ? bytes.length > MAX_VIDEO_BYTES : bytes.length > MAX_IMAGE_BYTES) {
+    return { ok: false, error: kind.mime.startsWith("video/") ? "The video is larger than 50 MB." : "The image is larger than 8 MB." };
+  }
 
   const active = await prisma.mediaUpload.aggregate({
     where: { userId, expiresAt: { gt: now } },
@@ -65,11 +99,18 @@ export async function saveMedia(
 }
 
 /** The path a stored image is served from. The extension is for the fetching network's benefit. */
-export function mediaPath(token: string, kind: ImageKind) {
+export function mediaPath(token: string, kind: MediaKind) {
   return `/api/media/${token}.${kind.ext}`;
 }
 
-const FILE = /^([A-Za-z0-9_-]{43})\.(jpg|png)$/;
+const FILE = /^([A-Za-z0-9_-]{43})\.(jpg|png|mp4|webm)$/;
+
+const EXT_BY_MIME: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "video/mp4": "mp4",
+  "video/webm": "webm",
+};
 
 /** The image behind a link, or null if it is unknown, expired, or the extension does not match. */
 export async function findMedia(file: string, now = new Date()) {
@@ -77,8 +118,7 @@ export async function findMedia(file: string, now = new Date()) {
   if (!match) return null;
   const media = await prisma.mediaUpload.findUnique({ where: { tokenHash: hash(match[1]) } });
   if (!media || media.expiresAt <= now) return null;
-  const ext = media.mimeType === "image/png" ? "png" : "jpg";
-  return ext === match[2] ? media : null;
+  return EXT_BY_MIME[media.mimeType] === match[2] ? media : null;
 }
 
 export type Attachment = { url: string; name: string; mime: string };
@@ -101,7 +141,7 @@ export async function resolveAttachments(userId: string, submitted: string[], no
     const file = /^\/api\/media\/([^/]+)$/.exec(url.pathname)?.[1];
     if (!file || (url.protocol !== "https:" && url.protocol !== "http:")) continue;
     const media = await findMedia(file, now);
-    if (!media || media.userId !== userId) continue;
+    if (!media || media.userId !== userId || !media.mimeType.startsWith("image/")) continue;
     out.push({ url: `${url.origin}${url.pathname}`, name: media.name, mime: media.mimeType });
   }
   return out;
