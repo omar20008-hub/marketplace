@@ -149,9 +149,16 @@ export async function activate(
 
   // Platform-held connections (the Gemini key) are supplied by the platform to every
   // product, whatever a stored requirement row says, so they are never asked of the person.
-  const needed = product.requirements
-    .filter((r) => r.credentialType && (r.providedBy === "USER" || isPlatformHeld(r.credentialType)))
-    .map((r) => r.credentialType!);
+  // The template's own list counts too: a platform key that no requirement row names
+  // still has to reach n8n, or the install is refused as missing it.
+  const needed = [
+    ...new Set([
+      ...product.requirements
+        .filter((r) => r.credentialType && (r.providedBy === "USER" || isPlatformHeld(r.credentialType)))
+        .map((r) => r.credentialType!),
+      ...product.requiredCredentials.filter(isPlatformHeld),
+    ]),
+  ];
 
   const missing = needed.filter(
     (type) => !isPlatformHeld(type) && byType.get(type)?.status !== "ACTIVE",

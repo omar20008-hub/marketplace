@@ -40,6 +40,7 @@ const { prisma } = await import("@/lib/db");
 const { activate } = await import("@/server/install-actions");
 const { openCredential, sealCredential } = await import("@/lib/secrets");
 const { n8n } = await import("@/lib/n8n");
+const { storePlatformSecret } = await import("@/lib/platform-secrets");
 
 const PLAN_ID = "test-plan-install";
 
@@ -160,6 +161,28 @@ describe("activate — when n8n fails inside the install", () => {
     expect(result.error).not.toMatch(/apiKey/);
 
     failure.mockRestore();
+    logged.mockRestore();
+  });
+});
+
+describe("activate — platform keys the requirement rows do not name", () => {
+  it("still sends a platform key that only the template's own list names", async () => {
+    const user = await seedUser();
+    await storePlatformSecret("googlePalmApi", "test-platform-key", user.id);
+    const product = await prisma.product.create({
+      data: { ...productData(user.id, "PUBLISHED", []), requiredCredentials: ["googlePalmApi"] },
+    });
+    const install = vi
+      .spyOn(n8n, "install")
+      .mockRejectedValueOnce(new Error("stop after the call"));
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await submit({ productId: product.id, storageBackend: "platform" });
+
+    expect(install).toHaveBeenCalledTimes(1);
+    expect(install.mock.calls[0][0].credentialsJson).toContain("googlePalmApi");
+
+    install.mockRestore();
     logged.mockRestore();
   });
 });
