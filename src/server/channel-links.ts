@@ -15,6 +15,10 @@ import { prisma } from "@/lib/db";
  */
 
 export const TELEGRAM = "telegram";
+export const WHATSAPP = "whatsapp";
+
+/** The chat channels a person can link. Each is proved the same way: a code sent from the chat. */
+export type ChannelName = typeof TELEGRAM | typeof WHATSAPP;
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/1/I to avoid misreading
 const CODE_LENGTH = 8;
@@ -33,21 +37,26 @@ function newCode(): string {
 }
 
 /** Creates a fresh code for this user and drops any earlier unused ones. */
-export async function issueTelegramCode(
+export async function issueChannelCode(
   userId: string,
+  channel: ChannelName,
   now: Date = new Date(),
 ): Promise<{ code: string; expiresAt: Date }> {
   const code = newCode();
   const expiresAt = new Date(now.getTime() + CODE_TTL_MS);
   await prisma.$transaction([
     prisma.channelLinkCode.deleteMany({
-      where: { userId, channel: TELEGRAM, usedAt: null },
+      where: { userId, channel, usedAt: null },
     }),
     prisma.channelLinkCode.create({
-      data: { userId, channel: TELEGRAM, codeHash: hashCode(code), expiresAt },
+      data: { userId, channel, codeHash: hashCode(code), expiresAt },
     }),
   ]);
   return { code, expiresAt };
+}
+
+export function issueTelegramCode(userId: string, now: Date = new Date()) {
+  return issueChannelCode(userId, TELEGRAM, now);
 }
 
 export type RedeemResult =
@@ -59,20 +68,20 @@ export type RedeemResult =
  * owner. Refuses when that chat already belongs to a different platform user.
  * Replaces any Telegram account the owner had linked before.
  */
-export async function redeemTelegramCode(
-  { code, externalId }: { code: string; externalId: string },
+export async function redeemChannelCode(
+  { code, externalId, channel }: { code: string; externalId: string; channel: ChannelName },
   now: Date = new Date(),
 ): Promise<RedeemResult> {
   const row = await prisma.channelLinkCode.findUnique({
     where: { codeHash: hashCode(code) },
   });
-  if (!row || row.channel !== TELEGRAM) return { ok: false, reason: "invalid" };
+  if (!row || row.channel !== channel) return { ok: false, reason: "invalid" };
   if (row.usedAt) return { ok: false, reason: "used" };
   if (row.expiresAt <= now) return { ok: false, reason: "expired" };
 
   return prisma.$transaction(async (tx) => {
     const holder = await tx.channelLink.findUnique({
-      where: { channel_externalId: { channel: TELEGRAM, externalId } },
+      where: { channel_externalId: { channel, externalId } },
     });
     if (holder && holder.userId !== row.userId) {
       return { ok: false, reason: "taken" } as const;
@@ -86,15 +95,15 @@ export async function redeemTelegramCode(
     if (claimed.count !== 1) return { ok: false, reason: "used" } as const;
 
     await tx.channelLink.upsert({
-      where: { userId_channel: { userId: row.userId, channel: TELEGRAM } },
-      create: { userId: row.userId, channel: TELEGRAM, externalId },
+      where: { userId_channel: { userId: row.userId, channel } },
+      create: { userId: row.userId, channel, externalId },
       update: { externalId, linkedAt: now },
     });
     await tx.auditLog.create({
       data: {
         actorId: row.userId,
-        action: "channel.telegram.linked",
-        subject: "telegram",
+        action: `channel.${channel}.linked`,
+        subject: channel,
       },
     });
     return { ok: true, userId: row.userId } as const;
@@ -102,33 +111,52 @@ export async function redeemTelegramCode(
 }
 
 /** What the accounts page may show. The channel id itself stays on the server. */
-export async function telegramLinkFor(userId: string): Promise<{ linkedAt: Date } | null> {
+export async function channelLinkFor(userId: string, channel: ChannelName): Promise<{ linkedAt: Date } | null> {
   const row = await prisma.channelLink.findUnique({
-    where: { userId_channel: { userId, channel: TELEGRAM } },
+    where: { userId_channel: { userId, channel } },
     select: { linkedAt: true },
   });
   return row;
 }
 
-export async function unlinkTelegram(userId: string): Promise<void> {
+export function telegramLinkFor(userId: string) {
+  return channelLinkFor(userId, TELEGRAM);
+}
+
+export async function unlinkChannel(userId: string, channel: ChannelName): Promise<void> {
   await prisma.$transaction([
-    prisma.channelLink.deleteMany({ where: { userId, channel: TELEGRAM } }),
-    prisma.channelLinkCode.deleteMany({ where: { userId, channel: TELEGRAM } }),
+    prisma.channelLink.deleteMany({ where: { userId, channel } }),
+    prisma.channelLinkCode.deleteMany({ where: { userId, channel } }),
     prisma.auditLog.create({
       data: {
         actorId: userId,
-        action: "channel.telegram.unlinked",
-        subject: "telegram",
+        action: `channel.${channel}.unlinked`,
+        subject: channel,
       },
     }),
   ]);
 }
 
-/** Which platform user owns this Telegram account, or null if none does. */
-export async function resolveTelegramUser(externalId: string): Promise<string | null> {
+export function unlinkTelegram(userId: string) {
+  return unlinkChannel(userId, TELEGRAM);
+}
+
+/** Which platform user owns this chat account on the channel, or null if none does. */
+export async function resolveChannelUser(channel: ChannelName, externalId: string): Promise<string | null> {
   const row = await prisma.channelLink.findUnique({
-    where: { channel_externalId: { channel: TELEGRAM, externalId } },
+    where: { channel_externalId: { channel, externalId } },
     select: { userId: true },
   });
   return row?.userId ?? null;
+}
+
+export function redeemTelegramCode(
+  { code, externalId }: { code: string; externalId: string },
+  now: Date = new Date(),
+) {
+  return redeemChannelCode({ code, externalId, channel: TELEGRAM }, now);
+}
+
+export function resolveTelegramUser(externalId: string) {
+  return resolveChannelUser(TELEGRAM, externalId);
 }
