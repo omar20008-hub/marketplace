@@ -43,15 +43,16 @@ function post(body: unknown, headers: Record<string, string> = { "x-sync-token":
   );
 }
 
-beforeEach(async () => {
+async function wipe() {
   await prisma.mediaUpload.deleteMany({});
+  await prisma.installation.deleteMany({});
+  await prisma.product.deleteMany({});
   await prisma.user.deleteMany({});
   await prisma.plan.deleteMany({ where: { id: "gen-media-plan" } });
-});
+}
+beforeEach(wipe);
 afterAll(async () => {
-  await prisma.mediaUpload.deleteMany({});
-  await prisma.user.deleteMany({});
-  await prisma.plan.deleteMany({ where: { id: "gen-media-plan" } });
+  await wipe();
   await prisma.$disconnect();
 });
 
@@ -123,6 +124,52 @@ describe("the endpoint a workflow posts to", () => {
     expect(body.mime).toBe("image/png");
     expect(body.url).toMatch(/\/api\/media\/[A-Za-z0-9_-]{43}\.png$/);
     expect(await prisma.mediaUpload.count({ where: { userId: owner.id } })).toBe(1);
+  });
+
+  it("accepts an installation's own key and stores under its owner, with no user id sent", async () => {
+    const owner = await user("gen-install@example.test");
+    const { newKnowledgeKey } = await import("@/server/knowledge/keys");
+    const { key, hash } = newKnowledgeKey();
+    const product = await prisma.product.create({
+      data: {
+        slug: `gen-media-${Math.random().toString(36).slice(2, 8)}`,
+        creatorId: owner.id,
+        title: "T",
+        summary: "s",
+        description: "d",
+        needsFromYou: "",
+        kind: "WORKFLOW",
+        category: "c",
+        status: "PUBLISHED",
+        templateId: `tpl_gen_${Math.random().toString(36).slice(2, 8)}`,
+      },
+    });
+    await prisma.installation.create({
+      data: {
+        installationId: `inst_gen_${Math.random().toString(36).slice(2, 8)}`,
+        userId: owner.id,
+        productId: product.id,
+        pinnedVersion: "1",
+        instanceWorkflowId: "wf",
+        storageBackend: "platform",
+        status: "ACTIVE",
+        knowledgeKeyHash: hash,
+      },
+    });
+    const response = await receive(
+      new Request("https://platform.example.test/api/n8n/media", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+        body: JSON.stringify({ name: "image.png", base64: Buffer.from(PNG_BYTES).toString("base64") }),
+      }),
+    );
+    expect(response.status).toBe(201);
+    expect(await prisma.mediaUpload.count({ where: { userId: owner.id } })).toBe(1);
+  });
+
+  it("refuses a request with neither the sync token nor an installation key", async () => {
+    const response = await post({ name: "image.png", base64: Buffer.from(PNG_BYTES).toString("base64") }, {});
+    expect(response.status).toBe(401);
   });
 
   it("refuses a user the platform does not know", async () => {
