@@ -111,6 +111,12 @@ jobs:
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code
 
+      # Headless runs have no trust dialog to accept. Without this entry Claude ignores
+      # the project's permission allow-list and exits, so the trust is set explicitly.
+      - name: Trust the workspace for headless Claude
+        run: |
+          jq -n --arg dir "$GITHUB_WORKSPACE" '{projects: {($dir): {hasTrustDialogAccepted: true}}}' > "$HOME/.claude.json"
+
       - name: Run Claude pipeline (orchestrator + subagents)
         continue-on-error: true
         env:
