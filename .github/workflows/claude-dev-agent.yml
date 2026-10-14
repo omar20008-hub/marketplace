@@ -130,6 +130,16 @@ jobs:
             --max-turns 120 \
             --output-format json > .claude-task/claude-output.json
 
+      # Print Claude's own output into the run log, so a failed run says why.
+      - name: Show Claude output
+        if: always()
+        run: |
+          if [ -f .claude-task/claude-output.json ]; then
+            head -c 4000 .claude-task/claude-output.json
+          else
+            echo "No claude-output.json was written."
+          fi
+
       # Independent gate: never trust the agent's own claim that tests pass.
       - name: Verify result and run test gate
         id: verify
