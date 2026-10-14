@@ -146,6 +146,8 @@ export const env = {
    * on the accounts page so the person knows which chat to open. Not a secret.
    */
   telegramBotUsername: process.env.TELEGRAM_BOT_USERNAME?.replace(/^@/, "") || null,
+  /** The WhatsApp Business number people message to link and chat (shown as text, never as a secret). */
+  whatsappBusinessNumber: process.env.WHATSAPP_BUSINESS_NUMBER?.trim() || null,
 
   /**
    * The platform's own Google OAuth client, for connections the platform holds
