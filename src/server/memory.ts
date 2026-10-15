@@ -14,6 +14,7 @@ import {
   formatMemoryBlock,
   looksPersonal,
   parseMemoryCommand,
+  parseNameStatement,
   removeLines,
   routeFact,
   splitFacts,
@@ -200,6 +201,25 @@ export async function handleMemoryCommand(
   return ar
     ? `لم أجد في ملفاتك ما يخص «${command.phrase}». يمكنك مراجعتها من صفحة Memory.`
     : `I did not find anything about "${command.phrase}" in your files. You can review them on the Memory page.`;
+}
+
+/**
+ * Keeps a name the person just stated ("اسمي سعد"), with no model call, so the same
+ * turn already sees it. Honours the "learn from my messages" switch. Never throws.
+ */
+export async function captureName(userId: string, message: string): Promise<boolean> {
+  try {
+    const name = parseNameStatement(message);
+    if (!name) return false;
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { memoryAuto: true } });
+    if (!user?.memoryAuto) return false;
+    const fact = isArabic(message) ? `اسم المستخدم ${name}` : `User's name is ${name}`;
+    const result = await addFact(userId, fact, { file: "Profile" });
+    return result.ok && !result.duplicate;
+  } catch (error) {
+    console.warn(`name capture failed: ${error instanceof Error ? error.name : "error"}`);
+    return false;
+  }
 }
 
 // ------------------------------------------------------------------ learning

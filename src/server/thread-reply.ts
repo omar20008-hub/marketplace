@@ -2,7 +2,7 @@ import "server-only";
 import { after } from "next/server";
 import { prisma } from "@/lib/db";
 import { askOrchestrator } from "./run-engine";
-import { handleMemoryCommand, learnAfterResponse, withMemories } from "./memory";
+import { captureName, handleMemoryCommand, learnAfterResponse, withMemories } from "./memory";
 
 /**
  * Produces the assistant's reply to a message already stored in a thread. It runs
@@ -18,6 +18,7 @@ export async function answerThread(userId: string, threadId: string, text: strin
   let output: string;
   try {
     const command = await handleMemoryCommand(userId, text);
+    if (command === null) await captureName(userId, text);
     output =
       command ?? (await askOrchestrator(userId, await withMemories(userId, chatInput), threadId));
     if (command === null) learnAfterResponse(userId, text);

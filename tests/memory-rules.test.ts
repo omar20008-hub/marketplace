@@ -9,6 +9,7 @@ import {
   formatMemoryBlock,
   looksPersonal,
   parseMemoryCommand,
+  parseNameStatement,
   removeLines,
   routeFact,
   sameFact,
@@ -207,5 +208,34 @@ describe("splitFacts", () => {
   it("leaves a list alone", () => {
     expect(splitFacts("أحب الشاي والقهوة")).toEqual(["أحب الشاي والقهوة"]);
     expect(splitFacts("I like tea and coffee")).toEqual(["I like tea and coffee"]);
+  });
+});
+
+describe("parseNameStatement", () => {
+  it.each([
+    ["اسمي سعد", "سعد"],
+    ["أنا اسمي سعد", "سعد"],
+    ["اسمي سعد وأعمل في مقهى", "سعد"],
+    ["اسمي سعد.", "سعد"],
+    ["my name is Saad", "Saad"],
+    ["My name's Saad", "Saad"],
+    ["call me Saad!", "Saad"],
+  ])("finds the name in %s", (message, name) => {
+    expect(parseNameStatement(message)).toBe(name);
+  });
+
+  it.each([
+    ["a question in Arabic", "ما اسمي؟"],
+    ["a question in English", "what is my name"],
+    ["a question with a mark", "my name is Saad?"],
+    ["no name", "my name"],
+    ["digits", "my name is Saad123"],
+    ["an email", "my name is a@example.com"],
+    ["a link", "my name is https://example.com"],
+    ["too long a name", `my name is ${"a".repeat(41)}`],
+    ["too long a message", `my name is Saad ${"x ".repeat(130)}`],
+    ["nothing", "summarise this file"],
+  ])("returns null for %s", (_name, message) => {
+    expect(parseNameStatement(message)).toBeNull();
   });
 });
