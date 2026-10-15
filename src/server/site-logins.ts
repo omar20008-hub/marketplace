@@ -154,6 +154,26 @@ export async function deleteSiteLogin(userId: string, id: string): Promise<boole
 }
 
 /**
+ * Resolves one saved login by its id, for the personal assistant's fill path.
+ * Only the owner's logins resolve: another person's id returns null.
+ */
+export async function resolveSiteLoginById(
+  { userId, id }: { userId: string; id: string },
+  now: Date = new Date(),
+): Promise<{ username: string; password: string; host: string } | null> {
+  const row = await prisma.siteLogin.findFirst({ where: { id, userId } });
+  if (!row) return null;
+  const secret = openCredential(row.sealedSecret);
+  await prisma.$transaction([
+    prisma.siteLogin.update({ where: { id: row.id }, data: { lastUsedAt: now } }),
+    prisma.auditLog.create({
+      data: { actorId: userId, action: "site-login.used", subject: row.host },
+    }),
+  ]);
+  return { username: row.username, password: secret.password ?? "", host: row.host };
+}
+
+/**
  * The only place a saved password is read back. Called by the server path that
  * drives the browser, which types it into the login form and discards it.
  * Returns the one login for that site when no username is given, and null when
