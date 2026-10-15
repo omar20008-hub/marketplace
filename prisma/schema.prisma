@@ -74,6 +74,9 @@ model User {
   memoryFiles   MemoryFile[]
   channelLinks      ChannelLink[]
   channelLinkCodes  ChannelLinkCode[]
+  siteLogins        SiteLogin[]
+  siteLoginRequests SiteLoginRequest[]
+  agentKeys          AgentKey[]
 }
 
 // ------------------------------------------------------------ chat channels
@@ -887,6 +890,42 @@ model MediaUpload {
   @@index([expiresAt])
 }
 
+// ------------------------------------------------------------ saved site logins
+
+// A username and password the person saved for a website, so the personal
+// assistant can sign in for them. The password is sealed with SECRETS_KEY and
+// is read back only by the server-side fill path, never by a page or a model.
+model SiteLogin {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  siteUrl      String // the login page, normalised to https://host
+  host         String
+  username     String
+  sealedSecret String // sealCredential({ password })
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  lastUsedAt   DateTime?
+
+  @@unique([userId, host, username])
+  @@index([userId])
+}
+
+// A one-time link the platform hands out so the person can type a login into
+// the platform, not into a chat. Only the SHA-256 of the token is stored.
+model SiteLoginRequest {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  siteUrl   String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
 enum AdCampaignStatus {
   /// Saved, not yet sent to Meta.
   DRAFT
@@ -936,4 +975,18 @@ model AdCampaign {
 
   @@index([userId, createdAt])
   @@index([status])
+}
+
+// A key the platform issues to one person for their own personal assistant. Only
+// the SHA-256 of the key is stored, and it is shown once. Whoever holds the key
+// acts as that person and nobody else, so the user id is never taken from a body.
+model AgentKey {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  keyHash   String    @unique
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  @@index([userId])
 }
