@@ -1,5 +1,6 @@
 import "server-only";
 import { env } from "../env";
+import { MAX_REPLY_MS } from "../reply-latency";
 import type { N8nDriver } from "./driver";
 import {
   ApproveTemplateOutput,
@@ -10,6 +11,7 @@ import {
   UploadOutput,
   type ApproveTemplateInput,
   type ChatInput,
+  type ChatOptions,
   type CredentialSchema,
   type DispatchInput,
   type InstallInput,
@@ -55,7 +57,11 @@ class N8nError extends Error {
   }
 }
 
-async function postWebhook<T>(url: string, body: unknown): Promise<T> {
+async function postWebhook<T>(
+  url: string,
+  body: unknown,
+  timeoutMs?: number,
+): Promise<T> {
   if (!url) throw new N8nError("Webhook URL is not configured");
 
   const response = await fetch(url, {
@@ -70,6 +76,7 @@ async function postWebhook<T>(url: string, body: unknown): Promise<T> {
     },
     body: JSON.stringify(body),
     cache: "no-store",
+    ...(timeoutMs !== undefined ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
   });
 
   const contentType = response.headers.get("content-type") ?? "";
@@ -150,16 +157,20 @@ export const liveDriver: N8nDriver = {
     return postWebhook<StorageOutput>(env.n8n.storageWebhookUrl, input);
   },
 
-  async chat(input: ChatInput): Promise<ChatOutput> {
+  async chat(input: ChatInput, options?: ChatOptions): Promise<ChatOutput> {
     // Goes through postWebhook like every other workflow call, so a 5xx, a
     // timeout, or the workflow answering with an HTML page all fail loudly
     // here rather than surfacing as a made-up reply. action:"sendMessage" is
     // the n8n Chat Trigger's own envelope, not this platform's invention.
-    const raw = await postWebhook<unknown>(env.n8n.orchestratorChatUrl, {
-      action: "sendMessage",
-      sessionId: input.sessionId,
-      chatInput: input.chatInput,
-    });
+    const raw = await postWebhook<unknown>(
+      env.n8n.orchestratorChatUrl,
+      {
+        action: "sendMessage",
+        sessionId: input.sessionId,
+        chatInput: input.chatInput,
+      },
+      options?.timeoutMs ?? MAX_REPLY_MS,
+    );
     return ChatOutput.parse(raw);
   },
 
