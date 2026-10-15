@@ -44,3 +44,9 @@ export function bearerToken(request: Request): string {
   const match = /^Bearer\s+(\S+)$/.exec(request.headers.get("authorization") ?? "");
   return match ? match[1] : "";
 }
+
+/** Whether the person holds an active key, for the accounts page. */
+export async function agentKeyActive(userId: string): Promise<boolean> {
+  const count = await prisma.agentKey.count({ where: { userId, revokedAt: null } });
+  return count > 0;
+}
