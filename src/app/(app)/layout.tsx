@@ -42,7 +42,7 @@ export default async function AppLayout({
         prisma.installation.count({
           where: { userId: user.id, status: { in: ["ACTIVE", "PARTIAL", "DISABLED"] } },
         }),
-        prisma.connectedAccount.count({
+        prisma.connector.count({
           where: { userId: user.id, status: { in: ["EXPIRED", "PENDING"] } },
         }),
       ])

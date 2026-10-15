@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import type { Viewer } from "@/lib/auth";
 import { n8n } from "@/lib/n8n";
 import { readinessFor } from "@/lib/readiness";
+import { fitsInPlan, storageFullMessage, storageUsedBytes } from "@/server/storage-quota";
 import type { Prisma } from "@/generated/prisma";
 
 /**
@@ -138,7 +139,7 @@ export async function executeRun({
   });
   if (!installation) return null;
 
-  const accounts = await prisma.connectedAccount.findMany({
+  const accounts = await prisma.connector.findMany({
     where: { userId: user.id },
   });
 
@@ -171,6 +172,26 @@ export async function executeRun({
         charged: false,
         chargeNote: "not charged",
         steps: { create: [{ idx: 0, label: "Check connections", status: "FAILED" }] },
+      },
+      include: { steps: true },
+    });
+  }
+
+  // The storage plan is full: nothing new can be saved, so do not run and spend.
+  const quotaBytes = Number(user.plan.storageBytes);
+  const storageUsed = await storageUsedBytes(user.id);
+  if (storageUsed >= quotaBytes) {
+    return prisma.run.create({
+      data: {
+        ...base,
+        result: "BLOCKED",
+        errorType: "storage limit",
+        message: storageFullMessage(storageUsed, quotaBytes, user.plan.name),
+        finishedAt: new Date(),
+        durationMs: 0,
+        charged: false,
+        chargeNote: "not charged",
+        steps: { create: [{ idx: 0, label: "Check storage", status: "FAILED" }] },
       },
       include: { steps: true },
     });
@@ -288,7 +309,16 @@ export async function executeRun({
     include: { steps: true },
   });
 
-  if (outputs[0]) {
+  // A result that would take the plan past its storage is not written. The run itself
+  // already happened and stays a success; its output is in the run's message.
+  const resultBytes = Buffer.byteLength(reply.toolOutput, "utf8");
+  const roomForResult = fitsInPlan(
+    await storageUsedBytes(user.id),
+    Number(user.plan.storageBytes),
+    resultBytes,
+  );
+
+  if (outputs[0] && roomForResult) {
     const name = `${installation.product.slug}-${run.runId}.txt`;
     const content = Buffer.from(reply.toolOutput, "utf8").toString("base64");
     const stored = await n8n.storage({

@@ -40,7 +40,7 @@ test.describe("signed in as a user and admin", () => {
     await expect(page.locator("h1")).toContainText("Results");
 
     await page.goto("/accounts");
-    await expect(page.locator("h1")).toContainText("Connected accounts");
+    await expect(page.locator("h1")).toContainText("Connectors");
 
     await page.goto("/admin");
     await expect(page.locator("h1")).toContainText("Admin");

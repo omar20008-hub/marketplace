@@ -14,6 +14,7 @@ vi.mock("server-only", () => ({}));
 const { prisma } = await import("@/lib/db");
 const sites = await import("@/server/site-logins");
 const fillRoute = await import("@/app/api/vault/credential/route");
+const { issueAgentKey } = await import("@/server/agent-keys");
 
 const PLAN_ID = "test-plan-logins";
 
@@ -172,13 +173,50 @@ describe("filling a login for the browser", () => {
 });
 
 describe("credential endpoint", () => {
-  it("refuses a call without the channel token", async () => {
-    const req = new Request("https://app.example.test/api/vault/credential", {
+  function fillRequest(key: string | null, body: Record<string, unknown>) {
+    return new Request("https://app.example.test/api/vault/credential", {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ userId: "x", siteUrl: "https://shop.example.com/" }),
+      headers: {
+        "content-type": "application/json",
+        ...(key ? { authorization: `Bearer ${key}` } : {}),
+      },
+      body: JSON.stringify(body),
     });
-    const res = await fillRoute.POST(req);
+  }
+
+  it("refuses a call without a person's key", async () => {
+    const res = await fillRoute.POST(fillRequest(null, { siteUrl: "https://shop.example.com/" }));
     expect(res.status).toBe(401);
+  });
+
+  it("refuses a key that was never issued", async () => {
+    const res = await fillRoute.POST(fillRequest("ak_not-a-real-key", { siteUrl: "https://shop.example.com/" }));
+    expect(res.status).toBe(401);
+  });
+
+  it("never returns another person's password, even when their id is in the body", async () => {
+    const owner = await seedUser("owner@example.test");
+    const other = await seedUser("other@example.test");
+    const { token } = await sites.requestSiteLoginLink({ userId: owner.id, siteUrl: "https://shop.example.com/" });
+    await sites.saveSiteLogin({ userId: owner.id, token, username: "nora", password: "owner-secret" });
+
+    const otherKey = await issueAgentKey(other.id);
+    const res = await fillRoute.POST(
+      fillRequest(otherKey, { userId: owner.id, siteUrl: "https://shop.example.com/" }),
+    );
+    expect(res.status).toBe(404);
+    expect(await res.text()).not.toContain("owner-secret");
+  });
+
+  it("returns the key holder's own password", async () => {
+    const owner = await seedUser("owner2@example.test");
+    const { token } = await sites.requestSiteLoginLink({ userId: owner.id, siteUrl: "https://shop.example.com/" });
+    await sites.saveSiteLogin({ userId: owner.id, token, username: "nora", password: "own-secret" });
+
+    const key = await issueAgentKey(owner.id);
+    const res = await fillRoute.POST(fillRequest(key, { siteUrl: "https://shop.example.com/" }));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(await res.json()).toMatchObject({ username: "nora", password: "own-secret" });
   });
 });

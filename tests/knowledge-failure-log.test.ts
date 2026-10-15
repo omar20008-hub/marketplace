@@ -114,7 +114,7 @@ async function wipe() {
   await prisma.knowledgeSource.deleteMany({});
   await prisma.installation.deleteMany({});
   await prisma.product.deleteMany({});
-  await prisma.connectedAccount.deleteMany({});
+  await prisma.connector.deleteMany({});
   await prisma.user.deleteMany({});
   await prisma.plan.deleteMany({});
   await prisma.heartbeat.deleteMany({});
@@ -128,11 +128,11 @@ async function seedFile(name: string) {
     data: { email: "f@example.test", name: "F", passwordHash: "x", initials: "F", planId: "fl" },
   });
   const installation = await seedInstallation(user.id);
-  const account = await prisma.connectedAccount.create({
+  const account = await prisma.connector.create({
     data: { userId: user.id, credentialType: GOOGLE_DRIVE_CREDENTIAL, displayName: "G", initials: "G", accountRef: "f@example.test", status: "ACTIVE" },
   });
   const source = await prisma.knowledgeSource.create({
-    data: { userId: user.id, installationId: installation.id, accountId: account.id, folderId: "f1", folderName: "Folder\nOne", lastSyncedAt: new Date() },
+    data: { userId: user.id, installationId: installation.id, connectorId: account.id, folderId: "f1", folderName: "Folder\nOne", lastSyncedAt: new Date() },
   });
   return prisma.knowledgeFile.create({
     data: { sourceId: source.id, externalId: "e1", name, mimeType: "text/plain", revision: "r" },

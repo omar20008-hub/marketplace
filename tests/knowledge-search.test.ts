@@ -36,7 +36,7 @@ async function wipe() {
   await prisma.knowledgeSource.deleteMany({});
   await prisma.installation.deleteMany({});
   await prisma.product.deleteMany({});
-  await prisma.connectedAccount.deleteMany({});
+  await prisma.connector.deleteMany({});
   await prisma.user.deleteMany({});
   await prisma.plan.deleteMany({});
 }
@@ -55,7 +55,7 @@ async function seedLibrary(
   const user = await seedUser(email);
   const { key, hash } = newKnowledgeKey();
   const installation = await seedInstallation(user.id, { knowledgeKeyHash: hash });
-  const account = await prisma.connectedAccount.create({
+  const account = await prisma.connector.create({
     data: {
       userId: user.id,
       credentialType: "googleDriveOAuth2Api",
@@ -69,7 +69,7 @@ async function seedLibrary(
     data: {
       userId: user.id,
       installationId: installation.id,
-      accountId: account.id,
+      connectorId: account.id,
       folderId: `folder-${email}`,
       folderName: "Docs",
       lastSyncedAt: new Date(),
@@ -182,9 +182,9 @@ describe("POST /api/knowledge/search", () => {
     const one = await seedLibrary("me@example.test", [{ name: "a.txt", text: "alpha budget figures" }]);
     // A second installation of the same user, with its own folder.
     const other = await seedInstallation(one.user.id, { key: "other" });
-    const account = await prisma.connectedAccount.findFirstOrThrow({ where: { userId: one.user.id } });
+    const account = await prisma.connector.findFirstOrThrow({ where: { userId: one.user.id } });
     const src = await prisma.knowledgeSource.create({
-      data: { userId: one.user.id, installationId: other.id, accountId: account.id, folderId: "f2", folderName: "Other" },
+      data: { userId: one.user.id, installationId: other.id, connectorId: account.id, folderId: "f2", folderName: "Other" },
     });
     const file = await prisma.knowledgeFile.create({
       data: { sourceId: src.id, externalId: "x", name: "other.txt", mimeType: "text/plain", revision: "r", status: "READY" },

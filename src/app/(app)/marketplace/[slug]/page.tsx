@@ -61,7 +61,7 @@ export default async function ProductPage({
 
   const [accounts, installation, runsThisMonth] = await Promise.all([
     user
-      ? prisma.connectedAccount.findMany({ where: { userId: user.id } })
+      ? prisma.connector.findMany({ where: { userId: user.id } })
       : Promise.resolve([]),
     user
       ? prisma.installation.findFirst({

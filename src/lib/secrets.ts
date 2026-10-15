@@ -12,7 +12,7 @@ import { env } from "./env";
  *
  * The connect screen tells the user their keys are "stored in an encrypted
  * vault and injected only at the moment a run needs them". This is the half of
- * that promise the database can keep: what lands in ConnectedAccount.secretJson
+ * that promise the database can keep: what lands in Connector.secretJson
  * is ciphertext, so a stolen dump or a stray backup is not a pile of the user's
  * live credentials.
  *

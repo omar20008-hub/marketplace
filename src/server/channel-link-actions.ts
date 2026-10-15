@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { hit } from "@/lib/rate-limit";
-import { issueTelegramCode, unlinkTelegram } from "./channel-links";
+import { issueChannelCode, unlinkChannel, WHATSAPP, TELEGRAM } from "./channel-links";
 
 /**
  * The accounts page's Telegram card. Only the signed-in person can ask for a
@@ -18,12 +18,29 @@ export async function startTelegramLink(): Promise<TelegramCodeState> {
   if (!limit.ok) {
     return { error: `Too many codes. Try again in ${Math.ceil(limit.retryAfterSeconds / 60)} min.` };
   }
-  const { code, expiresAt } = await issueTelegramCode(user.id);
+  const { code, expiresAt } = await issueChannelCode(user.id, TELEGRAM);
   return { code, expiresAt: expiresAt.toISOString() };
 }
 
 export async function removeTelegramLink(): Promise<void> {
   const user = await requireUser();
-  await unlinkTelegram(user.id);
+  await unlinkChannel(user.id, TELEGRAM);
+  revalidatePath("/accounts");
+}
+
+/** The WhatsApp card. Same proof as Telegram: a code the person sends from WhatsApp. */
+export async function startWhatsappLink(): Promise<TelegramCodeState> {
+  const user = await requireUser();
+  const limit = hit(`whatsapp-code:${user.id}`, { limit: 5, windowMs: 10 * 60_000 });
+  if (!limit.ok) {
+    return { error: `Too many codes. Try again in ${Math.ceil(limit.retryAfterSeconds / 60)} min.` };
+  }
+  const { code, expiresAt } = await issueChannelCode(user.id, WHATSAPP);
+  return { code, expiresAt: expiresAt.toISOString() };
+}
+
+export async function removeWhatsappLink(): Promise<void> {
+  const user = await requireUser();
+  await unlinkChannel(user.id, WHATSAPP);
   revalidatePath("/accounts");
 }
