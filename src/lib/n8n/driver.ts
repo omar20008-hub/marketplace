@@ -3,6 +3,7 @@ import type {
   ApproveTemplateInput,
   ApproveTemplateOutput,
   ChatInput,
+  ChatOptions,
   ChatOutput,
   CredentialSchema,
   DispatchInput,
@@ -33,7 +34,7 @@ export interface N8nDriver {
   uninstall(input: UninstallInput): Promise<UninstallOutput>;
   dispatch(input: DispatchInput): Promise<DispatchOutput>;
   storage(input: StorageInput): Promise<StorageOutput>;
-  chat(input: ChatInput): Promise<ChatOutput>;
+  chat(input: ChatInput, options?: ChatOptions): Promise<ChatOutput>;
 
   /** Publishes a reviewed template inside n8n itself — the platform cannot do this on its own. */
   approveTemplate(input: ApproveTemplateInput): Promise<ApproveTemplateOutput>;

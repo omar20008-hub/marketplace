@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import type { Viewer } from "@/lib/auth";
 import { n8n } from "@/lib/n8n";
 import { readinessFor } from "@/lib/readiness";
+import { MAX_REPLY_MS } from "@/lib/reply-latency";
 import { fitsInPlan, storageFullMessage, storageUsedBytes } from "@/server/storage-quota";
 import type { Prisma } from "@/generated/prisma";
 
@@ -84,6 +85,9 @@ export function orchestratorSession(userId: string, threadId?: string): string {
  * few seconds (n8n already retries inside the call). One more try from here, after a
  * pause, turns most of those into an answer instead of an apology.
  */
+/** A retry needs at least this much of the reply budget left to be worth making. */
+const MIN_ATTEMPT_MS = 10_000;
+
 export const orchestratorRuntime = {
   retries: 1,
   retryDelayMs: 4000,
@@ -96,14 +100,32 @@ export async function askOrchestrator(
   threadId?: string,
 ) {
   const sessionId = orchestratorSession(userId, threadId);
+  const deadline = Date.now() + MAX_REPLY_MS;
   for (let attempt = 0; ; attempt++) {
     try {
-      const reply = await n8n.chat({ sessionId, chatInput });
-      return reply.output;
+      const remaining = Math.max(1, deadline - Date.now());
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      // Backstop for a driver that ignores timeoutMs: the reply never outlives the budget.
+      const expired = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("Orchestrator reply timed out")), remaining);
+      });
+      try {
+        const reply = await Promise.race([
+          n8n.chat({ sessionId, chatInput }, { timeoutMs: remaining }),
+          expired,
+        ]);
+        return reply.output;
+      } finally {
+        clearTimeout(timer);
+      }
     } catch (error) {
       console.error("Orchestrator chat failed", error);
-      if (attempt >= orchestratorRuntime.retries) {
-        return "Something went wrong reaching the assistant. Please try again in a moment.";
+      const fallback =
+        "Something went wrong reaching the assistant. Please try again in a moment.";
+      if (attempt >= orchestratorRuntime.retries) return fallback;
+      // A retry must not push the reply past the budget.
+      if (deadline - Date.now() - orchestratorRuntime.retryDelayMs < MIN_ATTEMPT_MS) {
+        return fallback;
       }
       await orchestratorRuntime.sleep(orchestratorRuntime.retryDelayMs);
     }

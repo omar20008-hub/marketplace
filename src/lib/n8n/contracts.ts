@@ -223,6 +223,9 @@ export type ChatInput = {
   chatInput: string;
 };
 
+/** How long the call may take before it is aborted. Defaults to the reply budget. */
+export type ChatOptions = { timeoutMs?: number };
+
 export const ChatOutput = z.object({ output: z.string() });
 export type ChatOutput = z.infer<typeof ChatOutput>;
 
