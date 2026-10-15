@@ -36,16 +36,25 @@ ORDER BY u.email;
 Anyone whose `usedBytes` is above their new limit keeps their files, but cannot
 save new results until they remove some. Decide whether to tell them first.
 
-Then update the prices and limits, inside a transaction, after the check above:
+Production has only the Free row. Pro and Team must be **inserted**, not
+updated. Run this in the Postgres service's Query tab, first with `ROLLBACK`
+to see the result, then change it to `COMMIT` if it is right:
 
 ```sql
 BEGIN;
-UPDATE "Plan" SET "priceMonthly" = 20,  "storageBytes" = 5000000000  WHERE id = 'pro';
-UPDATE "Plan" SET "priceMonthly" = 100, "storageBytes" = 20000000000 WHERE id = 'team';
-SELECT id, "priceMonthly", "storageBytes" FROM "Plan" WHERE id IN ('pro', 'team');
--- Check the three rows, then:
-COMMIT;   -- or ROLLBACK;
+INSERT INTO "Plan" (id, name, "monthlyRuns", "storageBytes", "monthlyCredits", "priceMonthly", "knowledgeSources", "knowledgeFiles")
+VALUES
+  ('pro',  'Pro',  1000, 5000000000,  1500, 20,  5,  5000),
+  ('team', 'Team', 5000, 20000000000, 8000, 100, 20, 50000);
+SELECT id, name, "priceMonthly", "monthlyRuns", "storageBytes"::text AS storage FROM "Plan" ORDER BY id;
+ROLLBACK;  -- after checking the three rows, change this to COMMIT;
 ```
+
+If the rows already exist, the insert fails on the primary key and changes
+nothing. In that case use `UPDATE` with the same values instead.
+
+Free in production shows 100 runs a month, while the table above says 50. Confirm
+which is intended before changing it.
 
 ## 2. Stripe account and products
 
