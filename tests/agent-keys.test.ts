@@ -9,6 +9,7 @@ vi.mock("server-only", () => ({}));
 
 const { prisma } = await import("@/lib/db");
 const keys = await import("@/server/agent-keys");
+const linkRoute = await import("@/app/api/vault/request-link/route");
 
 const PLAN_ID = "test-plan-agent-keys";
 
@@ -64,5 +65,37 @@ describe("agent keys", () => {
     expect(keys.bearerToken(req("Basic ak_abc"))).toBe("");
     expect(keys.bearerToken(req("Bearer two words"))).toBe("");
     expect(keys.bearerToken(req(null))).toBe("");
+  });
+});
+
+describe("link endpoint", () => {
+  function linkRequest(key: string | null, body: Record<string, unknown>) {
+    return new Request("https://app.example.test/api/vault/request-link", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(key ? { authorization: `Bearer ${key}` } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it("refuses a call without a person's key", async () => {
+    const res = await linkRoute.POST(linkRequest(null, { siteUrl: "https://shop.example.com/" }));
+    expect(res.status).toBe(401);
+  });
+
+  it("creates the link for the key's owner, even when another id is in the body", async () => {
+    const owner = await seedUser("link-owner@example.test");
+    const other = await seedUser("link-other@example.test");
+    const key = await keys.issueAgentKey(other.id);
+
+    const res = await linkRoute.POST(
+      linkRequest(key, { userId: owner.id, siteUrl: "https://shop.example.com/" }),
+    );
+    expect(res.status).toBe(200);
+    const row = await prisma.siteLoginRequest.findFirstOrThrow({ where: { siteUrl: "https://shop.example.com/" } });
+    expect(row.userId).toBe(other.id);
+    expect(row.userId).not.toBe(owner.id);
   });
 });
