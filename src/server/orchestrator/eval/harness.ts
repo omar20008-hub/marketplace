@@ -1,5 +1,6 @@
 import { SEARCH_TOOL, runOrchestratorTurn, type ToolHandlers } from "../engine";
 import type { ChatMessage, ChatModel, ToolCall } from "../model";
+import { isAffirmation, type ConfirmationGate } from "../confirmations";
 
 /**
  * Runs one evaluation case through the real turn loop and scores what the model did.
@@ -33,6 +34,30 @@ export type EvalCase = {
   results?: { run?: Record<string, string>; web?: string };
   expect: Expect;
 };
+
+/** The action type of each installation, read from the same catalog text the model sees. */
+export function actionTypesFrom(catalogText: string): Map<string, "read" | "write"> {
+  const types = new Map<string, "read" | "write">();
+  for (const line of catalogText.split("\n")) {
+    const id = /installationId: (\S+)/.exec(line)?.[1];
+    const type = /نوع الإجراء: (read|write)/.exec(line)?.[1];
+    if (id && type) types.set(id, type as "read" | "write");
+  }
+  return types;
+}
+
+/**
+ * Stands in for the database gate: a write is confirmed when the case's question
+ * is an affirmation and the case has an earlier turn to confirm. The real gate
+ * also matches the exact arguments, which these cases do not exercise.
+ */
+function caseConfirmations(c: EvalCase): ConfirmationGate {
+  const priorTurn = (c.history ?? []).some((message) => message.role === "assistant");
+  return {
+    confirmed: async () => priorTurn && isAffirmation(c.question),
+    propose: async () => {},
+  };
+}
 
 export type Attempt = { name: string; installationId?: string; query?: string };
 
@@ -124,7 +149,10 @@ export async function runCase(c: EvalCase, model: ChatModel, now: Date = FIXED_N
   const reply = await runOrchestratorTurn({
     models: [recording],
     catalogText: c.catalogText,
-    allowedInstallationIds: new Set(c.allowedInstallationIds),
+    actionTypes: new Map(
+      [...actionTypesFrom(c.catalogText)].filter(([id]) => c.allowedInstallationIds.includes(id)),
+    ),
+    confirmations: caseConfirmations(c),
     history: c.history ?? [],
     userMessage: c.question,
     now,

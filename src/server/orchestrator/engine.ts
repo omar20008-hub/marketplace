@@ -8,6 +8,7 @@ import {
   type ToolSpec,
 } from "./model";
 import { orchestratorSystemPrompt } from "./prompt";
+import type { ConfirmationGate } from "./confirmations";
 
 /**
  * One user turn: ask the model, run whatever tools it asks for, feed the results
@@ -74,8 +75,10 @@ export type TurnInput = {
   models: ChatModel[];
   /** The rendered catalog from catalog.ts, placed into the system prompt. */
   catalogText: string;
-  /** Installation ids the user actually has. Any other id the model names is refused. */
-  allowedInstallationIds: ReadonlySet<string>;
+  /** The installations the user actually has, and whether each one is a read or a write. Any other id is refused. */
+  actionTypes: ReadonlyMap<string, "read" | "write">;
+  /** Decides whether a write may run. A write runs only after the person has confirmed it. */
+  confirmations: ConfirmationGate;
   history: ChatMessage[];
   userMessage: string;
   now: Date;
@@ -109,11 +112,18 @@ async function execute(call: ToolCall, input: TurnInput): Promise<string> {
 
     if (call.name === RUN_TOOL) {
       const installationId = call.args.installationId;
-      if (typeof installationId !== "string" || !input.allowedInstallationIds.has(installationId)) {
-        return failure("unknown_installation");
-      }
+      const actionType = typeof installationId === "string" ? input.actionTypes.get(installationId) : undefined;
+      if (typeof installationId !== "string" || !actionType) return failure("unknown_installation");
       const args = parseArgs(call.args.args);
       if (!args) return failure("invalid_arguments");
+
+      if (actionType === "write" && !(await input.confirmations.confirmed(installationId, args))) {
+        await input.confirmations.propose(installationId, args);
+        return JSON.stringify({
+          result: "needs_confirmation",
+          message: "لم يُنفَّذ الإجراء بعد. اعرض القيم على المستخدم واطلب تأكيده في رسالته التالية.",
+        });
+      }
       return await input.handlers.runMarketplaceTool(installationId, args);
     }
 

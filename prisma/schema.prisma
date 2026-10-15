@@ -55,21 +55,22 @@ model User {
   // write (see src/server/memory.ts). Things they ask it to remember are kept either way.
   memoryAuto Boolean @default(true)
 
-  products      Product[]
-  installations Installation[]
-  accounts      ConnectedAccount[]
-  runs          Run[]
-  threads       Thread[]
-  mediaUploads  MediaUpload[]
-  reviews       Review[]
-  submissions   Submission[]
-  schedules     Schedule[]
-  auditLogs     AuditLog[]
-  knowledge     KnowledgeSource[]
-  memories      UserMemory[]
-  memoryFiles   MemoryFile[]
-  channelLinks      ChannelLink[]
-  channelLinkCodes  ChannelLinkCode[]
+  products                   Product[]
+  installations              Installation[]
+  accounts                   ConnectedAccount[]
+  runs                       Run[]
+  threads                    Thread[]
+  mediaUploads               MediaUpload[]
+  reviews                    Review[]
+  submissions                Submission[]
+  schedules                  Schedule[]
+  auditLogs                  AuditLog[]
+  knowledge                  KnowledgeSource[]
+  memories                   UserMemory[]
+  memoryFiles                MemoryFile[]
+  channelLinks               ChannelLink[]
+  channelLinkCodes           ChannelLinkCode[]
+  orchestratorPendingActions OrchestratorPendingAction[]
 }
 
 // ------------------------------------------------------------ chat channels
@@ -528,10 +529,34 @@ model Thread {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  messages Message[]
-  runs     Run[]
+  messages                   Message[]
+  runs                       Run[]
+  orchestratorPendingActions OrchestratorPendingAction[]
 
   @@index([userId, updatedAt])
+}
+
+/// A write the Orchestrator proposed and is waiting for the person to confirm.
+/// It runs only when a later message from that person confirms it, and it is
+/// consumed by that run. Proposals older than the confirmation window are ignored.
+model OrchestratorPendingAction {
+  id                  String                    @id @default(cuid())
+  userId              String
+  user                User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  threadId            String
+  thread              Thread                    @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  installationId      String
+  argsKey             String
+  proposedByMessageId String
+  status              OrchestratorPendingStatus @default(PENDING)
+  createdAt           DateTime                  @default(now())
+
+  @@index([userId, threadId, installationId, status])
+}
+
+enum OrchestratorPendingStatus {
+  PENDING
+  CONSUMED
 }
 
 enum MessageRole {

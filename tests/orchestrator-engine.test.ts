@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { NO_CONFIRMATION, type ConfirmationGate } from "@/server/orchestrator/confirmations";
 import {
   MAX_STEPS,
   STEP_LIMIT_REPLY,
@@ -21,7 +22,8 @@ import {
  */
 
 const NOW = new Date("2026-10-20T09:30:00.000Z");
-const ALLOWED = new Set(["inst_mine"]);
+const ALLOWED = new Map<string, "read" | "write">([["inst_mine", "read"]]);
+const WRITE = new Map<string, "read" | "write">([["inst_mine", "write"]]);
 
 function reply(text: string, toolCalls: ModelReply["toolCalls"] = []): ModelReply {
   return { text, toolCalls };
@@ -60,7 +62,8 @@ function handlers(overrides: Partial<ToolHandlers> = {}) {
 function turn(overrides: Partial<TurnInput> & { models: ChatModel[] }): TurnInput {
   return {
     catalogText: "- installationId: inst_mine | الاسم: Digest",
-    allowedInstallationIds: ALLOWED,
+    actionTypes: ALLOWED,
+    confirmations: NO_CONFIRMATION,
     history: [],
     userMessage: "ما أخبار الأسبوع؟",
     now: NOW,
@@ -229,3 +232,80 @@ describe("runOrchestratorTurn — fallback between models", () => {
     await expect(runOrchestratorTurn(turn({ models: [] }))).rejects.toThrow("at least one model");
   });
 });
+
+describe("runOrchestratorTurn — write actions wait for confirmation", () => {
+  function gate(confirmed: boolean) {
+    const proposed: Array<[string, Record<string, unknown>]> = [];
+    const value: ConfirmationGate & { proposed: typeof proposed } = {
+      proposed,
+      confirmed: vi.fn(async () => confirmed),
+      propose: vi.fn(async (id: string, args: Record<string, unknown>) => {
+        proposed.push([id, args]);
+      }),
+    };
+    return value;
+  }
+
+  const WRITE_CALL = call("run_marketplace_tool", { installationId: "inst_mine", args: '{"caption":"مرحباً"}' });
+
+  it("does not run a write on the first request and asks the model to ask the person", async () => {
+    const h = handlers();
+    const g = gate(false);
+    const model = scripted("m", [reply("", [WRITE_CALL]), reply("هل تؤكد النشر؟")]);
+
+    const answer = await runOrchestratorTurn(turn({ models: [model], handlers: h, actionTypes: WRITE, confirmations: g }));
+
+    expect(answer).toBe("هل تؤكد النشر؟");
+    expect(h.runMarketplaceTool).not.toHaveBeenCalled();
+    expect(g.proposed).toEqual([["inst_mine", { caption: "مرحباً" }]]);
+    const result = JSON.parse(model.requests[1].messages.at(-1)!.content as string);
+    expect(result.result).toBe("needs_confirmation");
+  });
+
+  it("runs the write once the gate confirms the earlier proposal", async () => {
+    const h = handlers();
+    const g = gate(true);
+    const model = scripted("m", [reply("", [WRITE_CALL]), reply("تم النشر")]);
+
+    const answer = await runOrchestratorTurn(turn({ models: [model], handlers: h, actionTypes: WRITE, confirmations: g }));
+
+    expect(answer).toBe("تم النشر");
+    expect(h.runMarketplaceTool).toHaveBeenCalledWith("inst_mine", { caption: "مرحباً" });
+    expect(g.proposed).toEqual([]);
+  });
+
+  it("never runs a write when no gate is given", async () => {
+    const h = handlers();
+    const model = scripted("m", [reply("", [WRITE_CALL]), reply("ok")]);
+
+    await runOrchestratorTurn(turn({ models: [model], handlers: h, actionTypes: WRITE }));
+
+    expect(h.runMarketplaceTool).not.toHaveBeenCalled();
+  });
+
+  it("refuses a write for an installation missing from the user's list", async () => {
+    const h = handlers();
+    const g = gate(true);
+    const model = scripted("m", [
+      reply("", [call("run_marketplace_tool", { installationId: "inst_other", args: "{}" })]),
+      reply("ok"),
+    ]);
+
+    await runOrchestratorTurn(turn({ models: [model], handlers: h, actionTypes: WRITE, confirmations: g }));
+
+    expect(h.runMarketplaceTool).not.toHaveBeenCalled();
+    expect(g.confirmed).not.toHaveBeenCalled();
+  });
+
+  it("does not ask the gate about reads", async () => {
+    const h = handlers();
+    const g = gate(false);
+    const model = scripted("m", [reply("", [call("run_marketplace_tool", { installationId: "inst_mine", args: "{}" })]), reply("ok")]);
+
+    await runOrchestratorTurn(turn({ models: [model], handlers: h, confirmations: g }));
+
+    expect(h.runMarketplaceTool).toHaveBeenCalledOnce();
+    expect(g.confirmed).not.toHaveBeenCalled();
+  });
+});
+

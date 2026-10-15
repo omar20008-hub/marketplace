@@ -4,6 +4,7 @@ import { env } from "@/lib/env";
 import { askOrchestrator } from "@/server/run-engine";
 import { renderCatalog, toolCatalog } from "./catalog";
 import { runOrchestratorTurn, type ToolHandlers } from "./engine";
+import { databaseConfirmations } from "./confirmations-store";
 import { createGeminiModel } from "./gemini";
 import type { ChatModel } from "./model";
 import { recentTurns } from "./memory";
@@ -62,7 +63,8 @@ export async function answerOnPlatform({
     return await runOrchestratorTurn({
       models,
       catalogText: renderCatalog(entries),
-      allowedInstallationIds: new Set(entries.map((entry) => entry.installationId)),
+      actionTypes: new Map(entries.map((entry) => [entry.installationId, entry.actionType])),
+      confirmations: databaseConfirmations({ userId, threadId, currentMessageId, userMessage: chatInput }),
       history,
       userMessage: chatInput,
       now: new Date(),
