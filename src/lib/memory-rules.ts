@@ -147,6 +147,30 @@ export function looksPersonal(message: string): boolean {
   return text.length >= 12 && text.length <= 1500 && SELF_REFERENCE.test(text);
 }
 
+/**
+ * "اسمي سعد" / "my name is Saad" / "call me Saad": the name, or null. Model-free, so
+ * a name is kept even with no API key. A question is not a statement, and only the
+ * first word after the cue is taken ("اسمي سعد وأعمل في مقهى" is "سعد").
+ */
+const NAME_CUES = [
+  /(?<!\p{L})اسمي\s+(?:هو\s+)?(\S+)/u,
+  /(?<!\p{L})my\s+name(?:\s+is|['’]s)\s+(\S+)/iu,
+  /(?<!\p{L})call\s+me\s+(\S+)/iu,
+];
+
+export function parseNameStatement(message: string): string | null {
+  const text = normalizeForMatch(message);
+  if (!text || text.length > MAX_FACT_CHARS || /[?؟]/.test(text)) return null;
+  for (const cue of NAME_CUES) {
+    const match = cue.exec(text);
+    if (!match?.[1]) continue;
+    const name = cleanFact(match[1].replace(/[.,!;:،؛]+$/, ""));
+    if (name && name.length <= MAX_NAME_CHARS && /^[\p{L}\p{M}'’-]+$/u.test(name)) return name;
+    return null;
+  }
+  return null;
+}
+
 /** Same fact, ignoring case, spacing, marks and a trailing full stop. */
 export function sameFact(a: string, b: string): boolean {
   const key = (value: string) =>
