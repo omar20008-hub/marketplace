@@ -80,12 +80,14 @@ export function orchestratorSession(userId: string, threadId?: string): string {
 }
 
 /**
- * The model behind the Orchestrator answers "503, high demand" in bursts that last a
- * few seconds (n8n already retries inside the call). One more try from here, after a
- * pause, turns most of those into an answer instead of an apology.
+ * No second try from here. A failed call is not always a failed run: a reply can be
+ * cut off after n8n has already started the work (a video takes about a minute, and
+ * the connection in front of n8n gives up before that), so a retry runs the same
+ * request again and charges for it twice. The "503, high demand" bursts are retried
+ * inside n8n, on the agent node itself.
  */
 export const orchestratorRuntime = {
-  retries: 1,
+  retries: 0,
   retryDelayMs: 4000,
   sleep: (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
 };
