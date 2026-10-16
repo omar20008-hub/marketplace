@@ -27,7 +27,7 @@ const INTEGRATION_LABELS: Record<string, string> = {
   microsoftTeamsOAuth2Api: "Teams",
   slackApi: "Slack",
   hubspotApi: "HubSpot",
-  facebookGraphApi: "Instagram",
+  facebookGraphApi: "Facebook & Instagram",
 };
 
 function compactRuns(runs: number) {
