@@ -427,7 +427,7 @@ describe("followUp", () => {
       data: { userId: user.id, title: "A thread" },
     });
     chatFailure.next = new Error("fetch failed");
-    chatFailure.times = 2; // the first try and the retry
+    chatFailure.times = 1;
 
     await followUp(form({ threadId: thread.id, message: "hi" }));
 
@@ -435,10 +435,10 @@ describe("followUp", () => {
     expect(reply!.body).toBe(
       "Something went wrong reaching the assistant. Please try again in a moment.",
     );
-    expect(chatCalls).toHaveLength(2);
+    expect(chatCalls).toHaveLength(1);
   });
 
-  it("tries once more after a failure and shows the answer if that works", async () => {
+  it("does not send the same request a second time after a failure, since the first may still be running", async () => {
     const user = await seedUser();
     const thread = await prisma.thread.create({
       data: { userId: user.id, title: "A thread" },
@@ -449,8 +449,10 @@ describe("followUp", () => {
     await followUp(form({ threadId: thread.id, message: "hi" }));
 
     const reply = await prisma.message.findFirst({ where: { role: "ASSISTANT" } });
-    expect(reply!.body).toBe("answered hi");
-    expect(chatCalls).toHaveLength(2);
+    expect(reply!.body).toBe(
+      "Something went wrong reaching the assistant. Please try again in a moment.",
+    );
+    expect(chatCalls).toHaveLength(1);
   });
 });
 
