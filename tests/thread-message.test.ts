@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
 /**
  * A workflow that finishes after the chat reply has gone out writes its result into the
@@ -11,6 +11,17 @@ const { newKnowledgeKey } = await import("@/server/knowledge/keys");
 const { POST: deliver } = await import("@/app/api/n8n/thread-message/route");
 
 const RUN = Math.random().toString(36).slice(2, 8);
+
+// This file's own users and products, removed in the order the foreign keys need. A
+// product left behind would otherwise block the blanket user cleanup of later files.
+afterAll(async () => {
+  const owners = (await prisma.user.findMany({ where: { email: { contains: RUN } }, select: { id: true } })).map(
+    (owner) => owner.id,
+  );
+  await prisma.installation.deleteMany({ where: { product: { creatorId: { in: owners } } } });
+  await prisma.product.deleteMany({ where: { creatorId: { in: owners } } });
+  await prisma.user.deleteMany({ where: { id: { in: owners } } });
+});
 
 async function setup(label: string) {
   await prisma.plan.upsert({

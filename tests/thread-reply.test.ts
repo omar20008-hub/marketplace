@@ -37,21 +37,26 @@ const { prisma } = await import("@/lib/db");
 const { startTask } = await import("@/server/run-actions");
 const { followUp } = await import("@/server/thread-actions");
 
+// Only this file's own user. Other files can leave products behind that still point
+// at their creators, and a blanket delete of every user then fails on that foreign key.
+const EMAIL = "r@example.test";
+
 async function wipe() {
-  await prisma.message.deleteMany({});
-  await prisma.thread.deleteMany({});
-  await prisma.user.deleteMany({});
-  await prisma.plan.deleteMany({});
+  await prisma.message.deleteMany({ where: { thread: { user: { email: EMAIL } } } });
+  await prisma.thread.deleteMany({ where: { user: { email: EMAIL } } });
+  await prisma.user.deleteMany({ where: { email: EMAIL } });
 }
 
 beforeEach(async () => {
   await wipe();
   deferred.length = 0;
-  await prisma.plan.create({
-    data: { id: "tr", name: "T", monthlyRuns: 1, storageBytes: BigInt(1), monthlyCredits: 0 },
+  await prisma.plan.upsert({
+    where: { id: "tr" },
+    update: {},
+    create: { id: "tr", name: "T", monthlyRuns: 1, storageBytes: BigInt(1), monthlyCredits: 0 },
   });
   viewer.current = await prisma.user.create({
-    data: { email: "r@example.test", name: "R", passwordHash: "x", initials: "R", planId: "tr" },
+    data: { email: EMAIL, name: "R", passwordHash: "x", initials: "R", planId: "tr" },
   });
 });
 afterAll(async () => {
