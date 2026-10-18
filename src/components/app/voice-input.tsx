@@ -82,7 +82,9 @@ export function useVoice({
   );
 
   const finish = useCallback(() => {
-    const confirmed = decision.current === "confirm";
+    // Only X throws the words away. If the browser ends the recognition by itself (a
+    // long pause), what was said is kept and goes into the box like a confirmed one.
+    const confirmed = decision.current !== "cancel";
     const words = heard.current;
     const notice = problem.current;
     active.current = null;
