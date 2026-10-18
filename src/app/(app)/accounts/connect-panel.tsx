@@ -11,6 +11,8 @@ export type Connectable = {
   displayName: string;
   /** Set when the platform signs the user in itself (Google) instead of taking keys. */
   oauthStartUrl?: string;
+  /** The name shown on that sign-in, e.g. "Google" or "Asana". */
+  oauthLabel?: string;
   /** Set when the user can also sign in on the service itself (Facebook); the token form stays as the second way. */
   signInUrl?: string;
   allows: { grants: string[]; denies: string[] };
@@ -93,9 +95,9 @@ export function ConnectPanel({
           <div className="flex flex-col gap-3 border-t border-selected pt-3">
             {option.oauthStartUrl ? (
               <p className="text-[13px] text-ink-2">
-                You sign in on Google&apos;s own page. The platform never sees your
-                password, and you can revoke access here or from your Google account
-                at any time.
+                You sign in on {option.oauthLabel ?? "the service"}&apos;s own page. The
+                platform never sees your password, and you can revoke access here or
+                from your {option.oauthLabel ?? "service"} account at any time.
               </p>
             ) : option.fields.length === 0 ? (
               <p className="text-[13px] text-ink-2">
@@ -186,7 +188,7 @@ export function ConnectPanel({
             </Button>
             {option.oauthStartUrl ? (
               <ButtonAnchor href={option.oauthStartUrl} size="sm">
-                Continue with Google
+                Continue with {option.oauthLabel ?? "the service"}
               </ButtonAnchor>
             ) : option.signInUrl ? (
               <>

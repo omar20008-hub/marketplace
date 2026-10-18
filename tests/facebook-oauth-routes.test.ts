@@ -36,7 +36,7 @@ const ALL = ["pages_show_list", "pages_read_engagement", "pages_manage_posts"];
 async function wipe() {
   await prisma.installationCredential.deleteMany({});
   await prisma.installation.deleteMany({});
-  await prisma.connectedAccount.deleteMany({});
+  await prisma.connector.deleteMany({});
   await prisma.user.deleteMany({});
   await prisma.plan.deleteMany({});
 }
@@ -128,7 +128,7 @@ describe("GET /api/oauth/facebook/start", () => {
     expect(target.searchParams.get("client_id")).toBe("1234567890");
     expect(target.searchParams.get("redirect_uri")).toBe(`${APP}/api/oauth/facebook/callback`);
     const scopes = target.searchParams.get("scope")!.split(",");
-    expect(scopes).toEqual(expect.arrayContaining([...ALL, "instagram_content_publish"]));
+    expect(scopes).toEqual(expect.arrayContaining([...ALL, "instagram_content_publish", "ads_management", "ads_read"]));
     expect(target.searchParams.get("state")).toBeTruthy();
     // Only the client id travels to Facebook — never the app secret.
     expect(target.toString()).not.toContain("test-facebook-app-secret");
@@ -154,7 +154,7 @@ describe("GET /api/oauth/facebook/callback", () => {
     // The code is swapped for a short token and that for a long one.
     expect(calls.filter((c) => c.includes("/oauth/access_token"))).toHaveLength(2);
 
-    const account = await prisma.connectedAccount.findFirstOrThrow({ where: { userId: user.id } });
+    const account = await prisma.connector.findFirstOrThrow({ where: { userId: user.id } });
     expect(account.credentialType).toBe(FACEBOOK_CREDENTIAL);
     expect(account.status).toBe("ACTIVE");
     expect(account.accountRef).toBe("Nora Acme · Acme Page");
@@ -173,13 +173,13 @@ describe("GET /api/oauth/facebook/callback", () => {
       const { nonce, cookie } = issued(user.id);
       await callback(callbackRequest(`code=abc&state=${nonce}`, cookie));
     }
-    expect(await prisma.connectedAccount.count({ where: { userId: user.id } })).toBe(1);
+    expect(await prisma.connector.count({ where: { userId: user.id } })).toBe(1);
   });
 
   it("replaces a token that was pasted earlier instead of sitting beside it", async () => {
     const user = await seedUser();
     const { sealCredential } = await import("@/lib/secrets");
-    await prisma.connectedAccount.create({
+    await prisma.connector.create({
       data: {
         userId: user.id,
         credentialType: FACEBOOK_CREDENTIAL,
@@ -194,7 +194,7 @@ describe("GET /api/oauth/facebook/callback", () => {
     const { nonce, cookie } = issued(user.id);
     await callback(callbackRequest(`code=abc&state=${nonce}`, cookie));
 
-    const rows = await prisma.connectedAccount.findMany({ where: { userId: user.id } });
+    const rows = await prisma.connector.findMany({ where: { userId: user.id } });
     expect(rows).toHaveLength(1);
     expect(openCredential(rows[0].secretJson)).toEqual({ accessToken: "EAAlong" });
   });
@@ -213,7 +213,7 @@ describe("GET /api/oauth/facebook/callback", () => {
     for (const response of cases) {
       expect(location(response).searchParams.get("connect_error")).toBe("state");
     }
-    expect(await prisma.connectedAccount.count()).toBe(0);
+    expect(await prisma.connector.count()).toBe(0);
   });
 
   it("says so, and stores nothing, when the user declines", async () => {
@@ -221,7 +221,7 @@ describe("GET /api/oauth/facebook/callback", () => {
     const { nonce, cookie } = issued(user.id);
     const response = await callback(callbackRequest(`error=access_denied&state=${nonce}`, cookie));
     expect(location(response).searchParams.get("connect_error")).toBe("fb_denied");
-    expect(await prisma.connectedAccount.count()).toBe(0);
+    expect(await prisma.connector.count()).toBe(0);
   });
 
   it("refuses a sign-in where the posting permission was unticked", async () => {
@@ -230,7 +230,7 @@ describe("GET /api/oauth/facebook/callback", () => {
     const { nonce, cookie } = issued(user.id);
     const response = await callback(callbackRequest(`code=abc&state=${nonce}`, cookie));
     expect(location(response).searchParams.get("connect_error")).toBe("fb_scope");
-    expect(await prisma.connectedAccount.count()).toBe(0);
+    expect(await prisma.connector.count()).toBe(0);
   });
 
   it("refuses an account with no Page to post to", async () => {
@@ -239,7 +239,7 @@ describe("GET /api/oauth/facebook/callback", () => {
     const { nonce, cookie } = issued(user.id);
     const response = await callback(callbackRequest(`code=abc&state=${nonce}`, cookie));
     expect(location(response).searchParams.get("connect_error")).toBe("fb_no_pages");
-    expect(await prisma.connectedAccount.count()).toBe(0);
+    expect(await prisma.connector.count()).toBe(0);
   });
 
   it("returns the user with a message when Facebook errors, never with the token in the URL", async () => {
@@ -264,7 +264,7 @@ describe("GET /api/oauth/facebook/callback", () => {
 describe("expireFacebookAccounts", () => {
   async function account(userId: string, expiresAt: Date | null, ref: string) {
     const { sealCredential } = await import("@/lib/secrets");
-    return prisma.connectedAccount.create({
+    return prisma.connector.create({
       data: {
         userId,
         credentialType: FACEBOOK_CREDENTIAL,
@@ -287,7 +287,7 @@ describe("expireFacebookAccounts", () => {
     expect(await expireFacebookAccounts()).toBe(1);
 
     const after = async (id: string) =>
-      prisma.connectedAccount.findUniqueOrThrow({ where: { id } });
+      prisma.connector.findUniqueOrThrow({ where: { id } });
     expect((await after(lapsed.id)).status).toBe("EXPIRED");
     expect((await after(lapsed.id)).secretJson).toBeNull();
     expect((await after(live.id)).status).toBe("ACTIVE");

@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { isPlatformHeld } from "@/lib/credentials";
 
 /**
  * Keeps the workspace honest: a product whose connection just came back should
@@ -16,7 +17,7 @@ export async function refreshInstallationStates(userId: string) {
       where: { userId, status: { in: ["ACTIVE", "PARTIAL"] } },
       include: { product: { include: { requirements: true } } },
     }),
-    prisma.connectedAccount.findMany({ where: { userId } }),
+    prisma.connector.findMany({ where: { userId } }),
   ]);
 
   const usable = new Set(
@@ -26,6 +27,7 @@ export async function refreshInstallationStates(userId: string) {
   for (const installation of installations) {
     const missing = installation.product.requirements
       .filter((r) => r.providedBy === "USER" && r.credentialType)
+      .filter((r) => !isPlatformHeld(r.credentialType!))
       .filter((r) => !usable.has(r.credentialType!))
       .map((r) => r.label);
 

@@ -86,7 +86,7 @@ async function main() {
     prisma.schedule.deleteMany(),
     prisma.installationCredential.deleteMany(),
     prisma.installation.deleteMany(),
-    prisma.connectedAccount.deleteMany(),
+    prisma.connector.deleteMany(),
     prisma.review.deleteMany(),
     prisma.requirement.deleteMany(),
     prisma.productVersion.deleteMany(),
@@ -100,8 +100,8 @@ async function main() {
   await prisma.plan.createMany({
     data: [
       { id: "free", name: "Free", monthlyRuns: 50, storageBytes: BigInt(1_000_000_000), monthlyCredits: 0, knowledgeSources: 1, knowledgeFiles: 200 },
-      { id: "pro", name: "Pro", monthlyRuns: 1000, storageBytes: BigInt(10_000_000_000), monthlyCredits: 1500, priceMonthly: 29, knowledgeSources: 5, knowledgeFiles: 5000 },
-      { id: "team", name: "Team", monthlyRuns: 5000, storageBytes: BigInt(100_000_000_000), monthlyCredits: 8000, priceMonthly: 99, knowledgeSources: 20, knowledgeFiles: 50000 },
+      { id: "pro", name: "Pro", monthlyRuns: 1000, storageBytes: BigInt(5_000_000_000), monthlyCredits: 1500, priceMonthly: 20, knowledgeSources: 5, knowledgeFiles: 5000 },
+      { id: "team", name: "Team", monthlyRuns: 5000, storageBytes: BigInt(20_000_000_000), monthlyCredits: 8000, priceMonthly: 100, knowledgeSources: 20, knowledgeFiles: 50000 },
     ],
   });
 
@@ -623,7 +623,7 @@ async function main() {
   await prisma.requirement.createMany({
     data: [
       { productId: ig.id, kind: "MODEL", label: "AI model", providedBy: "PLATFORM", sortOrder: 0 },
-      { productId: ig.id, kind: "CONNECTION", label: "Google Drive", note: "— read product images", credentialType: "googleDriveOAuth2Api", providedBy: "PLATFORM_OR_OWN", sortOrder: 1 },
+      { productId: ig.id, kind: "CONNECTION", label: "Google Suite", note: "— read product images", credentialType: "googleDriveOAuth2Api", providedBy: "PLATFORM_OR_OWN", sortOrder: 1 },
       { productId: ig.id, kind: "CONNECTION", label: "Instagram", note: "— publish posts", credentialType: "facebookGraphApi", providedBy: "USER", sortOrder: 2 },
       { productId: ig.id, kind: "STORAGE", label: "Results storage", note: "Platform storage (default)", providedBy: "PLATFORM", sortOrder: 3 },
     ],
@@ -685,10 +685,10 @@ async function main() {
       { credentialType: "hubspotApi", displayName: "HubSpot", initials: "Hs", accountRef: "acme-crm", status: "EXPIRED" as const, scope: "OWN" as const, expiresAt: d(16, 9, 0) },
       { credentialType: "googleSheetsOAuth2Api", displayName: "Google Sheets", initials: "Sh", accountRef: "nora@acme.co", status: "ACTIVE" as const, scope: "OWN" as const },
       { credentialType: "microsoftTeamsOAuth2Api", displayName: "Microsoft Teams", initials: "Tm", accountRef: null, status: "ACTIVE" as const, scope: "PLATFORM" as const },
-      { credentialType: "googleDriveOAuth2Api", displayName: "Google Drive", initials: "Dr", accountRef: null, status: "ACTIVE" as const, scope: "PLATFORM" as const },
+      { credentialType: "googleDriveOAuth2Api", displayName: "Google Suite", initials: "Dr", accountRef: null, status: "ACTIVE" as const, scope: "PLATFORM" as const },
       { credentialType: "slackApi", displayName: "Slack", initials: "Sl", accountRef: "acme.slack.com", status: "ACTIVE" as const, scope: "OWN" as const },
     ].map((a) =>
-      prisma.connectedAccount.create({
+      prisma.connector.create({
         data: {
           userId: nora.id,
           credentialType: a.credentialType,
@@ -750,7 +750,7 @@ async function main() {
         data: {
           installationId: installation.id,
           credentialType,
-          accountId: account?.id ?? null,
+          connectorId: account?.id ?? null,
           n8nCredentialId: account ? `cred_${credentialType.slice(0, 6)}` : null,
         },
       });
@@ -1139,7 +1139,7 @@ async function main() {
 function credentialLabel(credentialType: string) {
   const labels: Record<string, string> = {
     googleSheetsOAuth2Api: "Google Sheets",
-    googleDriveOAuth2Api: "Google Drive",
+    googleDriveOAuth2Api: "Google Suite",
     facebookGraphApi: "Instagram",
     slackApi: "Slack",
     microsoftTeamsOAuth2Api: "Microsoft Teams",

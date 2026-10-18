@@ -55,12 +55,12 @@ export async function connectAccount(
   // Facebook can be connected by signing in or by pasting a token. Either way it is
   // one connection: a second one beside it would leave an install guessing which.
   if (hasFacebookSignIn(credentialType)) {
-    const existing = await prisma.connectedAccount.findFirst({
+    const existing = await prisma.connector.findFirst({
       where: { userId: user.id, credentialType },
       orderBy: { createdAt: "asc" },
     });
     if (existing) {
-      await prisma.connectedAccount.update({
+      await prisma.connector.update({
         where: { id: existing.id },
         data: {
           status: "ACTIVE",
@@ -77,7 +77,7 @@ export async function connectAccount(
     }
   }
 
-  await prisma.connectedAccount.upsert({
+  await prisma.connector.upsert({
     where: {
       userId_credentialType_accountRef: {
         userId: user.id,
@@ -115,7 +115,7 @@ export async function disconnectAccount(formData: FormData) {
   const user = await requireUser();
   const accountId = String(formData.get("accountId") ?? "");
 
-  const account = await prisma.connectedAccount.findFirst({
+  const account = await prisma.connector.findFirst({
     where: { id: accountId, userId: user.id },
   });
   if (!account || account.scope === "PLATFORM") return;
@@ -125,14 +125,14 @@ export async function disconnectAccount(formData: FormData) {
   // the user's to keep or to remove from the Files page.
   if (account.credentialType === GOOGLE_DRIVE_CREDENTIAL) {
     const sources = await prisma.knowledgeSource.findMany({
-      where: { accountId: account.id },
+      where: { connectorId: account.id },
       select: { id: true },
     });
     for (const { id } of sources) {
       await stopWatch(id);
       await prisma.knowledgeSource.update({
         where: { id },
-        data: { status: "NEEDS_RECONNECT", lastError: "Google Drive was disconnected." },
+        data: { status: "NEEDS_RECONNECT", lastError: "Google Suite was disconnected." },
       });
     }
   }
@@ -148,9 +148,9 @@ export async function disconnectAccount(formData: FormData) {
     }
   }
 
-  await prisma.connectedAccount.update({
+  await prisma.connector.update({
     where: { id: account.id },
-    data: { status: "PENDING", secretJson: null },
+    data: { status: "REVOKED", secretJson: null },
   });
 
   await refreshInstallationStates(user.id);

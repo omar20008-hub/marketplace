@@ -53,7 +53,15 @@ describe("authorizationUrl", () => {
     expect(q.get("code_challenge")).toBe(challenge);
     expect(q.get("code_challenge_method")).toBe("S256");
     expect(q.get("scope")!.split(" ").sort()).toEqual(
-      ["email", "https://www.googleapis.com/auth/drive.readonly", "openid"].sort(),
+      [
+        "email",
+        "https://www.googleapis.com/auth/drive.readonly",
+        "https://www.googleapis.com/auth/drive.file",
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/documents",
+        "https://www.googleapis.com/auth/presentations",
+        "openid",
+      ].sort(),
     );
   });
 });

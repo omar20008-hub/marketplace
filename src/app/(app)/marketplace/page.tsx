@@ -27,7 +27,7 @@ const INTEGRATION_LABELS: Record<string, string> = {
   microsoftTeamsOAuth2Api: "Teams",
   slackApi: "Slack",
   hubspotApi: "HubSpot",
-  facebookGraphApi: "Instagram",
+  facebookGraphApi: "Facebook & Instagram",
 };
 
 function compactRuns(runs: number) {
@@ -58,7 +58,7 @@ export default async function MarketplacePage({
       include: { requirements: true, creator: true },
     }),
     user
-      ? prisma.connectedAccount.findMany({ where: { userId: user.id } })
+      ? prisma.connector.findMany({ where: { userId: user.id } })
       : Promise.resolve([]),
     user
       ? prisma.installation.findMany({

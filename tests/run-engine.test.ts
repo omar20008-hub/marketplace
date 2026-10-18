@@ -23,7 +23,7 @@ async function wipe() {
   await prisma.installationCredential.deleteMany({});
   await prisma.installation.deleteMany({});
   await prisma.requirement.deleteMany({});
-  await prisma.connectedAccount.deleteMany({});
+  await prisma.connector.deleteMany({});
   await prisma.product.deleteMany({});
   await prisma.user.deleteMany({});
   await prisma.plan.deleteMany({});
@@ -374,3 +374,70 @@ describe("executeRun — a run that works", () => {
     expect(run!.userId).toBe(user.id);
   });
 });
+
+describe("executeRun — storage limit", () => {
+  async function savedResult(userId: string, installationId: string, productId: string, bytes: number) {
+    const run = await prisma.run.create({
+      data: {
+        runId: `r${Math.random().toString(36).slice(2, 8)}`,
+        userId,
+        installationId,
+        productId,
+        productVersion: "1.0",
+        result: "SUCCESS",
+      },
+    });
+    await prisma.artifact.create({
+      data: {
+        runId: run.id,
+        name: "old.txt",
+        path: "results/old.txt",
+        mimeType: "text/plain",
+        sizeBytes: bytes,
+        objectRef: "platform://old",
+      },
+    });
+  }
+
+  it("stops a run before anything is spent once the saved results fill the plan", async () => {
+    const user = await makeUser();
+    const product = await makeProduct({ creatorId: user.id, outputs: [{ name: "Summary" }] });
+    const mine = await install(user.id, product.id);
+    await savedResult(user.id, mine.id, product.id, 1_000_000);
+
+    const run = await executeRun({ user: user as Viewer, installationId: mine.id, args: {} });
+
+    expect(run?.result).toBe("BLOCKED");
+    expect(run?.errorType).toBe("storage limit");
+    expect(run?.charged).toBe(false);
+    expect(run?.message).toMatch(/Remove old results or upgrade/);
+    // The workflow was never called: no output was produced or paid for.
+    expect(await prisma.artifact.count()).toBe(1);
+  });
+
+  it("does not save a result that would take the plan past its limit", async () => {
+    const user = await makeUser();
+    const product = await makeProduct({ creatorId: user.id, outputs: [{ name: "Summary" }] });
+    const mine = await install(user.id, product.id);
+    // Five bytes of room: any output the workflow returns is larger than that.
+    await savedResult(user.id, mine.id, product.id, 999_995);
+
+    const run = await executeRun({ user: user as Viewer, installationId: mine.id, args: {} });
+
+    expect(run?.result).toBe("SUCCESS");
+    expect(await prisma.artifact.count({ where: { runId: run!.id } })).toBe(0);
+    expect(await prisma.artifact.count()).toBe(1);
+  });
+
+  it("saves a result that fits", async () => {
+    const user = await makeUser();
+    const product = await makeProduct({ creatorId: user.id, outputs: [{ name: "Summary" }] });
+    const mine = await install(user.id, product.id);
+
+    const run = await executeRun({ user: user as Viewer, installationId: mine.id, args: {} });
+
+    expect(run?.result).toBe("SUCCESS");
+    expect(await prisma.artifact.count({ where: { runId: run!.id } })).toBe(1);
+  });
+});
+

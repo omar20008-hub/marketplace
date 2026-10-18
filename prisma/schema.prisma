@@ -44,6 +44,9 @@ model User {
   plan     Plan      @relation(fields: [planId], references: [id])
   renewsAt DateTime?
   credits  Int       @default(0)
+  // Stripe ids, set by the billing webhook. Null for a user on the free plan.
+  stripeCustomerId     String? @unique
+  stripeSubscriptionId String? @unique
 
   // Creator-facing identity, shown on product cards.
   creatorName     String?
@@ -55,21 +58,25 @@ model User {
   // write (see src/server/memory.ts). Things they ask it to remember are kept either way.
   memoryAuto Boolean @default(true)
 
-  products                   Product[]
-  installations              Installation[]
-  accounts                   ConnectedAccount[]
-  runs                       Run[]
-  threads                    Thread[]
-  mediaUploads               MediaUpload[]
-  reviews                    Review[]
-  submissions                Submission[]
-  schedules                  Schedule[]
-  auditLogs                  AuditLog[]
-  knowledge                  KnowledgeSource[]
-  memories                   UserMemory[]
-  memoryFiles                MemoryFile[]
-  channelLinks               ChannelLink[]
-  channelLinkCodes           ChannelLinkCode[]
+  products      Product[]
+  installations Installation[]
+  connectors    Connector[]
+  adCampaigns   AdCampaign[]
+  runs          Run[]
+  threads       Thread[]
+  mediaUploads  MediaUpload[]
+  reviews       Review[]
+  submissions   Submission[]
+  schedules     Schedule[]
+  auditLogs     AuditLog[]
+  knowledge     KnowledgeSource[]
+  memories      UserMemory[]
+  memoryFiles   MemoryFile[]
+  channelLinks      ChannelLink[]
+  channelLinkCodes  ChannelLinkCode[]
+  siteLogins        SiteLogin[]
+  siteLoginRequests SiteLoginRequest[]
+  agentKeys          AgentKey[]
   orchestratorPendingActions OrchestratorPendingAction[]
 }
 
@@ -268,6 +275,16 @@ model Requirement {
   sortOrder      Int             @default(0)
 }
 
+// Credentials the platform owns and hands to whichever runtime needs them (n8n now,
+// Hermes or another platform later). Encrypted with SECRETS_KEY, like connected
+// accounts. Written only from the admin screen; never read back to a page.
+model PlatformSecret {
+  name        String   @id
+  secretJson  String
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+}
+
 model Review {
   id        String   @id @default(cuid())
   productId String
@@ -292,12 +309,14 @@ enum AccountStatus {
   ACTIVE
   EXPIRED
   PENDING
+  REVOKED
 }
 
-// A reusable connection. The design lets one account serve many products, while
-// n8n creates a credential per installation, so InstallationCredential below
-// records which n8n credential each installation got from this account.
-model ConnectedAccount {
+// A reusable connection to an outside tool. The design lets one connector serve
+// many products, while n8n creates a credential per installation, so
+// InstallationCredential below records which n8n credential each installation
+// got from this connector.
+model Connector {
   id             String        @id @default(cuid())
   userId         String
   user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -383,8 +402,8 @@ model InstallationCredential {
   id              String            @id @default(cuid())
   installationId  String
   installation    Installation      @relation(fields: [installationId], references: [id], onDelete: Cascade)
-  accountId       String?
-  account         ConnectedAccount? @relation(fields: [accountId], references: [id])
+  connectorId     String?
+  connector       Connector?        @relation(fields: [connectorId], references: [id])
   credentialType  String
   n8nCredentialId String?
 
@@ -766,8 +785,8 @@ model KnowledgeSource {
   /// own user attached to it, never the user's other folders.
   installationId String
   installation   Installation          @relation(fields: [installationId], references: [id], onDelete: Cascade)
-  accountId      String
-  account        ConnectedAccount      @relation(fields: [accountId], references: [id])
+  connectorId    String
+  connector      Connector             @relation(fields: [connectorId], references: [id])
   provider       String                @default("gdrive")
   folderId       String
   folderName     String
@@ -790,7 +809,7 @@ model KnowledgeSource {
   files KnowledgeFile[]
 
   @@unique([installationId, provider, folderId])
-  @@index([accountId])
+  @@index([connectorId])
 }
 
 model KnowledgeFile {
@@ -934,4 +953,105 @@ model MediaUpload {
 
   @@index([userId, expiresAt])
   @@index([expiresAt])
+}
+
+// ------------------------------------------------------------ saved site logins
+
+// A username and password the person saved for a website, so the personal
+// assistant can sign in for them. The password is sealed with SECRETS_KEY and
+// is read back only by the server-side fill path, never by a page or a model.
+model SiteLogin {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  siteUrl      String // the login page, normalised to https://host
+  host         String
+  username     String
+  sealedSecret String // sealCredential({ password })
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  lastUsedAt   DateTime?
+
+  @@unique([userId, host, username])
+  @@index([userId])
+}
+
+// A one-time link the platform hands out so the person can type a login into
+// the platform, not into a chat. Only the SHA-256 of the token is stored.
+model SiteLoginRequest {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  siteUrl   String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+enum AdCampaignStatus {
+  /// Saved, not yet sent to Meta.
+  DRAFT
+  /// Being created in Meta; a claim so two requests cannot both create it.
+  CREATING
+  /// Created in Meta and left PAUSED. Nothing is spent until it is activated.
+  PAUSED
+  ACTIVE
+  FINISHED
+  FAILED
+}
+
+/// An ads campaign the user asked for in chat, mirrored to Meta's Marketing API.
+/// Written only by the server (src/server/ads/campaigns.ts). Money moves in Meta,
+/// never here: the budget below is what Meta is told to spend per day.
+model AdCampaign {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Meta's ad account, e.g. "act_123". Chosen by the user, never guessed.
+  adAccountId String
+  name        String
+  /// One of the OUTCOME_* objectives the server accepts (see lib/ads/validate.ts).
+  objective   String
+  /// Minor units of the ad account's currency (cents for USD).
+  dailyBudgetCents Int
+  startsAt  DateTime
+  endsAt    DateTime
+  /// { countries: string[], ageMin: number, ageMax: number }
+  targeting Json
+  /// Which placements to run on: any of "facebook", "instagram".
+  platforms String[]
+  caption   String
+  linkUrl   String
+  mediaUrl  String?
+
+  status      AdCampaignStatus @default(DRAFT)
+  metaCampaignId String?
+  metaAdSetId    String?
+  metaAdId       String?
+  /// Meta's own reason when a create call is refused. Never a token.
+  error     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+// A key the platform issues to one person for their own personal assistant. Only
+// the SHA-256 of the key is stored, and it is shown once. Whoever holds the key
+// acts as that person and nobody else, so the user id is never taken from a body.
+model AgentKey {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  keyHash   String    @unique
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  @@index([userId])
 }

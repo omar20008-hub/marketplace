@@ -40,7 +40,7 @@ export default async function WorkspacePage({
         include: { product: { include: { requirements: true } } },
         orderBy: { installedAt: "asc" },
       }),
-      prisma.connectedAccount.findMany({ where: { userId: user.id } }),
+      prisma.connector.findMany({ where: { userId: user.id, status: { not: "REVOKED" } } }),
       prisma.run.groupBy({
         by: ["installationId"],
         where: { userId: user.id },
@@ -253,7 +253,7 @@ export default async function WorkspacePage({
             <div className="mt-2 flex flex-col">
               <RailLink
                 href="/accounts"
-                label="Connected accounts"
+                label="Connectors"
                 value={String(accounts.filter((a) => a.status !== "PENDING").length)}
               />
               <RailLink

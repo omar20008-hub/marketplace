@@ -146,6 +146,8 @@ export const env = {
    * on the accounts page so the person knows which chat to open. Not a secret.
    */
   telegramBotUsername: process.env.TELEGRAM_BOT_USERNAME?.replace(/^@/, "") || null,
+  /** The WhatsApp Business number people message to link and chat (shown as text, never as a secret). */
+  whatsappBusinessNumber: process.env.WHATSAPP_BUSINESS_NUMBER?.trim() || null,
 
   /**
    * The bot's API token, and the secret Telegram echoes back on every update
@@ -183,6 +185,31 @@ export const env = {
     appId: process.env.FACEBOOK_APP_ID ?? "",
     appSecret: process.env.FACEBOOK_APP_SECRET ?? "",
     redirectUri: process.env.FACEBOOK_REDIRECT_URI ?? "",
+  },
+
+  /**
+   * Asana, the first tool signed into through the generic connector sign-in
+   * (lib/connectors). Each tool gets its own app registration and its own pair of
+   * these; the redirect is always PUBLIC_URL + /api/connectors/<tool>/callback.
+   */
+  asana: {
+    clientId: process.env.ASANA_CLIENT_ID ?? "",
+    clientSecret: process.env.ASANA_CLIENT_SECRET ?? "",
+  },
+
+  /**
+   * Stripe, for the paid plans (see lib/billing.ts). Not required to boot: without a
+   * secret key the upgrade buttons say billing is not set up yet. The price ids are
+   * the Stripe prices for each paid plan; the webhook secret checks that a request
+   * really came from Stripe.
+   */
+  stripe: {
+    secretKey: process.env.STRIPE_SECRET_KEY ?? "",
+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
+    priceIds: {
+      pro: process.env.STRIPE_PRICE_PRO ?? "",
+      team: process.env.STRIPE_PRICE_TEAM ?? "",
+    },
   },
 
   /**

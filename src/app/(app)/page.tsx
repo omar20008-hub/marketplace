@@ -54,7 +54,7 @@ export default async function HomePage() {
       include: { product: { include: { requirements: true } } },
       orderBy: { lastRunAt: "desc" },
     }),
-    prisma.connectedAccount.findMany({ where: { userId: user.id } }),
+    prisma.connector.findMany({ where: { userId: user.id } }),
     prisma.run.groupBy({
       by: ["installationId"],
       where: { userId: user.id },

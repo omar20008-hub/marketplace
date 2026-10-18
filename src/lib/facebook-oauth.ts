@@ -27,7 +27,12 @@ export const FACEBOOK_CALLBACK_PATH = "/api/oauth/facebook/callback";
 export const REQUIRED_SCOPES = ["pages_show_list", "pages_read_engagement", "pages_manage_posts"];
 /** Asked for, but declining them only costs Instagram. */
 export const INSTAGRAM_SCOPES = ["instagram_basic", "instagram_content_publish"];
-export const SCOPES = [...REQUIRED_SCOPES, ...INSTAGRAM_SCOPES];
+/**
+ * Asked for so the person can run ad campaigns from their own account. Optional:
+ * declining them leaves posting working, and only the campaign steps refuse.
+ */
+export const ADS_SCOPES = ["ads_management", "ads_read"];
+export const SCOPES = [...REQUIRED_SCOPES, ...INSTAGRAM_SCOPES, ...ADS_SCOPES];
 
 /** Facebook said no, or answered in a way that means this attempt cannot continue. */
 export class FacebookAuthError extends Error {

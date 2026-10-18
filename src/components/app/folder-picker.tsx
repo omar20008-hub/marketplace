@@ -11,7 +11,7 @@ const ROOT: Crumb = { id: "root", name: "My Drive" };
 const SHARED: Crumb = { id: "shared", name: "Shared with me" };
 
 const MESSAGES: Record<string, string> = {
-  not_connected: "Connect your Google Drive first.",
+  not_connected: "Connect your Google Suite first.",
   not_a_folder: "That is not a folder this Google account can open.",
   bad_parent: "That folder could not be opened.",
   drive_unavailable: "Google Drive could not be reached. Try again in a moment.",

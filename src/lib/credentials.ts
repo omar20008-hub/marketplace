@@ -110,7 +110,7 @@ export function fallbackCredentialSchema(credentialType: string): CredentialSche
 export function credentialLabel(credentialType: string) {
   const labels: Record<string, string> = {
     googleSheetsOAuth2Api: "Google Sheets",
-    googleDriveOAuth2Api: "Google Drive",
+    googleDriveOAuth2Api: "Google Suite",
     // One Facebook access token serves Pages and the Instagram Business account linked
     // to them, and more than one product uses it, so the label names the connection
     // rather than whichever product it was first written for.
@@ -122,4 +122,15 @@ export function credentialLabel(credentialType: string) {
     googlePalmApi: "Google Gemini",
   };
   return labels[credentialType] ?? credentialType;
+}
+
+/**
+ * Connections the platform supplies itself, to every product that needs them. The
+ * person connects nothing: the value comes from the platform's own store (see
+ * lib/platform-secrets.ts) and goes wherever the runtime is, at install time.
+ */
+export const PLATFORM_HELD_CREDENTIALS: ReadonlySet<string> = new Set(["googlePalmApi"]);
+
+export function isPlatformHeld(credentialType: string) {
+  return PLATFORM_HELD_CREDENTIALS.has(credentialType);
 }

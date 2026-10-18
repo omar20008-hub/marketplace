@@ -24,3 +24,25 @@ export function sniffImage(bytes: Uint8Array): ImageKind | null {
   }
   return null;
 }
+
+export type VideoKind = { mime: "video/mp4" | "video/webm"; ext: "mp4" | "webm" };
+
+/**
+ * MP4 has an `ftyp` box at offset 4; WebM (Matroska) starts with the EBML header
+ * 1A 45 DF A3. As with images, the bytes decide, never the name or the sender.
+ */
+export function sniffVideo(bytes: Uint8Array): VideoKind | null {
+  if (bytes.length >= 12 && String.fromCharCode(bytes[4], bytes[5], bytes[6], bytes[7]) === "ftyp") {
+    return { mime: "video/mp4", ext: "mp4" };
+  }
+  if (bytes.length >= 4 && bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3) {
+    return { mime: "video/webm", ext: "webm" };
+  }
+  return null;
+}
+
+export type MediaKind = ImageKind | VideoKind;
+
+export function sniffMedia(bytes: Uint8Array): MediaKind | null {
+  return sniffImage(bytes) ?? sniffVideo(bytes);
+}

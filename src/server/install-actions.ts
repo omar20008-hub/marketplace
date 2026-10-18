@@ -10,10 +10,12 @@ import { env } from "@/lib/env";
 import { DriveError, getFolder } from "@/lib/drive";
 import { GOOGLE_DRIVE_CREDENTIAL } from "@/lib/google-oauth";
 import { getGoogleAccessToken } from "./google-account";
+import { editorIsGranted, findProviderByCredentialType } from "@/lib/connectors/providers";
 import { newKnowledgeKey } from "./knowledge/keys";
 import { createKnowledgeSource } from "./knowledge/sources";
 import { stopWatch } from "./knowledge/watch";
-import { credentialLabel as labelFor, isPlatformOAuth } from "@/lib/credentials";
+import { credentialLabel as labelFor, isPlatformHeld, isPlatformOAuth } from "@/lib/credentials";
+import { platformCredential } from "@/lib/platform-secrets";
 import { deployCopy, removeCopy } from "./template-deploy";
 
 /**
@@ -92,7 +94,7 @@ async function installCopy(input: {
       ok: false,
       errorText:
         "Setting this up failed, and nothing was installed. If you just connected an account, " +
-        "remove it from Connected accounts and connect it again, then retry.",
+        "remove it from Connectors and connect it again, then retry.",
     };
   }
 }
@@ -144,7 +146,7 @@ export async function activate(
     (submitted[credentialType] ??= {})[field] = text;
   }
 
-  const existing = await prisma.connectedAccount.findMany({
+  const existing = await prisma.connector.findMany({
     where: { userId: user.id },
   });
   const byType = new Map(existing.map((account) => [account.credentialType, account]));
@@ -156,7 +158,7 @@ export async function activate(
   const driveAccount = byType.get(GOOGLE_DRIVE_CREDENTIAL);
   if (folderId) {
     if (driveAccount?.status !== "ACTIVE") {
-      return { error: "Connect your Google Drive to choose a folder." };
+      return { error: "Connect your Google Suite to choose a folder." };
     }
     try {
       await getFolder(await getGoogleAccessToken(driveAccount.id), folderId);
@@ -195,7 +197,7 @@ export async function activate(
     if (already?.status === "ACTIVE") continue;
 
     const account = already
-      ? await prisma.connectedAccount.update({
+      ? await prisma.connector.update({
           where: { id: already.id },
           data: {
             status: "ACTIVE",
@@ -204,7 +206,7 @@ export async function activate(
             ...(values.accountRef ? { accountRef: values.accountRef } : {}),
           },
         })
-      : await prisma.connectedAccount.create({
+      : await prisma.connector.create({
           data: {
             userId: user.id,
             credentialType,
@@ -218,11 +220,30 @@ export async function activate(
     byType.set(credentialType, account);
   }
 
-  const needed = product.requirements
-    .filter((r) => r.providedBy === "USER" && r.credentialType)
-    .map((r) => r.credentialType!);
+  // Platform-held connections (the Gemini key) are supplied by the platform to every
+  // product, whatever a stored requirement row says, so they are never asked of the person.
+  // The template's own list counts too: a platform key that no requirement row names
+  // still has to reach n8n, or the install is refused as missing it.
+  const needed = [
+    ...new Set([
+      ...product.requirements
+        .filter((r) => r.credentialType && (r.providedBy === "USER" || isPlatformHeld(r.credentialType)))
+        .map((r) => r.credentialType!),
+      ...product.requiredCredentials.filter(isPlatformHeld),
+    ]),
+  ];
 
-  const missing = needed.filter((type) => byType.get(type)?.status !== "ACTIVE");
+  const connectionFor = (type: string) =>
+    byType.get(findProviderByCredentialType(type)?.sourceCredentialType ?? type);
+  const missing = needed.filter((type) => {
+    if (isPlatformHeld(type)) return false;
+    const connection = connectionFor(type);
+    const provider = findProviderByCredentialType(type);
+    return (
+      connection?.status !== "ACTIVE" ||
+      (provider !== null && !editorIsGranted(provider, connection.secretJson))
+    );
+  });
 
   // Partially ready: recorded here, not sent to n8n. Install Template refuses an
   // incomplete credential set, and rightly so — there is nothing to install yet.
@@ -247,15 +268,28 @@ export async function activate(
 
   // Decrypted here and nowhere else: the plaintext exists only for the length
   // of this call, on its way into n8n's own credential store.
-  // Platform-held OAuth connections (Drive) count as satisfied above, but their
-  // tokens are not n8n's to have: whatever needs them asks the platform.
+  // Connections the platform holds (Drive, and every tool it signs into) are never
+  // n8n's: a workflow asks the platform for a current token when it runs. Platform
+  // keys (Gemini) come from the platform's own store, not a person's account.
+  const platformValues = new Map<string, Record<string, string>>();
+  for (const type of needed.filter(isPlatformHeld)) {
+    const values = await platformCredential(type);
+    if (!values) {
+      return {
+        error: `${labelFor(type)} is not set up on the platform yet. An administrator needs to add its key under Platform keys.`,
+      };
+    }
+    platformValues.set(type, values);
+  }
   const credentialsJson = JSON.stringify(
     Object.fromEntries(
       needed
-        .filter((type) => !isPlatformOAuth(type))
+        .filter((type) => !isPlatformOAuth(type) && !findProviderByCredentialType(type))
         .map((type) => [
           type,
-          openCredential(byType.get(type)?.secretJson ?? null),
+          isPlatformHeld(type)
+            ? platformValues.get(type)
+            : openCredential(byType.get(type)?.secretJson ?? null),
         ]),
     ),
   );
@@ -308,7 +342,7 @@ export async function activate(
   await attachFolder(installation.id);
 
   for (const type of needed) {
-    const account = byType.get(type);
+    const account = connectionFor(type);
     await prisma.installationCredential.upsert({
       where: {
         installationId_credentialType: {
@@ -319,9 +353,9 @@ export async function activate(
       create: {
         installationId: installation.id,
         credentialType: type,
-        accountId: account?.id,
+        connectorId: account?.id,
       },
-      update: { accountId: account?.id },
+      update: { connectorId: account?.id },
     });
   }
 

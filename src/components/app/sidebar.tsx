@@ -4,20 +4,7 @@ import clsx from "clsx";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import {
-  Brain,
-  FolderClosed,
-  Layers,
-  Link2,
-  LogIn,
-  LogOut,
-  PanelLeft,
-  PenSquare,
-  Search,
-  Shield,
-  SquareCode,
-  X,
-} from "lucide-react";
+import { Brain, FolderClosed, Layers, Link2, LogIn, LogOut, PanelLeft, PenSquare, Search, Shield, SquareCode, X, KeyRound } from "lucide-react";
 import { Avatar } from "@/components/ds";
 import { logout } from "@/server/auth-actions";
 
@@ -79,12 +66,13 @@ export function Sidebar({
       : []),
     {
       href: "/accounts",
-      label: "Connected accounts",
+      label: "Connectors",
       icon: <Link2 {...iconProps} />,
       trailing: counts.accountsNeedAttention ? (
         <span className="size-[7px] rounded-full bg-warn" />
       ) : null,
     },
+    ...(user ? [{ href: "/logins", label: "Saved logins", icon: <KeyRound {...iconProps} /> }] : []),
     ...(user ? [{ href: "/memory", label: "Memory", icon: <Brain {...iconProps} /> }] : []),
     ...(user?.isCreator
       ? [{ href: "/creator", label: "Creator studio", icon: <SquareCode {...iconProps} /> }]

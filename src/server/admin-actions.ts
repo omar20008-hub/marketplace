@@ -6,7 +6,9 @@ import { hashPassword, requireRole } from "@/lib/auth";
 import { initialsFor } from "@/lib/initials";
 import { n8n } from "@/lib/n8n";
 import { env } from "@/lib/env";
-import { credentialLabel } from "@/lib/credentials";
+import { redirect } from "next/navigation";
+import { credentialLabel, isPlatformHeld, PLATFORM_HELD_CREDENTIALS } from "@/lib/credentials";
+import { storePlatformSecret } from "@/lib/platform-secrets";
 import { publishTemplateWorkflow } from "./template-review";
 
 /**
@@ -78,7 +80,8 @@ export async function approve(
       kind: "CONNECTION" as const,
       label: credentialLabel(credentialType),
       credentialType,
-      providedBy: "USER" as const,
+      // A key the platform holds is the platform's to supply, not the person's to connect.
+      providedBy: (isPlatformHeld(credentialType) ? "PLATFORM" : "USER") as "PLATFORM" | "USER",
       sortOrder: index,
     }),
   );
@@ -365,4 +368,27 @@ export async function toggleRole(formData: FormData) {
   );
 
   revalidatePath("/admin");
+}
+
+/**
+ * Saves a key the platform holds (see PLATFORM_HELD_CREDENTIALS). The value is written
+ * encrypted and is never shown again: the key screen says where a key comes from, not what
+ * it is. The audit log records that it changed, never the value.
+ */
+export async function setPlatformKey(formData: FormData) {
+  const admin = await requireRole("ADMIN");
+  const credentialType = String(formData.get("credentialType") ?? "");
+  const apiKey = String(formData.get("apiKey") ?? "").trim();
+
+  if (!PLATFORM_HELD_CREDENTIALS.has(credentialType)) {
+    redirect("/admin?view=keys&error=unknown");
+  }
+  if (apiKey.length < 20 || apiKey.length > 200 || /\s/.test(apiKey)) {
+    redirect(`/admin?view=keys&error=invalid&type=${encodeURIComponent(credentialType)}`);
+  }
+
+  await storePlatformSecret(credentialType, apiKey, admin.id);
+  await record(admin.id, "platform-key.set", `platform-key:${credentialType}`, "key replaced");
+  revalidatePath("/admin");
+  redirect(`/admin?view=keys&saved=${encodeURIComponent(credentialType)}`);
 }

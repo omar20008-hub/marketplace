@@ -50,7 +50,7 @@ async function wipe() {
   await prisma.knowledgeSource.deleteMany({});
   await prisma.installation.deleteMany({});
   await prisma.product.deleteMany({});
-  await prisma.connectedAccount.deleteMany({});
+  await prisma.connector.deleteMany({});
   await prisma.user.deleteMany({});
   await prisma.plan.deleteMany({});
 }
@@ -63,11 +63,11 @@ async function seedFile() {
     data: { email: "r@example.test", name: "R", passwordHash: "x", initials: "R", planId: "res" },
   });
   const installation = await seedInstallation(user.id);
-  const account = await prisma.connectedAccount.create({
+  const account = await prisma.connector.create({
     data: { userId: user.id, credentialType: "googleDriveOAuth2Api", displayName: "Google Drive", initials: "GD", accountRef: "r@example.test", status: "ACTIVE" },
   });
   const source = await prisma.knowledgeSource.create({
-    data: { userId: user.id, installationId: installation.id, accountId: account.id, folderId: "f", folderName: "F" },
+    data: { userId: user.id, installationId: installation.id, connectorId: account.id, folderId: "f", folderName: "F" },
   });
   return prisma.knowledgeFile.create({
     data: { sourceId: source.id, externalId: "big", name: "big.pdf", mimeType: "application/pdf", revision: "r1", status: "PENDING" },

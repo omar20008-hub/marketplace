@@ -32,7 +32,7 @@ export default async function FilesPage({
   });
   if (!installation || !installation.product.usesKnowledge) notFound();
 
-  const drive = await prisma.connectedAccount.findFirst({
+  const drive = await prisma.connector.findFirst({
     where: { userId: user.id, credentialType: "googleDriveOAuth2Api" },
   });
   const jobs = await prisma.knowledgeJob.count({
@@ -107,8 +107,8 @@ export default async function FilesPage({
             <Card className="flex flex-wrap items-center gap-3 p-4">
               <p className="min-w-0 flex-1 text-[13px] text-ink-2">
                 {drive?.status === "EXPIRED"
-                  ? "Your Google Drive connection expired. Reconnect it to choose a folder."
-                  : "Connect Google Drive to choose a folder."}
+                  ? "Your Google Suite connection expired. Reconnect it to choose a folder."
+                  : "Connect Google Suite to choose a folder."}
               </p>
               <a
                 href={oauthStartUrl(`/workspace/${installation.id}/files`)}

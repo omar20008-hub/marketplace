@@ -33,7 +33,7 @@ async function wipe() {
   await prisma.installationCredential.deleteMany({});
   await prisma.installation.deleteMany({});
   await prisma.requirement.deleteMany({});
-  await prisma.connectedAccount.deleteMany({});
+  await prisma.connector.deleteMany({});
   await prisma.product.deleteMany({});
   await prisma.user.deleteMany({});
   await prisma.plan.deleteMany({});
@@ -128,7 +128,7 @@ describe("connectAccount", () => {
     const state = await connectAccount({}, slack());
 
     expect(state).toEqual({ done: true });
-    const account = await prisma.connectedAccount.findFirst();
+    const account = await prisma.connector.findFirst();
     expect(account).toMatchObject({
       userId: user.id,
       credentialType: "slackApi",
@@ -146,7 +146,7 @@ describe("connectAccount", () => {
 
     await connectAccount({}, slack({ "field.teamId": "T1", notAField: "ignored" }));
 
-    expect(openCredential((await prisma.connectedAccount.findFirst())!.secretJson)).toEqual({
+    expect(openCredential((await prisma.connector.findFirst())!.secretJson)).toEqual({
       accessToken: "xoxb-secret-value",
       teamId: "T1",
     });
@@ -157,7 +157,7 @@ describe("connectAccount", () => {
 
     await connectAccount({}, slack({ "field.accountRef": "acme.slack.com" }));
 
-    expect(await prisma.connectedAccount.findFirst()).toMatchObject({
+    expect(await prisma.connector.findFirst()).toMatchObject({
       accountRef: "acme.slack.com",
     });
   });
@@ -166,7 +166,7 @@ describe("connectAccount", () => {
     await seedUser();
 
     await connectAccount({}, slack({ reusable: "this" }));
-    expect(await prisma.connectedAccount.findFirst()).toMatchObject({ reusable: false });
+    expect(await prisma.connector.findFirst()).toMatchObject({ reusable: false });
   });
 
   it("refuses with no service named", async () => {
@@ -175,7 +175,7 @@ describe("connectAccount", () => {
     const state = await connectAccount({}, form({ "field.accessToken": "x" }));
 
     expect(state.error).toMatch(/Pick a service/);
-    expect(await prisma.connectedAccount.count()).toBe(0);
+    expect(await prisma.connector.count()).toBe(0);
   });
 
   it("refuses when every field is blank, rather than storing an empty secret", async () => {
@@ -187,14 +187,14 @@ describe("connectAccount", () => {
     );
 
     expect(state.error).toMatch(/Fill in the connection details/);
-    expect(await prisma.connectedAccount.count()).toBe(0);
+    expect(await prisma.connector.count()).toBe(0);
   });
 
   it("keeps the label out of the sealed secret, which becomes n8n's credential body", async () => {
     await seedUser();
     await connectAccount({}, slack({ "field.accountRef": "acme.slack.com" }));
 
-    const account = (await prisma.connectedAccount.findFirst())!;
+    const account = (await prisma.connector.findFirst())!;
     expect(account.accountRef).toBe("acme.slack.com");
     expect(openCredential(account.secretJson)).toEqual({ accessToken: "xoxb-secret-value" });
   });
@@ -211,7 +211,7 @@ describe("connectAccount", () => {
     await connectAccount({}, facebook("EAAfirst", "Nora Acme · Acme Page"));
     await connectAccount({}, facebook("EAAsecond"));
 
-    const accounts = await prisma.connectedAccount.findMany();
+    const accounts = await prisma.connector.findMany();
     expect(accounts).toHaveLength(1);
     expect(accounts[0].accountRef).toBe("Nora Acme · Acme Page");
     expect(openCredential(accounts[0].secretJson)).toEqual({ accessToken: "EAAsecond" });
@@ -222,7 +222,7 @@ describe("connectAccount", () => {
     await connectAccount({}, slack());
     await connectAccount({}, slack({ "field.accessToken": "xoxb-rotated" }));
 
-    const accounts = await prisma.connectedAccount.findMany();
+    const accounts = await prisma.connector.findMany();
     expect(accounts).toHaveLength(1);
     expect(openCredential(accounts[0].secretJson)).toEqual({
       accessToken: "xoxb-rotated",
@@ -231,7 +231,7 @@ describe("connectAccount", () => {
 
   it("clears an expiry when the connection is renewed", async () => {
     const user = await seedUser();
-    await prisma.connectedAccount.create({
+    await prisma.connector.create({
       data: {
         userId: user.id,
         credentialType: "slackApi",
@@ -245,7 +245,7 @@ describe("connectAccount", () => {
 
     await connectAccount({}, slack());
 
-    expect(await prisma.connectedAccount.findFirst()).toMatchObject({
+    expect(await prisma.connector.findFirst()).toMatchObject({
       status: "ACTIVE",
       expiresAt: null,
     });
@@ -269,12 +269,12 @@ describe("disconnectAccount", () => {
   it("drops the stored secret and marks the connection pending", async () => {
     await seedUser();
     await connectAccount({}, slack());
-    const account = await prisma.connectedAccount.findFirst();
+    const account = await prisma.connector.findFirst();
 
     await disconnectAccount(form({ accountId: account!.id }));
 
-    const after = await prisma.connectedAccount.findUnique({ where: { id: account!.id } });
-    expect(after).toMatchObject({ status: "PENDING" });
+    const after = await prisma.connector.findUnique({ where: { id: account!.id } });
+    expect(after).toMatchObject({ status: "REVOKED" });
     // The bytes are gone, not merely marked unusable.
     expect(after!.secretJson).toBeNull();
   });
@@ -283,7 +283,7 @@ describe("disconnectAccount", () => {
     const user = await seedUser();
     await connectAccount({}, slack());
     const installation = await seedInstallation(user.id, "ACTIVE");
-    const account = await prisma.connectedAccount.findFirst();
+    const account = await prisma.connector.findFirst();
 
     await disconnectAccount(form({ accountId: account!.id }));
 
@@ -295,12 +295,12 @@ describe("disconnectAccount", () => {
   it("will not disconnect someone else's account", async () => {
     await seedUser("first@example.test");
     await connectAccount({}, slack());
-    const account = await prisma.connectedAccount.findFirst();
+    const account = await prisma.connector.findFirst();
 
     await seedUser("second@example.test");
     await disconnectAccount(form({ accountId: account!.id }));
 
-    expect(await prisma.connectedAccount.findUnique({ where: { id: account!.id } })).toMatchObject(
+    expect(await prisma.connector.findUnique({ where: { id: account!.id } })).toMatchObject(
       { status: "ACTIVE" },
     );
   });
@@ -308,7 +308,7 @@ describe("disconnectAccount", () => {
   it("will not disconnect one the platform provides", async () => {
     // It is not the user's to revoke, and other people depend on it.
     const user = await seedUser();
-    const account = await prisma.connectedAccount.create({
+    const account = await prisma.connector.create({
       data: {
         userId: user.id,
         credentialType: "openAiApi",
@@ -322,7 +322,7 @@ describe("disconnectAccount", () => {
 
     await disconnectAccount(form({ accountId: account.id }));
 
-    expect(await prisma.connectedAccount.findUnique({ where: { id: account.id } })).toMatchObject(
+    expect(await prisma.connector.findUnique({ where: { id: account.id } })).toMatchObject(
       { status: "ACTIVE", secretJson: "sealed" },
     );
   });

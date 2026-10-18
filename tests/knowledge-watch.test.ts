@@ -58,7 +58,7 @@ async function wipe() {
   await prisma.knowledgeSource.deleteMany({});
   await prisma.installation.deleteMany({});
   await prisma.product.deleteMany({});
-  await prisma.connectedAccount.deleteMany({});
+  await prisma.connector.deleteMany({});
   await prisma.user.deleteMany({});
   await prisma.plan.deleteMany({});
 }
@@ -74,7 +74,7 @@ beforeEach(async () => {
   const user = await prisma.user.create({
     data: { email: "w@example.test", name: "W", passwordHash: "x", initials: "W", planId: PLAN_ID },
   });
-  const account = await prisma.connectedAccount.create({
+  const account = await prisma.connector.create({
     data: {
       userId: user.id,
       credentialType: GOOGLE_DRIVE_CREDENTIAL,
@@ -88,7 +88,7 @@ beforeEach(async () => {
     data: {
       userId: user.id,
       installationId: (await seedInstallation(user.id)).id,
-      accountId: account.id,
+      connectorId: account.id,
       folderId: "root",
       folderName: "Root",
       folderIds: ["root", "sub"],

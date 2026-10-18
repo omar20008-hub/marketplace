@@ -40,7 +40,7 @@ export async function syncSource(sourceId: string): Promise<Outcome> {
 
   let listing;
   try {
-    const token = await getGoogleAccessToken(source.accountId);
+    const token = await getGoogleAccessToken(source.connectorId);
     // Before listing, so the cursor predates everything the listing will see.
     // Failing to set up push must not fail the sync: re-listing covers for it.
     await ensureWatch(source.id, token).catch((error) => {
@@ -241,7 +241,7 @@ export async function indexFile(fileId: string): Promise<Outcome> {
   };
 
   try {
-    const token = await getGoogleAccessToken(file.source.accountId);
+    const token = await getGoogleAccessToken(file.source.connectorId);
     const text = await readFileText(token, drive);
     if (!text.ok) {
       await prisma.$transaction([
