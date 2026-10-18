@@ -2,13 +2,15 @@
 
 import clsx from "clsx";
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { ArrowUp, CalendarClock, Grid2x2, Sparkles } from "lucide-react";
 import { startTask } from "@/server/run-actions";
 import { isSendKey } from "./send-key";
 import { PendingNote, PendingTextarea } from "./pending";
 import { AttachButton, AttachmentList, useAttachments } from "./attachments";
+import { VoiceButton, useVoice } from "./voice-input";
+import { appendTranscript } from "./voice";
 
 function SendButton({ disabled }: { disabled: boolean }) {
   const { pending } = useFormStatus();
@@ -44,6 +46,23 @@ export function Composer({
   const attachments = useAttachments();
 
   const pinnedTitle = products.find((p) => p.id === pinned)?.title;
+
+  // Dictated text is set in code, not typed, so the box is sized here too.
+  useEffect(() => {
+    const box = formRef.current?.querySelector("textarea");
+    if (box) {
+      box.style.height = "auto";
+      box.style.height = `${box.scrollHeight}px`;
+    }
+  }, [text]);
+
+  const voice = useVoice({
+    onText: (spoken) => setText((current) => appendTranscript(current, spoken)),
+    onCommand: (command) => {
+      if (command.kind === "clear") setText("");
+      else if (text.trim() && !attachments.uploading) formRef.current?.requestSubmit();
+    },
+  });
 
   return (
     <div className={clsx("w-full max-w-[720px]", className)}>
@@ -87,13 +106,11 @@ export function Composer({
 
           <AttachmentList attachments={attachments} />
           <div className="mt-3.5 flex items-center justify-between gap-2">
-            {/*
-              The design also draws a dictate button here. It is not rendered:
-              dictation has no contract behind it, and a control that does
-              nothing when clicked is worse than one that is not there.
-            */}
             <div className="-ml-2 flex items-center gap-1.5">
               <AttachButton attachments={attachments} />
+              {voice.supported ? (
+                <VoiceButton listening={voice.listening} onToggle={voice.toggle} />
+              ) : null}
               <button
                 type="button"
                 onClick={() => setPicking((open) => !open)}
