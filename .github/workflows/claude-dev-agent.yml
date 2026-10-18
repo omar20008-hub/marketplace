@@ -64,6 +64,8 @@ jobs:
       TASK_TITLE: ${{ github.event.client_payload.task_title || inputs.task_title }}
       TASK_DESCRIPTION: ${{ github.event.client_payload.task_description || inputs.task_description }}
       TASK_URL: ${{ github.event.client_payload.task_url || inputs.task_url }}
+      # JSON list of { name, mime_type, path } stored on the task-attachments branch by the dispatcher.
+      TASK_ATTACHMENTS: ${{ github.event.client_payload.attachments && toJSON(github.event.client_payload.attachments) || '[]' }}
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       # Test environment, same values as ci.yml. Fixed and safe to write down:
@@ -105,8 +107,32 @@ jobs:
           mkdir -p .claude-task
           jq -n --arg tracker "$TRACKER" --arg id "$TASK_ID" --arg title "$TASK_TITLE" \
                 --arg description "$TASK_DESCRIPTION" --arg url "$TASK_URL" \
-                '{tracker:$tracker, id:$id, title:$title, description:$description, url:$url}' \
+                --argjson attachments "$TASK_ATTACHMENTS" \
+                '{tracker:$tracker, id:$id, title:$title, description:$description, url:$url, attachments:$attachments}' \
                 > .claude-task/task.json
+
+      # Attachments are stored by the dispatcher on the task-attachments branch (binary files, not in main).
+      # Paths come from the dispatch payload, so they must match the pattern the dispatcher produces.
+      - name: Fetch task attachments
+        run: |
+          set -uo pipefail
+          mkdir -p .claude-task/attachments
+          git fetch --quiet origin +task-attachments:refs/remotes/origin/task-attachments \
+            || echo "task-attachments branch is not available; no attachments fetched."
+          echo "$TASK_ATTACHMENTS" | jq -c '.[]?' | while read -r a; do
+            P=$(echo "$a" | jq -r '.path')
+            if ! [[ "$P" =~ ^[0-9a-f]{24}/[A-Za-z0-9_-]+-[A-Za-z0-9._-]+$ ]]; then
+              echo "Skipping unexpected attachment path: $P"
+              continue
+            fi
+            N=$(basename "$P")
+            if git show "origin/task-attachments:$P" > ".claude-task/attachments/$N" 2>/dev/null; then
+              echo "Fetched $N"
+            else
+              rm -f ".claude-task/attachments/$N"
+              echo "Missing attachment: $P"
+            fi
+          done
 
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code
