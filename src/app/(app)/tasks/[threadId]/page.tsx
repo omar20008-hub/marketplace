@@ -6,12 +6,27 @@ import { FootNote, Mono } from "@/components/ds";
 import { RunCard, type RunCardData } from "@/components/app/run-card";
 import { FollowUp } from "@/components/app/follow-up";
 import { AwaitingReply } from "@/components/app/awaiting-reply";
+import { ReplySources } from "@/components/app/reply-sources";
+import { parseReplySources } from "@/lib/reply-sources";
 
 /** A reply that has not come after this long is not coming (the server restarted mid-answer); stop showing "Thinking…". */
 const REPLY_GIVE_UP_MS = 3 * 60_000;
 
 function isAwaitingReply(last: { role: string; createdAt: Date } | undefined) {
   return last?.role === "USER" && Date.now() - last.createdAt.getTime() < REPLY_GIVE_UP_MS;
+}
+
+function AssistantBody({ body }: { body: string }) {
+  const { text, sources } = parseReplySources(body);
+  return (
+    <div>
+      <p className="text-[15px] leading-relaxed whitespace-pre-wrap">
+        <Linkified text={text} />
+      </p>
+      <MediaPreviews text={text} />
+      <ReplySources sources={sources} />
+    </div>
+  );
 }
 
 export async function generateMetadata({
@@ -82,12 +97,7 @@ export default async function ThreadPage({
                   <MediaPreviews text={message.body} />
                 </div>
               ) : (
-                <div>
-                  <p className="text-[15px] leading-relaxed whitespace-pre-wrap">
-                    <Linkified text={message.body} />
-                  </p>
-                  <MediaPreviews text={message.body} />
-                </div>
+                <AssistantBody body={message.body} />
               )}
               {run ? <RunCard run={run as unknown as RunCardData} /> : null}
             </div>
