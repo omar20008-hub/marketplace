@@ -9,7 +9,7 @@ import { startTask } from "@/server/run-actions";
 import { isSendKey } from "./send-key";
 import { PendingNote, PendingTextarea } from "./pending";
 import { AttachButton, AttachmentList, useAttachments } from "./attachments";
-import { VoiceButton, useVoice } from "./voice-input";
+import { VoiceBar, VoiceButton, VoiceNotice, useVoice } from "./voice-input";
 import { appendTranscript } from "./voice";
 
 function SendButton({ disabled }: { disabled: boolean }) {
@@ -105,12 +105,25 @@ export function Composer({
           />
 
           <AttachmentList attachments={attachments} />
-          <div className="mt-3.5 flex items-center justify-between gap-2">
+          {voice.state.phase === "listening" ? (
+            <div className="mt-3.5">
+              <VoiceBar
+                seconds={voice.state.seconds}
+                stream={voice.stream}
+                onConfirm={voice.confirm}
+                onCancel={voice.cancel}
+              />
+            </div>
+          ) : null}
+          <div
+            className={clsx(
+              "mt-3.5 flex items-center justify-between gap-2",
+              voice.state.phase === "listening" && "hidden",
+            )}
+          >
             <div className="-ml-2 flex items-center gap-1.5">
               <AttachButton attachments={attachments} />
-              {voice.supported ? (
-                <VoiceButton listening={voice.listening} onToggle={voice.toggle} />
-              ) : null}
+              {voice.supported ? <VoiceButton onStart={voice.start} /> : null}
               <button
                 type="button"
                 onClick={() => setPicking((open) => !open)}
@@ -140,6 +153,7 @@ export function Composer({
           </div>
         </div>
       </form>
+      <VoiceNotice notice={voice.state.phase === "idle" ? voice.state.notice : undefined} />
 
       {picking ? (
         <div className="mt-2 flex flex-col rounded-card border border-selected p-1.5">
