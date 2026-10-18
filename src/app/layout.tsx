@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Builder",
   description:
-    "Agents and workflows you can run, from a marketplace you can trust.",
+    "Agents you can run, from a marketplace you can trust.",
 };
 
 export default function RootLayout({

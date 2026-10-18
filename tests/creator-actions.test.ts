@@ -149,14 +149,25 @@ describe("what upload refuses before n8n is called", () => {
     await seedCreator();
     const result = await upload(null);
 
-    expect(result.error).toMatch(/Attach the exported workflow/);
+    expect(result.error).toMatch(/Attach the exported agent/);
   });
 
   it("refuses an empty file", async () => {
     await seedCreator();
     const result = await upload(new File([], "workflow.json"));
 
-    expect(result.error).toMatch(/Attach the exported workflow/);
+    expect(result.error).toMatch(/Attach the exported agent/);
+  });
+
+  it("stores every upload as an agent, with or without a kind field", async () => {
+    await seedCreator();
+    await upload(workflowFile());
+    await upload(workflowFile(), { title: "Second Digest", kind: "WORKFLOW" });
+
+    const kinds = (await prisma.product.findMany({ select: { kind: true } })).map(
+      (p) => p.kind,
+    );
+    expect(kinds).toEqual(["AGENT", "AGENT"]);
   });
 });
 

@@ -120,7 +120,7 @@ export async function POST(request: Request) {
           summary: row.description.split("\n")[0].slice(0, 200),
           description: row.description,
           needsFromYou: "",
-          kind: "WORKFLOW",
+          kind: "AGENT",
           category: row.category ?? "general",
           actionType: row.actionType === "write" ? "WRITE" : "READ",
           status: STATUS[row.status],

@@ -8,11 +8,9 @@ import { useRouter, useSearchParams } from "next/navigation";
  * a link you can send someone.
  */
 export function MarketplaceFilters({
-  typeCounts,
   categoryCounts,
   integrations,
 }: {
-  typeCounts: { AGENT: number; WORKFLOW: number };
   categoryCounts: Record<string, number>;
   integrations: { value: string; label: string }[];
 }) {
@@ -56,21 +54,6 @@ export function MarketplaceFilters({
           Only products that work with the accounts and plan you already have.
         </p>
       </div>
-
-      <Group label="Type">
-        <Row
-          label="Agents"
-          count={typeCounts.AGENT}
-          active={params.get("type") === "AGENT"}
-          onClick={() => set("type", "AGENT")}
-        />
-        <Row
-          label="Workflows"
-          count={typeCounts.WORKFLOW}
-          active={params.get("type") === "WORKFLOW"}
-          onClick={() => set("type", "WORKFLOW")}
-        />
-      </Group>
 
       <Group label="Category">
         {Object.entries(categoryCounts)
