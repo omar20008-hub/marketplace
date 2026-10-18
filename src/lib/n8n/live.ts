@@ -92,6 +92,26 @@ async function postWebhook<T>(url: string, body: unknown): Promise<T> {
   }
 }
 
+async function restPost(path: string, body?: unknown): Promise<Response> {
+  return fetch(`${env.n8n.baseUrl}${path}`, {
+    method: "POST",
+    headers: {
+      "X-N8N-API-KEY": env.n8n.apiKey,
+      ...(body === undefined ? {} : { "content-type": "application/json" }),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    cache: "no-store",
+  });
+}
+
+async function restDelete(path: string): Promise<Response> {
+  return fetch(`${env.n8n.baseUrl}${path}`, {
+    method: "DELETE",
+    headers: { "X-N8N-API-KEY": env.n8n.apiKey },
+    cache: "no-store",
+  });
+}
+
 async function restGet<T>(path: string): Promise<T> {
   const response = await fetch(`${env.n8n.baseUrl}${path}`, {
     headers: { "X-N8N-API-KEY": env.n8n.apiKey },
@@ -181,5 +201,105 @@ export const liveDriver: N8nDriver = {
       "/data-tables/mp_templates/rows?limit=500",
     );
     return rows.data ?? [];
+  },
+
+  async deactivateInstance(instanceWorkflowId: string) {
+    try {
+      const response = await restPost(
+        `/workflows/${encodeURIComponent(instanceWorkflowId)}/deactivate`,
+      );
+      return { ok: response.ok };
+    } catch {
+      return { ok: false };
+    }
+  },
+
+  async runInstance(instanceWorkflowId: string, inputs: Record<string, unknown>) {
+    let response: Response;
+    try {
+      response = await restPost(`/workflows/${encodeURIComponent(instanceWorkflowId)}/run`, {
+        inputData: inputs,
+      });
+    } catch (error) {
+      return { ok: false as const, error: `n8n unreachable: ${(error as Error).message}` };
+    }
+    if (!response.ok) {
+      return { ok: false as const, error: `n8n answered ${response.status}` };
+    }
+
+    const body = (await response.json().catch(() => null)) as
+      | { error?: unknown; data?: unknown }
+      | unknown[]
+      | null;
+    if (body && !Array.isArray(body) && body.error !== undefined) {
+      return { ok: false as const, error: String(body.error).slice(0, 200) };
+    }
+    const rows = Array.isArray(body) ? body : Array.isArray(body?.data) ? body.data : [];
+    const items = rows.map((row) =>
+      row && typeof row === "object" && "json" in row
+        ? (row as { json: Record<string, unknown> }).json
+        : (row as Record<string, unknown>),
+    );
+    return { ok: true as const, items };
+  },
+
+  async getWorkflow(workflowId: string) {
+    try {
+      const body = await restGet<{ nodes?: Array<Record<string, unknown>>; connections?: Record<string, unknown> }>(
+        `/workflows/${encodeURIComponent(workflowId)}`,
+      );
+      return { nodes: body.nodes ?? [], connections: body.connections ?? {} };
+    } catch {
+      return null;
+    }
+  },
+
+  async createCredential(input) {
+    try {
+      const response = await restPost("/credentials", input);
+      if (!response.ok) return null;
+      const body = (await response.json()) as { id?: string | number };
+      return body.id !== undefined ? { id: String(body.id) } : null;
+    } catch {
+      return null;
+    }
+  },
+
+  async deleteCredential(id: string) {
+    try {
+      const response = await restDelete(`/credentials/${encodeURIComponent(id)}`);
+      return { ok: response.ok };
+    } catch {
+      return { ok: false };
+    }
+  },
+
+  async createWorkflow(workflow) {
+    try {
+      const response = await restPost("/workflows", workflow);
+      if (!response.ok) return null;
+      const body = (await response.json()) as { id?: string | number };
+      return body.id !== undefined ? { id: String(body.id) } : null;
+    } catch {
+      return null;
+    }
+  },
+
+  async activateWorkflow(workflowId: string) {
+    try {
+      const response = await restPost(`/workflows/${encodeURIComponent(workflowId)}/activate`);
+      return { ok: response.ok };
+    } catch {
+      return { ok: false };
+    }
+  },
+
+  async deleteWorkflow(workflowId: string) {
+    try {
+      const response = await restDelete(`/workflows/${encodeURIComponent(workflowId)}`);
+      return { ok: response.ok };
+    } catch {
+      return { ok: false };
+    }
   },
 };

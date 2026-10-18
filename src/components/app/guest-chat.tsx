@@ -2,9 +2,11 @@
 
 import clsx from "clsx";
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowUp, Sparkles } from "lucide-react";
 import { isSendKey } from "./send-key";
+import { VoiceButton, useVoice } from "./voice-input";
+import { appendTranscript } from "./voice";
 
 type Message = { role: "USER" | "ASSISTANT"; body: string };
 
@@ -35,6 +37,21 @@ export function GuestChat({
   const [text, setText] = useState("");
   const [pending, setPending] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    const box = formRef.current?.querySelector("textarea");
+    if (box) {
+      box.style.height = "auto";
+      box.style.height = `${box.scrollHeight}px`;
+    }
+  }, [text]);
+
+  const voice = useVoice({
+    onText: (spoken) => setText((current) => appendTranscript(current, spoken)),
+    onCommand: (command) => {
+      if (command.kind === "clear") setText("");
+      else if (text.trim() && !pending) void send(text);
+    },
+  });
 
   async function send(raw: string) {
     const body = raw.trim();
@@ -122,7 +139,8 @@ export function GuestChat({
             placeholder="Ask anything, or describe a task…"
             className="max-h-48 w-full resize-none bg-transparent text-base leading-7 placeholder:text-ink-3 focus:outline-none"
           />
-          <div className="mt-3.5 flex items-center justify-end">
+          <div className="mt-3.5 flex items-center justify-end gap-2">
+            {voice.supported ? <VoiceButton listening={voice.listening} onToggle={voice.toggle} /> : null}
             <button
               type="submit"
               aria-label="Send"
