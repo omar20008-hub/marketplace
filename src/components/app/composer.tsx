@@ -87,6 +87,7 @@ export function Composer({
         <div className="rounded-composer border border-line bg-canvas py-4 pr-3 pb-3 pl-5 shadow-[0_4px_24px_rgba(0,0,0,0.05)]">
           <PendingTextarea
             name="task"
+            dir="auto"
             rows={1}
             value={text}
             onChange={(event) => {
@@ -105,11 +106,11 @@ export function Composer({
           />
 
           <AttachmentList attachments={attachments} />
-          {voice.state.phase === "listening" ? (
+          {voice.state.phase !== "idle" ? (
             <div className="mt-3.5">
               <VoiceBar
-                seconds={voice.state.seconds}
-                stream={voice.stream}
+                state={voice.state}
+                analyser={voice.analyser}
                 onConfirm={voice.confirm}
                 onCancel={voice.cancel}
               />
@@ -118,7 +119,7 @@ export function Composer({
           <div
             className={clsx(
               "mt-3.5 flex items-center justify-between gap-2",
-              voice.state.phase === "listening" && "hidden",
+              voice.state.phase !== "idle" && "hidden",
             )}
           >
             <div className="-ml-2 flex items-center gap-1.5">

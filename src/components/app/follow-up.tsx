@@ -62,14 +62,15 @@ export function FollowUp({ threadId, waiting = false }: { threadId: string; wait
       className="flex flex-col rounded-composer border border-line bg-canvas py-2.5 pr-2.5 pl-3"
     >
       <input type="hidden" name="threadId" value={threadId} />
-      {voice.state.phase === "listening" ? (
-        <VoiceBar seconds={voice.state.seconds} stream={voice.stream} onConfirm={voice.confirm} onCancel={voice.cancel} />
+      {voice.state.phase !== "idle" ? (
+        <VoiceBar state={voice.state} analyser={voice.analyser} onConfirm={voice.confirm} onCancel={voice.cancel} />
       ) : null}
-      <div className={clsx("flex items-end gap-2", voice.state.phase === "listening" && "hidden")}>
+      <div className={clsx("flex items-end gap-2", voice.state.phase !== "idle" && "hidden")}>
       <AttachButton attachments={attachments} />
       {voice.supported ? <VoiceButton onStart={voice.start} /> : null}
       <PendingTextarea
         name="message"
+        dir="auto"
         readOnly={waiting}
         rows={1}
         value={text}

@@ -276,6 +276,22 @@ export const env = {
   },
 
   /**
+   * Speech to text for the chat box: the audio decides its own language. Uses
+   * GEMINI_API_KEY; the fallback model is tried only when the first is unavailable.
+   */
+  voice: {
+    models: [
+      ...new Set(
+        [
+          process.env.VOICE_MODEL || process.env.ORCHESTRATOR_MODEL || "gemini-3.1-flash-lite",
+          process.env.VOICE_FALLBACK_MODEL || process.env.ORCHESTRATOR_FALLBACK_MODEL || "",
+        ].filter(Boolean),
+      ),
+    ],
+    geminiApiKey: process.env.GEMINI_API_KEY ?? "",
+  },
+
+  /**
    * Who checks and runs a person's product copy when they use it. "n8n" (the default)
    * sends the call to the MP · Dispatcher workflow. "platform" does the checks here
    * and runs the copy through the n8n API. Checked against the live instance before
