@@ -36,7 +36,7 @@ export default async function LoginPage({
           Sign in
         </h1>
         <p className="mt-2 text-sm text-ink-2">
-          Agents and workflows you can run, from a marketplace you can trust.
+          Agents you can run, from a marketplace you can trust.
         </p>
 
         {authError ? <p className="mt-6 text-[13px] text-danger-ink">{authError}</p> : null}

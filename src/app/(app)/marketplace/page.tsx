@@ -12,7 +12,6 @@ export const metadata = { title: "Marketplace · Builder" };
 
 type Search = {
   q?: string;
-  type?: string;
   category?: string;
   integration?: string;
   sort?: string;
@@ -78,10 +77,6 @@ export default async function MarketplacePage({
 
   // Counts come from the table, not from the mock copy. They can be small, but
   // they can never be wrong.
-  const typeCounts = {
-    AGENT: all.filter((p) => p.kind === "AGENT").length,
-    WORKFLOW: all.filter((p) => p.kind === "WORKFLOW").length,
-  };
   const categoryCounts = all.reduce<Record<string, number>>((acc, product) => {
     acc[product.category] = (acc[product.category] ?? 0) + 1;
     return acc;
@@ -93,7 +88,6 @@ export default async function MarketplacePage({
   const query = params.q?.toLowerCase().trim() ?? "";
 
   const visible = all.filter((product) => {
-    if (params.type && product.kind !== params.type) return false;
     if (params.category && product.category !== params.category) return false;
     if (
       params.integration &&
@@ -166,7 +160,6 @@ export default async function MarketplacePage({
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         <MarketplaceFilters
-          typeCounts={typeCounts}
           categoryCounts={categoryCounts}
           integrations={integrations.map((type) => ({
             value: type,
@@ -238,7 +231,6 @@ function Section({
       title: string;
       summary: string;
       category: string;
-      kind: "AGENT" | "WORKFLOW";
       version: string;
       ratingAvg: number;
       ratingCount: number;
@@ -261,7 +253,7 @@ function Section({
             href={`/marketplace/${product.slug}`}
             className="group flex gap-3.5 border-b border-[#f0f0f0] py-3.5"
           >
-            <ProductGlyph category={product.category} kind={product.kind} size={48} />
+            <ProductGlyph category={product.category} size={48} />
             <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[15px] font-medium">{product.title}</span>
@@ -272,8 +264,7 @@ function Section({
               </div>
               <p className="text-[13px] leading-snug text-ink-2">{product.summary}</p>
               <p className="mt-[3px] text-xs text-ink-3">
-                {product.kind === "AGENT" ? "Agent" : "Workflow"} · {product.category}{" "}
-                · v{product.version}
+                {product.category} · v{product.version}
                 {product.ratingCount > 0
                   ? ` · ${product.ratingAvg.toFixed(1)} ★ (${product.ratingCount})`
                   : ""}

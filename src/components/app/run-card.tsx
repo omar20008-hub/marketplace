@@ -39,7 +39,6 @@ export type RunCardData = {
   artifacts: Artifact[];
   product: {
     title: string;
-    kind: "AGENT" | "WORKFLOW";
     slug: string;
     inputSchema: unknown;
   };
@@ -154,7 +153,7 @@ export function RunCard({ run }: { run: RunCardData }) {
           <span className="text-xs text-ink-3">Matched from your workspace</span>
           <span className="text-sm font-medium">{run.product.title}</span>
           <span className="text-xs text-ink-3">
-            · {run.product.kind === "AGENT" ? "Agent" : "Workflow"} · v
+            · Agent · v
             {run.productVersion}
           </span>
           <Badge tone={failed ? "blocked" : "ready"}>

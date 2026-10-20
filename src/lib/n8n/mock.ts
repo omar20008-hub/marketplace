@@ -142,7 +142,7 @@ export const mockDriver: N8nDriver = {
       return {
         ok: false,
         errorText:
-          "Missing the When Executed by Another Workflow trigger. A product " +
+          "Missing the callable trigger (When Executed by Another ...). A product " +
           "must start with one, with its input fields declared.",
       };
     }

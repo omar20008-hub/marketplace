@@ -307,7 +307,7 @@ describe("a new template from n8n", () => {
       n8nWorkflowId: "wf_new",
       title: "إنشاء المحتوى",
       summary: "ينشئ نصاً من وصف المستخدم",
-      kind: "WORKFLOW",
+      kind: "AGENT",
       invocationMode: "on_demand",
       status: "PUBLISHED",
       requiredCredentials: ["googlePalmApi"],

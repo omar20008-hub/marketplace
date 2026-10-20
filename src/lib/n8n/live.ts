@@ -75,7 +75,7 @@ async function postWebhook<T>(url: string, body: unknown): Promise<T> {
   const contentType = response.headers.get("content-type") ?? "";
   if (contentType.includes("text/html")) {
     throw new N8nError(
-      "This workflow answered with an HTML page, which means it is still on a " +
+      "This agent answered with an HTML page, which means it is still on a " +
         "Form Trigger. Convert it to a Webhook Trigger so it returns JSON.",
     );
   }
