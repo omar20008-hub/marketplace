@@ -371,6 +371,38 @@ export const mockDriver: N8nDriver = {
     // In mock mode the platform's own mirror is the only catalogue there is.
     return [];
   },
+
+  async deactivateInstance() {
+    return { ok: true };
+  },
+
+  async runInstance(instanceWorkflowId: string) {
+    return { ok: true, items: [{ mock: true, instanceWorkflowId }] };
+  },
+
+  async getWorkflow() {
+    return { nodes: [], connections: {} };
+  },
+
+  async createCredential() {
+    return { id: `cred_${Math.random().toString(36).slice(2, 10)}` };
+  },
+
+  async deleteCredential() {
+    return { ok: true };
+  },
+
+  async createWorkflow() {
+    return { id: `wf_${Math.random().toString(36).slice(2, 10)}` };
+  },
+
+  async activateWorkflow() {
+    return { ok: true };
+  },
+
+  async deleteWorkflow() {
+    return { ok: true };
+  },
 };
 
 export function contentHash(file: string) {

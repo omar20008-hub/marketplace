@@ -18,7 +18,13 @@ import {
   missingSettings,
 } from "@/lib/connectors/providers";
 import { TelegramLinkCard } from "./telegram-link-card";
-import { telegramLinkFor } from "@/server/channel-links";
+import { AgentKeyCard } from "./agent-key-card";
+import { WhatsappLinkCard } from "./whatsapp-link-card";
+import { ConnectorsTabs, DiscoverView } from "./discover-view";
+import { BrandMark } from "./brand-mark";
+import { slugForCredentialType } from "@/lib/connectors/catalog";
+import { channelLinkFor, telegramLinkFor, WHATSAPP } from "@/server/channel-links";
+import { agentKeyActive } from "@/server/agent-keys";
 import { env } from "@/lib/env";
 
 export const metadata = { title: "Connectors · Builder" };
@@ -77,12 +83,16 @@ export default async function AccountsPage({
     connect?: string;
     connected?: string;
     connect_error?: string;
+    tab?: string;
+    q?: string;
   }>;
 }) {
   const {
     connect,
     connected: justConnected,
     connect_error: connectError,
+    tab,
+    q,
   } = await searchParams;
   const user = await requireUser();
 
@@ -122,6 +132,26 @@ export default async function AccountsPage({
       fields: [],
     }));
 
+  if (tab === "discover") {
+    // Discover needs only what is connectable today, not the n8n schemas My connections reads.
+    const available = new Set([
+      ...CONNECTABLE.map((item) => item.credentialType),
+      ...connectorOptions.map((option) => option.credentialType),
+    ]);
+    const connectedTypes = new Set(
+      accounts.filter((a) => a.status === "ACTIVE").map((a) => a.credentialType),
+    );
+    return (
+      <div className="px-5 py-5 lg:px-7">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+          <PageTitle title="Connectors" />
+          <ConnectorsTabs active="discover" />
+        </div>
+        <DiscoverView q={q ?? ""} available={available} connectedTypes={connectedTypes} />
+      </div>
+    );
+  }
+
   const connectable: Connectable[] = [
     ...(await Promise.all(
     CONNECTABLE.map(async (item) => {
@@ -158,6 +188,8 @@ export default async function AccountsPage({
   ];
 
   const telegram = await telegramLinkFor(user.id);
+  const whatsapp = await channelLinkFor(user.id, WHATSAPP);
+  const assistantKey = await agentKeyActive(user.id);
 
   // Read on the server only: what leaves it is the names of the editors to reconnect for.
   const driveSecrets = await prisma.connector.findMany({
@@ -174,7 +206,10 @@ export default async function AccountsPage({
 
   return (
     <div className="px-5 py-5 lg:px-7">
-      <PageTitle title="Connectors" meta={`· ${connected} connected`} />
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+        <PageTitle title="Connectors" meta={`· ${connected} connected`} />
+        <ConnectorsTabs active="yours" />
+      </div>
 
       {connectError ? (
         <p role="alert" className="mt-3 text-[13px] text-danger-ink">
@@ -192,9 +227,10 @@ export default async function AccountsPage({
             const uses = useCount.get(account.credentialType) ?? 0;
             return (
               <Card key={account.id} className="flex flex-wrap items-center gap-3 p-3.5">
-                <span className="flex size-10 flex-none items-center justify-center rounded-row bg-fill text-xs font-medium text-ink-2">
-                  {account.initials}
-                </span>
+                <BrandMark
+                  slug={slugForCredentialType(account.credentialType)}
+                  initials={account.initials}
+                />
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium">{account.displayName}</div>
                   {reconnectFor.has(account.id) ? (
@@ -287,6 +323,11 @@ export default async function AccountsPage({
             linkedAt={telegram?.linkedAt.toISOString() ?? null}
             botUsername={env.telegramBotUsername}
           />
+          <WhatsappLinkCard
+            linkedAt={whatsapp?.linkedAt.toISOString() ?? null}
+            businessNumber={env.whatsappBusinessNumber}
+          />
+          <AgentKeyCard active={assistantKey} />
         </div>
       </div>
     </div>

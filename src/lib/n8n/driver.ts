@@ -21,9 +21,9 @@ import type {
 } from "./contracts";
 
 /**
- * One interface over the five workflows the platform calls, plus the two REST
- * endpoints it needs. Publish Sync and Lifecycle Sweep are absent on purpose:
- * nobody calls them, they run on a schedule inside n8n.
+ * One interface over the five workflows the platform calls, plus the REST
+ * endpoints it needs. Publish Sync is absent on purpose: nobody calls it, it runs
+ * on a schedule inside n8n.
  */
 export interface N8nDriver {
   readonly name: "mock" | "live";
@@ -44,4 +44,42 @@ export interface N8nDriver {
 
   /** Pull of mp_templates, for the marketplace mirror. */
   listTemplates(): Promise<TemplateRow[]>;
+
+  /**
+   * Switches one user's copy off in n8n. ok=false means n8n refused or could not be
+   * reached; the caller still records the installation as disabled.
+   */
+  deactivateInstance(instanceWorkflowId: string): Promise<{ ok: boolean }>;
+
+  /**
+   * Runs one user's copy with the given inputs and returns the items it produced.
+   * Used by the platform's own dispatch path; the n8n Dispatcher does the same inside
+   * n8n. An error here is a failed run, not a refusal.
+   */
+  runInstance(instanceWorkflowId: string, inputs: Record<string, unknown>): Promise<RunInstanceResult>;
+
+  /** The nodes and connections of a published template; null when it cannot be read. */
+  getWorkflow(workflowId: string): Promise<TemplateWorkflow | null>;
+
+  /** Stores a credential in n8n's own store. Null when n8n refuses it. */
+  createCredential(input: {
+    name: string;
+    type: string;
+    data: Record<string, unknown>;
+  }): Promise<{ id: string } | null>;
+  deleteCredential(id: string): Promise<{ ok: boolean }>;
+
+  /** Creates a copy in n8n, not yet active. Null when n8n refuses it. */
+  createWorkflow(workflow: Record<string, unknown>): Promise<{ id: string } | null>;
+  activateWorkflow(workflowId: string): Promise<{ ok: boolean }>;
+  deleteWorkflow(workflowId: string): Promise<{ ok: boolean }>;
 }
+
+export type RunInstanceResult =
+  | { ok: true; items: Record<string, unknown>[] }
+  | { ok: false; error: string };
+
+export type TemplateWorkflow = {
+  nodes: Array<Record<string, unknown>>;
+  connections: Record<string, unknown>;
+};

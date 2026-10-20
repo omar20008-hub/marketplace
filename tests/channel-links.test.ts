@@ -216,3 +216,57 @@ describe("channel endpoints", () => {
     expect(bad.status).toBe(400);
   });
 });
+
+describe("linking a WhatsApp number", () => {
+  const whatsappLink = () => import("@/app/api/channels/whatsapp/link/route");
+  const whatsappResolve = () => import("@/app/api/channels/whatsapp/resolve/route");
+
+  it("links the number that sends the code, and resolves it afterwards", async () => {
+    const person = await seedUser("wa-one@example.test");
+    viewer.current = person;
+    const { code } = await actions.startWhatsappLink();
+
+    const linked = await (await whatsappLink()).POST(
+      post("/api/channels/whatsapp/link", { code, whatsappUserId: "966500000001" }),
+    );
+    expect(linked.status).toBe(200);
+
+    const resolved = await (await whatsappResolve()).POST(
+      post("/api/channels/whatsapp/resolve", { whatsappUserId: "966500000001" }),
+    );
+    expect(await resolved.json()).toEqual({ userId: person.id });
+  });
+
+  it("refuses a Telegram code on WhatsApp", async () => {
+    const person = await seedUser("wa-cross@example.test");
+    viewer.current = person;
+    const { code } = await actions.startTelegramLink();
+
+    const result = await (await whatsappLink()).POST(
+      post("/api/channels/whatsapp/link", { code, whatsappUserId: "966500000002" }),
+    );
+    expect(result.status).toBe(400);
+    expect((await result.json()).reason).toBe("invalid");
+  });
+
+  it("lets one number belong to a Telegram account and a WhatsApp account at once", async () => {
+    const person = await seedUser("wa-both@example.test");
+    viewer.current = person;
+    const telegram = await actions.startTelegramLink();
+    await links.redeemTelegramCode({ code: telegram.code!, externalId: "7777" });
+    const whatsapp = await actions.startWhatsappLink();
+    const result = await (await whatsappLink()).POST(
+      post("/api/channels/whatsapp/link", { code: whatsapp.code, whatsappUserId: "7777" }),
+    );
+    expect(result.status).toBe(200);
+    expect(await links.resolveChannelUser("telegram", "7777")).toBe(person.id);
+    expect(await links.resolveChannelUser("whatsapp", "7777")).toBe(person.id);
+  });
+
+  it("refuses the WhatsApp channel calls without the channel token", async () => {
+    const response = await (await whatsappResolve()).POST(
+      post("/api/channels/whatsapp/resolve", { whatsappUserId: "966500000003" }, null),
+    );
+    expect(response.status).toBe(401);
+  });
+});

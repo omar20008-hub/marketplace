@@ -146,6 +146,18 @@ export const env = {
    * on the accounts page so the person knows which chat to open. Not a secret.
    */
   telegramBotUsername: process.env.TELEGRAM_BOT_USERNAME?.replace(/^@/, "") || null,
+  /** The WhatsApp Business number people message to link and chat (shown as text, never as a secret). */
+  whatsappBusinessNumber: process.env.WHATSAPP_BUSINESS_NUMBER?.trim() || null,
+
+  /**
+   * The bot's API token, and the secret Telegram echoes back on every update
+   * (set with setWebhook as secret_token). Empty secret refuses every update, so
+   * the receiver at /api/channels/telegram/webhook stays closed until it is set.
+   */
+  telegram: {
+    botToken: process.env.TELEGRAM_BOT_TOKEN ?? "",
+    webhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET ?? "",
+  },
 
   /**
    * The platform's own Google OAuth client, for connections the platform holds
@@ -248,6 +260,66 @@ export const env = {
     model: process.env.MEMORY_MODEL ?? "gemini-3.1-flash-lite",
   },
 
+  /**
+   * Which Orchestrator answers chat. "n8n" (the default) sends each message to the
+   * MP · Orchestrator workflow. "platform" answers in this app with Gemini, and
+   * still runs the product workflows through n8n. It needs GEMINI_API_KEY, and the
+   * app refuses to start with the flag set and no key.
+   */
+  orchestrator: {
+    driver: (process.env.ORCHESTRATOR_DRIVER === "platform" ? "platform" : "n8n") as
+      | "platform"
+      | "n8n",
+    model: process.env.ORCHESTRATOR_MODEL ?? "gemini-3.1-flash-lite",
+    fallbackModel: process.env.ORCHESTRATOR_FALLBACK_MODEL ?? "gemini-2.5-flash-lite",
+    geminiApiKey: process.env.GEMINI_API_KEY ?? "",
+  },
+
+  /**
+   * Who checks and runs a person's product copy when they use it. "n8n" (the default)
+   * sends the call to the MP · Dispatcher workflow. "platform" does the checks here
+   * and runs the copy through the n8n API. Checked against the live instance before
+   * it is switched on.
+   */
+  dispatcher: {
+    driver: (process.env.DISPATCHER_DRIVER === "platform" ? "platform" : "n8n") as
+      | "platform"
+      | "n8n",
+  },
+
+  /**
+   * Who installs a template for a person: the MP · Install Template workflow ("n8n",
+   * the default) or the platform, which creates the copy and its credentials in n8n
+   * itself. Checked against the live instance before it is switched on.
+   */
+  template: {
+    driver: (process.env.TEMPLATE_DRIVER === "platform" ? "platform" : "n8n") as
+      | "platform"
+      | "n8n",
+  },
+
+  /**
+   * Where a product's files are kept: the platform's own database ("platform") or the
+   * n8n Storage API ("n8n", the default). Checked against the live instance before it
+   * is switched on.
+   */
+  storage: {
+    driver: (process.env.STORAGE_DRIVER === "platform" ? "platform" : "n8n") as
+      | "platform"
+      | "n8n",
+  },
+
+  /**
+   * Who switches an approved template on: the MP · Review workflow ("n8n", the default)
+   * or the platform, through the n8n API. Rejections touch only the platform's record
+   * on the platform path.
+   */
+  review: {
+    driver: (process.env.REVIEW_DRIVER === "platform" ? "platform" : "n8n") as
+      | "platform"
+      | "n8n",
+  },
+
   n8n: {
     driver: (process.env.N8N_DRIVER === "live" ? "live" : "mock") as N8nDriver,
     baseUrl: process.env.N8N_BASE_URL ?? "",
@@ -277,3 +349,7 @@ export const env = {
     ),
   },
 } as const;
+
+if (env.orchestrator.driver === "platform" && !env.orchestrator.geminiApiKey) {
+  throw new Error("ORCHESTRATOR_DRIVER=platform needs GEMINI_API_KEY.");
+}

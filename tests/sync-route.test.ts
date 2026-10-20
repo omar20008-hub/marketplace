@@ -353,4 +353,12 @@ describe("a new template from n8n", () => {
     const slugs = (await prisma.product.findMany({ select: { slug: true } })).map((p) => p.slug);
     expect(new Set(slugs).size).toBe(2);
   });
+
+  it("gives an Arabic title an ASCII slug the product page can route to", async () => {
+    await sync([{ ...row, title: "إنشاء المحتوى", templateId: "tpl_arabic" }]);
+
+    const product = await prisma.product.findUniqueOrThrow({ where: { templateId: "tpl_arabic" } });
+    expect(product.slug).toMatch(/^[a-z0-9_-]+$/);
+    expect(product.slug).toBe("product-tpl_arabic");
+  });
 });

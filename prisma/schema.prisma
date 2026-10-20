@@ -74,6 +74,10 @@ model User {
   memoryFiles   MemoryFile[]
   channelLinks      ChannelLink[]
   channelLinkCodes  ChannelLinkCode[]
+  siteLogins        SiteLogin[]
+  siteLoginRequests SiteLoginRequest[]
+  agentKeys          AgentKey[]
+  orchestratorPendingActions OrchestratorPendingAction[]
 }
 
 // ------------------------------------------------------------ chat channels
@@ -354,6 +358,10 @@ model Installation {
 
   pinnedVersion      String
   instanceWorkflowId String?
+  /// n8n credential ids created for this copy (one per credential type, plus the
+  /// knowledge key's). Uninstall deletes them with the copy. Empty for installations
+  /// made before this was recorded, which uninstall handles through n8n.
+  n8nCredentialIds   String[]           @default([])
   storageBackend     String             @default("platform")
   status             InstallationStatus @default(PARTIAL)
   failureCount       Int                @default(0)
@@ -385,6 +393,7 @@ model Installation {
   /// is nothing to leak. A new one is issued on every activation.
   knowledgeKeyHash String?           @unique
   knowledgeSources KnowledgeSource[]
+  storageObjects   StorageObject[]
 
   @@unique([userId, productId])
 }
@@ -539,10 +548,34 @@ model Thread {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  messages Message[]
-  runs     Run[]
+  messages                   Message[]
+  runs                       Run[]
+  orchestratorPendingActions OrchestratorPendingAction[]
 
   @@index([userId, updatedAt])
+}
+
+/// A write the Orchestrator proposed and is waiting for the person to confirm.
+/// It runs only when a later message from that person confirms it, and it is
+/// consumed by that run. Proposals older than the confirmation window are ignored.
+model OrchestratorPendingAction {
+  id                  String                    @id @default(cuid())
+  userId              String
+  user                User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  threadId            String
+  thread              Thread                    @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  installationId      String
+  argsKey             String
+  proposedByMessageId String
+  status              OrchestratorPendingStatus @default(PENDING)
+  createdAt           DateTime                  @default(now())
+
+  @@index([userId, threadId, installationId, status])
+}
+
+enum OrchestratorPendingStatus {
+  PENDING
+  CONSUMED
 }
 
 enum MessageRole {
@@ -563,6 +596,41 @@ model Message {
 /// Per-user scheduling, which the workflow contracts have no answer for: there
 /// is no schedule table in n8n's side of the boundary, so the cadence, the
 /// saved inputs and the record of what happened all live here.
+/// Which node types a creator's workflow may use, and how each is treated.
+/// Read by the upload check; changed only by someone who owns the policy.
+model NodeRule {
+  nodeType String @id
+  verdict  String
+  note     String @default("")
+}
+
+/// Whether a credential type can be kept for an installation, and how it is
+/// connected. OAuth types need the platform's app registered with the provider.
+model CredentialRule {
+  credentialType String   @id
+  durability     String
+  appRegistered  Boolean  @default(false)
+  authFlow       String?
+  flowReady      Boolean?
+  note           String   @default("")
+}
+
+/// Files a product writes for one installation (the platform's own storage
+/// destination). Keyed by the platform installation, so one installation can never
+/// read another's files.
+model StorageObject {
+  id             String       @id @default(cuid())
+  installationId String
+  installation   Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  path           String
+  mimeType       String
+  size           Int
+  content        Bytes
+  writtenAt      DateTime     @default(now())
+
+  @@unique([installationId, path])
+}
+
 model Schedule {
   id             String       @id @default(cuid())
   userId         String
@@ -887,6 +955,42 @@ model MediaUpload {
   @@index([expiresAt])
 }
 
+// ------------------------------------------------------------ saved site logins
+
+// A username and password the person saved for a website, so the personal
+// assistant can sign in for them. The password is sealed with SECRETS_KEY and
+// is read back only by the server-side fill path, never by a page or a model.
+model SiteLogin {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  siteUrl      String // the login page, normalised to https://host
+  host         String
+  username     String
+  sealedSecret String // sealCredential({ password })
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  lastUsedAt   DateTime?
+
+  @@unique([userId, host, username])
+  @@index([userId])
+}
+
+// A one-time link the platform hands out so the person can type a login into
+// the platform, not into a chat. Only the SHA-256 of the token is stored.
+model SiteLoginRequest {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  siteUrl   String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
 enum AdCampaignStatus {
   /// Saved, not yet sent to Meta.
   DRAFT
@@ -936,4 +1040,18 @@ model AdCampaign {
 
   @@index([userId, createdAt])
   @@index([status])
+}
+
+// A key the platform issues to one person for their own personal assistant. Only
+// the SHA-256 of the key is stored, and it is shown once. Whoever holds the key
+// acts as that person and nobody else, so the user id is never taken from a body.
+model AgentKey {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  keyHash   String    @unique
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  @@index([userId])
 }
