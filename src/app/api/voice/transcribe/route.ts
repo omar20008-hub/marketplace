@@ -6,9 +6,21 @@ import { baseAudioType, MAX_AUDIO_BYTES, transcribe } from "@/server/voice/trans
 
 /**
  * Turns a recording from the chat box into text, in the language it was spoken in.
- * Signed-in people only, and rate limited: every call spends the platform's Gemini
- * quota. The audio is held in memory for the length of the call and never stored.
+ * Open to guests too, since the guest chat has the microphone; every call spends the
+ * platform's Gemini quota, so a signed-in person is limited per account and a guest
+ * per address, more tightly. The audio is held in memory for the length of the call
+ * and never stored.
  */
+
+/** Per signed-in person. */
+const USER_LIMIT = 20;
+/**
+ * Per address, for guests. The platform sits behind a proxy it does not control, so
+ * the forwarded address is a claim, not a fact (the guest chat route says the same);
+ * it still raises the cost of spending the quota without an account.
+ */
+const GUEST_LIMIT = 10;
+const WINDOW_MS = 10 * 60_000;
 
 const MESSAGES = {
   no_speech: "Nothing was heard in the recording. Try again.",
@@ -18,9 +30,10 @@ const MESSAGES = {
 
 export async function POST(request: Request) {
   const user = await currentUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const limiter = hit(`voice:${user.id}`, { limit: 20, windowMs: 10 * 60_000 });
+  const address = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const limiter = user
+    ? hit(`voice:user:${user.id}`, { limit: USER_LIMIT, windowMs: WINDOW_MS })
+    : hit(`voice:guest:${address}`, { limit: GUEST_LIMIT, windowMs: WINDOW_MS });
   if (!limiter.ok) {
     return NextResponse.json(
       { error: "Too many recordings. Wait a moment and try again." },

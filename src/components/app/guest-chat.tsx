@@ -2,9 +2,11 @@
 
 import clsx from "clsx";
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowUp, Sparkles } from "lucide-react";
 import { isSendKey } from "./send-key";
+import { VoiceBar, VoiceButton, VoiceNotice, useVoice } from "./voice-input";
+import { appendTranscript } from "./voice";
 
 type Message = { role: "USER" | "ASSISTANT"; body: string };
 
@@ -35,6 +37,23 @@ export function GuestChat({
   const [text, setText] = useState("");
   const [pending, setPending] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
+
+  // Dictated text is set in code, not typed, so the box is sized here too.
+  useEffect(() => {
+    const box = formRef.current?.querySelector("textarea");
+    if (box) {
+      box.style.height = "auto";
+      box.style.height = `${box.scrollHeight}px`;
+    }
+  }, [text]);
+
+  const voice = useVoice({
+    onText: (spoken) => setText((current) => appendTranscript(current, spoken)),
+    onCommand: (command) => {
+      if (command.kind === "clear") setText("");
+      else if (text.trim() && !pending) void send(text);
+    },
+  });
 
   async function send(raw: string) {
     const body = raw.trim();
@@ -105,6 +124,7 @@ export function GuestChat({
       >
         <div className="rounded-composer border border-line bg-canvas py-4 pr-3 pb-3 pl-5 shadow-[0_4px_24px_rgba(0,0,0,0.05)]">
           <textarea
+            dir="auto"
             rows={1}
             value={text}
             onChange={(event) => {
@@ -122,7 +142,13 @@ export function GuestChat({
             placeholder="Ask anything, or describe a task…"
             className="max-h-48 w-full resize-none bg-transparent text-base leading-7 placeholder:text-ink-3 focus:outline-none"
           />
-          <div className="mt-3.5 flex items-center justify-end">
+          {voice.state.phase !== "idle" ? (
+            <div className="mt-3.5">
+              <VoiceBar state={voice.state} analyser={voice.analyser} onConfirm={voice.confirm} onCancel={voice.cancel} />
+            </div>
+          ) : null}
+          <div className={clsx("mt-3.5 flex items-center justify-end gap-2", voice.state.phase !== "idle" && "hidden")}>
+            {voice.supported ? <VoiceButton onStart={voice.start} /> : null}
             <button
               type="submit"
               aria-label="Send"
@@ -137,6 +163,7 @@ export function GuestChat({
           </div>
         </div>
       </form>
+      <VoiceNotice notice={voice.state.phase === "idle" ? voice.state.notice : undefined} />
 
       {suggestions.length > 0 && messages.length === 0 && !text ? (
         <div className="mt-7 flex flex-col">
