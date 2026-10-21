@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { hashPassword, requireRole } from "@/lib/auth";
 import { initialsFor } from "@/lib/initials";
+import { MIN_PASSWORD_LENGTH } from "@/lib/password";
 import { n8n } from "@/lib/n8n";
 import { env } from "@/lib/env";
 import { redirect } from "next/navigation";
@@ -252,9 +253,6 @@ export async function hold(formData: FormData) {
   revalidatePath("/admin");
   revalidatePath("/marketplace");
 }
-
-/** Matches scripts/create-admin.ts's own floor — and lib/env.ts's, for a secret. */
-const MIN_PASSWORD_LENGTH = 12;
 
 export type CreateUserState = { error?: string; createdEmail?: string };
 

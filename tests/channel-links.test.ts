@@ -269,4 +269,17 @@ describe("linking a WhatsApp number", () => {
     );
     expect(response.status).toBe(401);
   });
+
+  it("tells the welcome page once the number is linked", async () => {
+    const person = await seedUser("wa-welcome@example.test");
+    viewer.current = person;
+    const { code } = await actions.startWhatsappLink();
+    expect(await actions.whatsappLinked()).toBe(false);
+
+    await (await whatsappLink()).POST(
+      post("/api/channels/whatsapp/link", { code, whatsappUserId: "966500000004" }),
+    );
+
+    expect(await actions.whatsappLinked()).toBe(true);
+  });
 });
