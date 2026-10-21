@@ -96,7 +96,7 @@ export function Composer({
               event.target.style.height = `${event.target.scrollHeight}px`;
             }}
             onKeyDown={(event) => {
-              if (isSendKey(event) && event.currentTarget.value.trim() ) {
+              if (isSendKey(event) && (event.currentTarget.value.trim() || attachments.items.length > 0)) {
                 event.preventDefault();
                 formRef.current?.requestSubmit();
               }
@@ -150,7 +150,7 @@ export function Composer({
               </Link>
             </div>
             <PendingNote className="mr-2 text-[13px] text-ink-3" />
-            <SendButton disabled={!text.trim() || attachments.uploading} />
+            <SendButton disabled={(!text.trim() && attachments.items.length === 0) || attachments.uploading} />
           </div>
         </div>
       </form>

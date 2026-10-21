@@ -76,7 +76,7 @@ export function FollowUp({ threadId, waiting = false }: { threadId: string; wait
         value={text}
         onChange={(event) => setText(event.target.value)}
         onKeyDown={(event) => {
-          if (isSendKey(event) && event.currentTarget.value.trim() ) {
+          if (isSendKey(event) && (event.currentTarget.value.trim() || attachments.items.length > 0)) {
             event.preventDefault();
             formRef.current?.requestSubmit();
           }
@@ -84,7 +84,7 @@ export function FollowUp({ threadId, waiting = false }: { threadId: string; wait
         placeholder="Ask a follow-up or change the inputs…"
         className="max-h-32 min-h-9 flex-1 resize-none bg-transparent py-1.5 text-[15px] placeholder:text-ink-3 focus:outline-none"
       />
-      <Send disabled={!text.trim() || waiting || attachments.uploading} />
+      <Send disabled={(!text.trim() && attachments.items.length === 0) || waiting || attachments.uploading} />
       </div>
       <AttachmentList attachments={attachments} />
       <VoiceNotice notice={voice.state.phase === "idle" ? voice.state.notice : undefined} />
