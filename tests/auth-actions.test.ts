@@ -30,6 +30,10 @@ vi.mock("next/navigation", () => ({
   },
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+// The new-person install runs after the response; outside a request there is no
+// scope for it, and the install itself is covered by auto-install.test.ts.
+vi.mock("next/server", () => ({ after: vi.fn() }));
+vi.mock("@/server/auto-install", () => ({ installReadyProducts: vi.fn(async () => ({ installed: [], skipped: 0 })) }));
 
 const { prisma } = await import("@/lib/db");
 const { hashPassword } = await import("@/lib/auth");
