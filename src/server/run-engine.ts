@@ -54,8 +54,14 @@ function stepLabels(product: {
   return labels;
 }
 
+/**
+ * The short handle a run is shown by ("run 3f9a1c07b2e4"). Run.runId is unique,
+ * so it needs enough randomness that two runs never draw the same one: two
+ * bytes (65,536 values) collided often enough to fail a run, and a test in CI.
+ * Six bytes keeps it short and makes a collision a practical impossibility.
+ */
 function handle() {
-  return randomBytes(2).toString("hex");
+  return randomBytes(6).toString("hex");
 }
 
 export function titleFor(task: string) {
