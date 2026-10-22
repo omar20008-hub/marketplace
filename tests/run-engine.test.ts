@@ -353,6 +353,7 @@ describe("executeRun — a run that works", () => {
 
     const handles = new Set(runs.map((r) => r!.runId));
     expect(handles.size).toBe(5);
+    for (const runId of handles) expect(runId).toMatch(/^[0-9a-f]{12}$/);
   });
 
   it("passes the session's user id to the dispatcher, not anything from args", async () => {
