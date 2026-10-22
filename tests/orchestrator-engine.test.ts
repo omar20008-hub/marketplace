@@ -309,3 +309,20 @@ describe("runOrchestratorTurn — write actions wait for confirmation", () => {
   });
 });
 
+
+describe("runOrchestratorTurn — search_conversation", () => {
+  it("passes the query to the person's conversation search and feeds back the result", async () => {
+    const searchConversation = vi.fn(async () => "[2026-10-20 09:00 · واتساب] المستخدم: الوظيفة في Scale");
+    const model = scripted("m", [reply("", [call("search_conversation", { query: "وظيفة Scale" })]), reply("وجدتها")]);
+    const answer = await runOrchestratorTurn(turn({ models: [model], handlers: handlers({ searchConversation }) }));
+    expect(answer).toBe("وجدتها");
+    expect(searchConversation).toHaveBeenCalledWith("وظيفة Scale");
+    expect(JSON.stringify(model.requests[1].messages)).toContain("الوظيفة في Scale");
+  });
+
+  it("refuses it where there is no person to search for", async () => {
+    const model = scripted("m", [reply("", [call("search_conversation", { query: "x" })]), reply("حسناً")]);
+    await runOrchestratorTurn(turn({ models: [model] }));
+    expect(JSON.stringify(model.requests[1].messages)).toContain("unknown_tool");
+  });
+});

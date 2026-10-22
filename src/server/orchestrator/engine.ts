@@ -23,6 +23,7 @@ export const MAX_STEPS = 6;
 
 export const RUN_TOOL = "run_marketplace_tool";
 export const SEARCH_TOOL = "web_search";
+export const HISTORY_TOOL = "search_conversation";
 
 export const STEP_LIMIT_REPLY =
   "لم أتمكن من إكمال هذا الطلب ضمن عدد الخطوات المسموح به. جرّب صياغته بشكل أبسط.";
@@ -63,11 +64,25 @@ export const TOOL_SPECS: ToolSpec[] = [
       required: ["query"],
     },
   },
+  {
+    name: HISTORY_TOOL,
+    description:
+      "يبحث في كل محادثات المستخدم السابقة مع المساعد، في المنصة والواتساب، ويعيد الرسائل المطابقة بتاريخها وقناتها. استعمله حين يشير المستخدم إلى شيء قاله أو أرسله أو طلبه سابقاً ولا تجده في آخر المحادثة ولا في ملخصها (مثل «الوظيفة التي ذكرتها»، «العنوان الذي أعطيتك»). المدخل: كلمات قليلة تصف ما تبحث عنه.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "ما تبحث عنه في المحادثات السابقة: كلمات قليلة ومحددة." },
+      },
+      required: ["query"],
+    },
+  },
 ];
 
 export type ToolHandlers = {
   runMarketplaceTool(installationId: string, args: Record<string, unknown>): Promise<string>;
   webSearch(query: string): Promise<string>;
+  /** Searches the person's past conversations. Absent where there is no person (a guest). */
+  searchConversation?(query: string): Promise<string>;
 };
 
 export type TurnInput = {
@@ -108,6 +123,12 @@ async function execute(call: ToolCall, input: TurnInput): Promise<string> {
     if (call.name === SEARCH_TOOL) {
       const query = typeof call.args.query === "string" ? call.args.query.trim() : "";
       return query ? await input.handlers.webSearch(query) : failure("invalid_arguments");
+    }
+
+    if (call.name === HISTORY_TOOL) {
+      const query = typeof call.args.query === "string" ? call.args.query.trim() : "";
+      if (!input.handlers.searchConversation) return failure("unknown_tool");
+      return query ? await input.handlers.searchConversation(query) : failure("invalid_arguments");
     }
 
     if (call.name === RUN_TOOL) {

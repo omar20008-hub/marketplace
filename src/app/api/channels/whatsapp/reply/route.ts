@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { channelCallAuthorised } from "@/lib/channel-token";
 import { resolveChannelUser, WHATSAPP } from "@/server/channel-links";
 import { recordChannelTurn } from "@/server/conversation";
+import { rememberInBackground } from "@/server/conversation-memory";
 
 /**
  * Called by n8n after the orchestrator answers a WhatsApp message, so the reply
@@ -22,7 +23,9 @@ export async function POST(request: Request) {
   const userId = await resolveChannelUser(WHATSAPP, whatsappUserId);
   if (!userId) return NextResponse.json({ error: "Not linked" }, { status: 404 });
 
-  await recordChannelTurn(userId, "whatsapp", "ASSISTANT", body.reply);
+  const { threadId } = await recordChannelTurn(userId, "whatsapp", "ASSISTANT", body.reply);
+  // The turn is complete: index it and bring the summary up to date.
+  await rememberInBackground(userId, threadId);
   return NextResponse.json({ ok: true });
 }
 
