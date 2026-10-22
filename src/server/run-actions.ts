@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { executeRun, fields, titleFor } from "./run-engine";
 import { describeAttachments, resolveAttachments } from "./media";
+import { ATTACHED_ONLY, describeFiles, resolveUserFiles } from "./files/user-files";
 import { answerThread, replyInBackground } from "./thread-reply";
 
 /**
@@ -21,7 +22,10 @@ import { answerThread, replyInBackground } from "./thread-reply";
  */
 export async function startTask(formData: FormData) {
   const user = await requireUser();
-  const task = String(formData.get("task") ?? "").trim();
+  // A file sent without a word still deserves an answer about the file.
+  const task =
+    String(formData.get("task") ?? "").trim() ||
+    (formData.getAll("file").length + formData.getAll("attachment").length > 0 ? ATTACHED_ONLY : "");
   if (!task) return;
 
   const pinned = String(formData.get("installationId") ?? "");
@@ -37,11 +41,14 @@ export async function startTask(formData: FormData) {
   const attachments = describeAttachments(
     await resolveAttachments(user.id, formData.getAll("attachment").map(String)),
   );
-  const shown = attachments.shown ? `${task}\n\n${attachments.shown}` : task;
+  // Files are this user's own saved files, their text already read (see /api/files).
+  const files = describeFiles(await resolveUserFiles(user.id, formData.getAll("file").map(String)));
+  const shown = [task, attachments.shown, files.shown].filter(Boolean).join("\n\n");
 
   const chatInput = [
     pinnedInstallation ? `[Product: ${pinnedInstallation.product.title}] ${task}` : task,
     attachments.forAssistant,
+    files.forAssistant,
   ]
     .filter(Boolean)
     .join("\n\n");

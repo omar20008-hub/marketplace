@@ -292,6 +292,22 @@ export const env = {
   },
 
   /**
+   * Reading the text in an image or a scanned PDF a person attaches (OCR). Uses
+   * GEMINI_API_KEY; with no key, such files are stored but their text is not read.
+   */
+  ocr: {
+    models: [
+      ...new Set(
+        [
+          process.env.OCR_MODEL || process.env.ORCHESTRATOR_MODEL || "gemini-3.1-flash-lite",
+          process.env.ORCHESTRATOR_FALLBACK_MODEL || "",
+        ].filter(Boolean),
+      ),
+    ],
+    geminiApiKey: process.env.GEMINI_API_KEY ?? "",
+  },
+
+  /**
    * Who checks and runs a person's product copy when they use it. "n8n" (the default)
    * sends the call to the MP · Dispatcher workflow. "platform" does the checks here
    * and runs the copy through the n8n API. Checked against the live instance before
