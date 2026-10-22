@@ -3,7 +3,10 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { verifyPassword } from "@/lib/auth";
+import { hashPassword, verifyPassword } from "@/lib/auth";
+import { initialsFor } from "@/lib/initials";
+import { WELCOME_PATH } from "@/lib/onboarding";
+import { MIN_PASSWORD_LENGTH } from "@/lib/password";
 import { createSession, destroySession } from "@/lib/session";
 import { clear, hit } from "@/lib/rate-limit";
 
@@ -70,6 +73,72 @@ export async function login(
   // cached, signed-out render after the redirect below.
   revalidatePath("/", "layout");
   redirect("/");
+}
+
+export type SignupState = { error?: string };
+
+/** The plan every self-registered account starts on, same as one created through Google. */
+const SIGNUP_PLAN_ID = "free";
+
+/**
+ * Creating an account from the sign-up form. Open to anyone, with no email
+ * confirmation, and the new account lands on the welcome page signed in.
+ *
+ * Unlike the sign-in form, this one does say when an address is taken: there
+ * is no way to refuse a duplicate without saying so, and Google sign-in on an
+ * existing address already tells the same thing to whoever owns it.
+ */
+export async function signup(
+  _prev: SignupState,
+  formData: FormData,
+): Promise<SignupState> {
+  const name = String(formData.get("name") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const password = String(formData.get("password") ?? "");
+
+  if (!name) return { error: "Enter your name." };
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { error: "Enter a valid email address." };
+  }
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return { error: `Use a password of at least ${MIN_PASSWORD_LENGTH} characters.` };
+  }
+
+  // Per address, like sign-in: one address cannot be hammered from the form.
+  const limited = hit(`signup:${email}`, { limit: LOGIN_LIMIT, windowMs: LOGIN_WINDOW_MS });
+  if (!limited.ok) {
+    const minutes = Math.ceil(limited.retryAfterSeconds / 60);
+    return { error: `Too many attempts. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}.` };
+  }
+
+  if (await prisma.user.findUnique({ where: { email }, select: { id: true } })) {
+    return { error: "That email already has an account. Sign in instead." };
+  }
+
+  let userId: string;
+  try {
+    const user = await prisma.user.create({
+      data: {
+        email,
+        name,
+        initials: initialsFor(name) || (email[0] ?? "U").toUpperCase(),
+        passwordHash: await hashPassword(password),
+        planId: SIGNUP_PLAN_ID,
+      },
+    });
+    userId = user.id;
+  } catch (error) {
+    // Two submissions racing for one address: the unique index settles it.
+    if ((error as { code?: string }).code === "P2002") {
+      return { error: "That email already has an account. Sign in instead." };
+    }
+    throw error;
+  }
+
+  await createSession(userId);
+  // Same cache-invalidation reason as login() above.
+  revalidatePath("/", "layout");
+  redirect(WELCOME_PATH);
 }
 
 export async function logout() {

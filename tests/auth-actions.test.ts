@@ -34,7 +34,7 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 const { prisma } = await import("@/lib/db");
 const { hashPassword } = await import("@/lib/auth");
 const { readSession } = await import("@/lib/session");
-const { login, logout } = await import("@/server/auth-actions");
+const { login, logout, signup } = await import("@/server/auth-actions");
 const { resetAll } = await import("@/lib/rate-limit");
 
 const PLAN_ID = "test-plan-auth-actions";
@@ -267,5 +267,63 @@ describe("too many attempts", () => {
       const again = await attempt_({ email: "nora@acme.co", password: "wrong" });
       expect(again.error).toBe("That email and password do not match.");
     }
+  });
+});
+
+describe("signup", () => {
+  const PASSWORD = "a-long-enough-password";
+
+  async function signup_(values: Record<string, string>) {
+    try {
+      const state = await signup({}, form(values));
+      return { to: null as string | null, error: state.error };
+    } catch (error) {
+      if (error instanceof Redirected) return { to: error.to, error: undefined };
+      throw error;
+    }
+  }
+
+  beforeEach(async () => {
+    await prisma.plan.create({
+      data: { id: "free", name: "Free", monthlyRuns: 1, storageBytes: BigInt(1), monthlyCredits: 0 },
+    });
+  });
+
+  it("creates an account on the free plan, signs it in and sends it to the welcome page", async () => {
+    const result = await signup_({ name: "Nora Haddad", email: " Nora@Acme.co ", password: PASSWORD });
+
+    expect(result.to).toBe("/welcome");
+    const user = await prisma.user.findUniqueOrThrow({ where: { email: "nora@acme.co" } });
+    expect(user).toMatchObject({ name: "Nora Haddad", initials: "NH", planId: "free" });
+    expect(user.passwordHash).not.toBe(PASSWORD);
+    await expect(readSession()).resolves.toEqual({ userId: user.id });
+
+    // And the password it was given signs it in afterwards.
+    jar.store.clear();
+    expect((await attempt_({ email: "nora@acme.co", password: PASSWORD })).to).toBe("/");
+  });
+
+  it("refuses an address that already has an account, and leaves that account alone", async () => {
+    const existing = await makeUser("nora@acme.co");
+
+    const result = await signup_({ name: "Someone", email: "nora@acme.co", password: PASSWORD });
+
+    expect(result.error).toBe("That email already has an account. Sign in instead.");
+    expect(await prisma.user.count()).toBe(1);
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: existing.id } })).name).toBe("Tester");
+    expect(jar.store.get(COOKIE)).toBeUndefined();
+  });
+
+  it("refuses a missing name, a malformed address and a short password", async () => {
+    expect((await signup_({ name: " ", email: "a@b.co", password: PASSWORD })).error).toBe(
+      "Enter your name.",
+    );
+    expect((await signup_({ name: "A", email: "not-an-address", password: PASSWORD })).error).toBe(
+      "Enter a valid email address.",
+    );
+    expect((await signup_({ name: "A", email: "a@b.co", password: "short" })).error).toMatch(
+      /at least 12 characters/,
+    );
+    expect(await prisma.user.count()).toBe(0);
   });
 });
