@@ -4,6 +4,8 @@ import { prisma } from "@/lib/db";
 import { answerMessage } from "./orchestrator/assistant";
 import { handleMemoryCommand, learnAfterResponse, withMemories } from "./memory";
 import { withFiles } from "./files/user-files";
+import { withConversation } from "./conversation";
+import { env } from "@/lib/env";
 
 /**
  * Produces the assistant's reply to a message already stored in a thread. It runs
@@ -30,7 +32,12 @@ export async function answerThread(
       command ??
       (await answerMessage({
         userId,
-        chatInput: await withMemories(userId, await withFiles(userId, text, chatInput)),
+        chatInput: await withRecentTurns(
+          userId,
+          threadId,
+          currentMessageId,
+          await withMemories(userId, await withFiles(userId, text, chatInput)),
+        ),
         threadId,
         currentMessageId,
       }));
@@ -53,4 +60,15 @@ export async function replyInBackground(work: () => Promise<void>) {
   } catch {
     await work();
   }
+}
+
+/**
+ * The thread's recent turns in front of the message when n8n answers it. The n8n
+ * Orchestrator keeps its own memory, but a tool it hands the message to (the
+ * personal assistant) does not, and would otherwise start from nothing. The
+ * in-app Orchestrator reads the thread itself, so it is not given them twice.
+ */
+async function withRecentTurns(userId: string, threadId: string, currentMessageId: string, chatInput: string) {
+  if (env.orchestrator.driver === "platform") return chatInput;
+  return withConversation(userId, threadId, chatInput, { before: currentMessageId });
 }

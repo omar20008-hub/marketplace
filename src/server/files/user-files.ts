@@ -6,6 +6,7 @@ import { embedTexts, embeddingTag, toVectorLiteral } from "@/lib/embeddings";
 import { extractFileText, MAX_FILE_BYTES, sniffFile, type Ocr } from "@/lib/file-text";
 import { embeddingRoom, fits } from "../knowledge/embedding-budget";
 import { defaultOcr } from "./ocr";
+import { fileDownloadUrl } from "./file-links";
 
 /**
  * Files a person sends in a conversation, from the platform chat or WhatsApp.
@@ -34,6 +35,7 @@ const MAX_EMBEDDED_CHUNKS = 60;
 export const MIN_PASSAGE_SCORE = 0.62;
 const MAX_CONTEXT_CHARS = 6_000;
 const LISTED_FILES = 15;
+const LINKED_FILES = 5;
 const FILE_START = "<<<FILE";
 
 export type Channel = "platform" | "whatsapp";
@@ -313,18 +315,23 @@ export async function searchUserFiles(userId: string, query: string, limit = 4):
 export async function filesContext(
   userId: string,
   message: string,
-  { search = true }: { search?: boolean } = {},
+  { search = true, origin }: { search?: boolean; origin?: string } = {},
 ): Promise<string> {
   const files = await prisma.userFile.findMany({
     where: { userId },
     orderBy: { createdAt: "desc" },
     take: LISTED_FILES,
-    select: { name: true, mimeType: true, createdAt: true },
+    select: { id: true, name: true, mimeType: true, createdAt: true },
   });
   if (files.length === 0) return "";
 
   const list = files
-    .map((f) => `- ${f.name} (${labelOf(f.mimeType)}, ${f.createdAt.toISOString().slice(0, 10)})`)
+    .map((f, i) => {
+      // A link the assistant can fetch the original from (to upload it to a site),
+      // for the latest few files only, to keep the block short.
+      const link = i < LINKED_FILES ? fileDownloadUrl(f.id, origin) : null;
+      return `- ${f.name} (${labelOf(f.mimeType)}, ${f.createdAt.toISOString().slice(0, 10)})${link ? ` — تنزيل الملف الأصلي: ${link}` : ""}`;
+    })
     .join("\n");
   const passages = search ? await searchUserFiles(userId, message).catch(() => []) : [];
 
@@ -340,14 +347,20 @@ export async function filesContext(
     }
     block += `\nمقاطع من هذه الملفات قد تتعلق بالرسالة:\n${parts.join("\n---\n")}`;
   }
-  return `${block}]`;
+  // On its own line, so a link at the end of the list is not read with the bracket.
+  return `${block}\n]`;
 }
 
 /** The message with the person's file context in front of it, when they have files. */
-export async function withFiles(userId: string, message: string, chatInput: string): Promise<string> {
+export async function withFiles(
+  userId: string,
+  message: string,
+  chatInput: string,
+  { origin }: { origin?: string } = {},
+): Promise<string> {
   try {
     // A message that carries a file's text already has the passages that matter.
-    const block = await filesContext(userId, message, { search: !chatInput.includes(FILE_START) });
+    const block = await filesContext(userId, message, { search: !chatInput.includes(FILE_START), origin });
     return block ? `${block}\n\n${chatInput}` : chatInput;
   } catch (error) {
     console.error("File context failed", error instanceof Error ? error.name : "error");

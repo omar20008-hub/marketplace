@@ -546,6 +546,9 @@ model Thread {
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   title     String
+  /// Set on the one thread that holds a chat channel's conversation ("whatsapp"),
+  /// so it is kept in the platform like any other; null for threads started here.
+  channel   String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -554,6 +557,7 @@ model Thread {
   orchestratorPendingActions OrchestratorPendingAction[]
 
   @@index([userId, updatedAt])
+  @@index([userId, channel])
 }
 
 /// A write the Orchestrator proposed and is waiting for the person to confirm.
