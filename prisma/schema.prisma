@@ -549,6 +549,11 @@ model Thread {
   /// Set on the one thread that holds a chat channel's conversation ("whatsapp"),
   /// so it is kept in the platform like any other; null for threads started here.
   channel   String?
+  /// A running summary of the turns older than the ones sent in full with each
+  /// message, kept up to date in the background (see conversation-memory.ts).
+  summary      String    @default("")
+  /// The newest message the summary covers.
+  summaryUntil DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -596,7 +601,23 @@ model Message {
   body      String
   runId     String?
   createdAt DateTime    @default(now())
+
+  embedding MessageEmbedding?
 }
+/// A message's vector, so the whole conversation can be searched by meaning. One
+/// row per message long enough to be worth finding; written in the background.
+/// The vector column is absent on a database without pgvector; search then
+/// matches words.
+model MessageEmbedding {
+  messageId String                      @id
+  message   Message                     @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String
+  model     String
+  embedding Unsupported("vector(768)")?
+
+  @@index([userId])
+}
+
 
 /// Per-user scheduling, which the workflow contracts have no answer for: there
 /// is no schedule table in n8n's side of the boundary, so the cadence, the

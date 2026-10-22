@@ -10,6 +10,7 @@ import type { ChatModel } from "./model";
 import { recentTurns } from "./memory";
 import { runInstalledProduct } from "./runtimes/product";
 import { createWebSearch } from "./runtimes/web";
+import { formatHistory, searchConversation } from "../conversation-memory";
 
 /**
  * Answers one chat message, with whichever Orchestrator the environment selects.
@@ -58,6 +59,9 @@ export async function answerOnPlatform({
           ? runInstalledProduct({ user, installationId, args, threadId })
           : JSON.stringify({ result: "denied", reason: "installation_not_found" }),
       webSearch: createWebSearch(),
+      ...(user
+        ? { searchConversation: async (query: string) => formatHistory(await searchConversation(userId, query)) }
+        : {}),
     };
 
     return await runOrchestratorTurn({
