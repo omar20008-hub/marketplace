@@ -4,7 +4,7 @@ import clsx from "clsx";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { Brain, FolderClosed, Layers, Link2, LogIn, LogOut, PanelLeft, PenSquare, Search, Shield, SquareCode, X, KeyRound } from "lucide-react";
+import { Brain, FileText, FolderClosed, Layers, Link2, LogIn, LogOut, PanelLeft, PenSquare, Search, Shield, SquareCode, X, KeyRound } from "lucide-react";
 import { Avatar } from "@/components/ds";
 import { logout } from "@/server/auth-actions";
 
@@ -74,6 +74,7 @@ export function Sidebar({
     },
     ...(user ? [{ href: "/logins", label: "Saved logins", icon: <KeyRound {...iconProps} /> }] : []),
     ...(user ? [{ href: "/memory", label: "Memory", icon: <Brain {...iconProps} /> }] : []),
+    ...(user ? [{ href: "/files", label: "Files", icon: <FileText {...iconProps} /> }] : []),
     ...(user?.isCreator
       ? [{ href: "/creator", label: "Creator studio", icon: <SquareCode {...iconProps} /> }]
       : []),

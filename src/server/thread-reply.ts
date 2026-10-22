@@ -3,6 +3,7 @@ import { after } from "next/server";
 import { prisma } from "@/lib/db";
 import { answerMessage } from "./orchestrator/assistant";
 import { handleMemoryCommand, learnAfterResponse, withMemories } from "./memory";
+import { withFiles } from "./files/user-files";
 
 /**
  * Produces the assistant's reply to a message already stored in a thread. It runs
@@ -11,7 +12,8 @@ import { handleMemoryCommand, learnAfterResponse, withMemories } from "./memory"
  * page refreshes itself until the reply lands.
  *
  * "Remember that …" is answered here; everything else goes to the Orchestrator
- * with what the person has asked to be remembered in front of it. The stored
+ * with what the person has asked to be remembered, and what of their saved files
+ * matches the message, in front of it. The stored
  * user message stays exactly what they wrote.
  */
 export async function answerThread(
@@ -28,7 +30,7 @@ export async function answerThread(
       command ??
       (await answerMessage({
         userId,
-        chatInput: await withMemories(userId, chatInput),
+        chatInput: await withMemories(userId, await withFiles(userId, text, chatInput)),
         threadId,
         currentMessageId,
       }));

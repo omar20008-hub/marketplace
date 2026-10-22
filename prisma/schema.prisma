@@ -65,6 +65,7 @@ model User {
   runs          Run[]
   threads       Thread[]
   mediaUploads  MediaUpload[]
+  userFiles     UserFile[]
   reviews       Review[]
   submissions   Submission[]
   schedules     Schedule[]
@@ -953,6 +954,51 @@ model MediaUpload {
 
   @@index([userId, expiresAt])
   @@index([expiresAt])
+}
+
+/// A file a person sent in a conversation (the platform chat or WhatsApp): a PDF,
+/// an Office document, a text/Markdown/JSON/CSV file or an image. Kept in the
+/// person's own space with the text read from it (OCR for images and scans), so
+/// a later message can find it. Deleted with the account, or by the person.
+model UserFile {
+  id             String          @id @default(cuid())
+  userId         String
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name           String
+  mimeType       String
+  sizeBytes      Int
+  data           Bytes
+  /// "platform" or "whatsapp": where it was sent from.
+  channel        String          @default("platform")
+  /// The text read from the file; empty when none could be read (see `error`).
+  text           String          @default("")
+  /// How the text was read: text, pdf, office or ocr. Null when it could not be.
+  method         String?
+  error          String?
+  truncated      Boolean         @default(false)
+  /// The embedding model of its chunks (see embeddingTag()); null until embedded.
+  embeddingModel String?
+  createdAt      DateTime        @default(now())
+
+  chunks UserFileChunk[]
+
+  @@index([userId, createdAt])
+}
+
+/// A passage of a UserFile, for finding it again. The vector is written and searched
+/// with raw SQL, and is absent on a database without pgvector; search then falls
+/// back to matching words.
+model UserFileChunk {
+  id        String                      @id @default(cuid())
+  fileId    String
+  file      UserFile                    @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  userId    String
+  ordinal   Int
+  content   String
+  embedding Unsupported("vector(768)")?
+
+  @@index([userId])
+  @@index([fileId, ordinal])
 }
 
 // ------------------------------------------------------------ saved site logins
