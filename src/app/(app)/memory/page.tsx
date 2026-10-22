@@ -2,11 +2,20 @@ import Link from "next/link";
 import clsx from "clsx";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { MAX_FILES, MAX_FILE_CHARS, MAX_NAME_CHARS, fileLines } from "@/lib/memory-rules";
+import {
+  IMPORT_PROMPT,
+  MAX_FILES,
+  MAX_FILE_CHARS,
+  MAX_IMPORT_CHARS,
+  MAX_NAME_CHARS,
+  fileLines,
+} from "@/lib/memory-rules";
 import { Button, Card, EmptyState, Input, PageTitle } from "@/components/ds";
 import { listFiles } from "@/server/memory";
+import { CopyPrompt } from "./copy-prompt";
 import {
   addMemoryLineAction,
+  importMemoryAction,
   clearMemoriesAction,
   createMemoryFileAction,
   deleteMemoryFileAction,
@@ -19,11 +28,29 @@ export const metadata = { title: "Memory · Builder" };
 
 type Note = { text: string; tone: "ok" | "bad" };
 
-function noteFor(code: string | undefined): Note | null {
+type ImportCounts = { imported: number; already: number; skipped: number };
+
+function noteFor(code: string | undefined, counts: ImportCounts): Note | null {
   if (!code) return null;
   if (code.startsWith("sensitive-")) {
     return {
       text: `Not saved: line ${code.slice("sensitive-".length)} looks like a password, key, long number, email, phone or link. Remove it and save again.`,
+      tone: "bad",
+    };
+  }
+  if (code === "imported") {
+    const parts = [`Added ${counts.imported} ${counts.imported === 1 ? "line" : "lines"}.`];
+    if (counts.already > 0) parts.push(`${counts.already} already there.`);
+    if (counts.skipped > 0) {
+      parts.push(
+        `${counts.skipped} not added: each line must be short enough, and must not look like a password, key, number, email, phone or link.`,
+      );
+    }
+    return { text: parts.join(" "), tone: counts.imported > 0 || counts.already > 0 ? "ok" : "bad" };
+  }
+  if (code === "import_empty") {
+    return {
+      text: "Nothing to add: no lines were found under the categories the export asks for. Paste the whole export and try again.",
       tone: "bad",
     };
   }
@@ -51,16 +78,27 @@ function noteFor(code: string | undefined): Note | null {
 export default async function MemoryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ file?: string; note?: string }>;
+  searchParams: Promise<{
+    file?: string;
+    note?: string;
+    imported?: string;
+    already?: string;
+    skipped?: string;
+  }>;
 }) {
   const user = await requireUser();
-  const { file: fileParam, note } = await searchParams;
+  const { file: fileParam, note, imported, already, skipped } = await searchParams;
+  const counts: ImportCounts = {
+    imported: Number(imported) || 0,
+    already: Number(already) || 0,
+    skipped: Number(skipped) || 0,
+  };
   const [files, profile] = await Promise.all([
     listFiles(user.id),
     prisma.user.findUniqueOrThrow({ where: { id: user.id }, select: { memoryAuto: true } }),
   ]);
   const selected = files.find((f) => f.id === fileParam) ?? files[0] ?? null;
-  const message = noteFor(note);
+  const message = noteFor(note, counts);
 
   return (
     <div className="px-5 py-5 lg:px-7">
@@ -115,6 +153,50 @@ export default async function MemoryPage({
                 Create
               </Button>
             </form>
+          </Card>
+
+          <Card className="p-3.5">
+            <details>
+              <summary className="cursor-pointer text-[13px] font-medium">Import from another AI</summary>
+              <div className="mt-3 flex flex-col gap-3">
+                <div className="flex flex-col gap-2">
+                  <span className="text-[13px] font-medium">1. Copy this into your other assistant</span>
+                  <textarea
+                    readOnly
+                    value={IMPORT_PROMPT}
+                    rows={5}
+                    aria-label="Export prompt"
+                    className="w-full rounded-row border border-line bg-fill px-3 py-2 text-xs leading-5 text-ink-2"
+                  />
+                  <div>
+                    <CopyPrompt text={IMPORT_PROMPT} />
+                  </div>
+                </div>
+                <form action={importMemoryAction} className="flex flex-col gap-2">
+                  <label className="text-[13px] font-medium" htmlFor="import-text">
+                    2. Paste its answer here
+                  </label>
+                  <textarea
+                    id="import-text"
+                    name="text"
+                    required
+                    maxLength={MAX_IMPORT_CHARS}
+                    rows={6}
+                    spellCheck={false}
+                    placeholder="Paste the whole answer, including the headings"
+                    className="w-full rounded-row border border-line bg-canvas px-3 py-2 text-xs leading-5 placeholder:text-ink-3 focus:border-ink focus:outline-none"
+                  />
+                  <span className="text-xs text-ink-3">
+                    Instructions, identity, career, projects and preferences are added to the matching files.
+                  </span>
+                  <div>
+                    <Button type="submit" size="sm">
+                      Add to memory
+                    </Button>
+                  </div>
+                </form>
+              </div>
+            </details>
           </Card>
 
           <Card className="p-3.5">
