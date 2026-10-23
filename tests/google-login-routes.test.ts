@@ -8,6 +8,10 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/session", () => ({ createSession: vi.fn() }));
+// The new-person install runs after the response, which has no scope in a test.
+// Its own behaviour is covered in auto-install.test.ts.
+vi.mock("next/server", async (importOriginal) => ({ ...(await importOriginal<typeof import("next/server")>()), after: vi.fn() }));
+vi.mock("@/server/auto-install", () => ({ installReadyProducts: vi.fn(async () => ({ installed: [], skipped: 0 })) }));
 
 const { createSession } = await import("@/lib/session");
 const { prisma } = await import("@/lib/db");

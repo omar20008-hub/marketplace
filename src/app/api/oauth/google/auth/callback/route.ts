@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { hashPassword } from "@/lib/auth";
+import { installReadyProducts } from "@/server/auto-install";
 import { prisma } from "@/lib/db";
 import {
   GOOGLE_AUTH_CALLBACK_PATH,
@@ -54,6 +55,7 @@ export async function GET(request: Request) {
     if (!identity) return finish("/login", { auth_error: "identity" });
 
     let user = await prisma.user.findUnique({ where: { email: identity.email } });
+    let created = false;
     // A new account starts on the welcome page, which offers WhatsApp or the
     // platform's own chat; someone signing back in goes where they were headed.
     let returnTo = state.returnTo;
@@ -70,9 +72,11 @@ export async function GET(request: Request) {
           planId: "free",
         },
       });
+      created = true;
     }
 
     await createSession(user.id);
+    if (created) after(() => installReadyProducts(user.id));
     revalidatePath("/", "layout");
     return finish(returnTo, {});
   } catch (error) {

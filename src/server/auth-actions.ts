@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/auth";
@@ -8,6 +9,7 @@ import { initialsFor } from "@/lib/initials";
 import { WELCOME_PATH } from "@/lib/onboarding";
 import { MIN_PASSWORD_LENGTH } from "@/lib/password";
 import { createSession, destroySession } from "@/lib/session";
+import { installReadyProducts } from "@/server/auto-install";
 import { clear, hit } from "@/lib/rate-limit";
 
 export type LoginState = { error?: string };
@@ -136,6 +138,9 @@ export async function signup(
   }
 
   await createSession(userId);
+  // A new person gets the products that work without a connection of their own, in
+  // the background: the sign-up does not wait for n8n to build each copy.
+  after(() => installReadyProducts(userId));
   // Same cache-invalidation reason as login() above.
   revalidatePath("/", "layout");
   redirect(WELCOME_PATH);
