@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { appUrl } from "@/lib/public-origin";
 import { findProvider, missingSettings } from "@/lib/connectors/providers";
-import { beginSignIn, connectorCookieName, connectorCookiePath } from "@/lib/connectors/sign-in";
+import {
+  beginSignIn,
+  ConnectorSignInError,
+  connectorCookieName,
+  connectorCookiePath,
+} from "@/lib/connectors/sign-in";
 import { safeReturnTo } from "@/lib/oauth-state";
 
 /**
@@ -25,7 +30,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ prov
     return NextResponse.redirect(appUrl(returnTo, { connect_error: "tool_not_configured" }, request));
   }
 
-  const { url, cookie, cookieMaxAge } = beginSignIn(provider, { userId: user.id, returnTo, request });
+  let started: Awaited<ReturnType<typeof beginSignIn>>;
+  try {
+    started = await beginSignIn(provider, { userId: user.id, returnTo, request });
+  } catch (error) {
+    const reason = error instanceof ConnectorSignInError ? error.code : "tool_token";
+    console.error(`${provider.displayName} sign-in could not start: ${reason}`);
+    return NextResponse.redirect(appUrl(returnTo, { connect_error: reason }, request));
+  }
+  const { url, cookie, cookieMaxAge } = started;
   const response = NextResponse.redirect(url);
   response.cookies.set(connectorCookieName(provider), cookie, {
     httpOnly: true,

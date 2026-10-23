@@ -29,8 +29,21 @@ export type ConnectorProvider = {
   initials: string;
   authorizeUrl: string;
   tokenUrl: string;
-  identityUrl: string;
+  /** Asks the tool who the person is. Not needed when identityFromToken reads it from the token answer. */
+  identityUrl?: string;
   scopes: string[];
+  /** Where the client id and secret go on a token request. The body is the default. */
+  tokenAuth?: "body" | "basic";
+  /** Form-encoded is the default; a few tools want JSON. */
+  tokenBody?: "form" | "json";
+  /** Stripe's token request takes only the secret, so the client id is left out of it. */
+  omitClientIdOnToken?: boolean;
+  /** Sends a PKCE challenge on authorize and the verifier on the token request. */
+  pkce?: boolean;
+  /** For tools that return the person inside the token answer, rather than at an identity endpoint. */
+  identityFromToken?: (json: unknown) => { accountRef: string; label: string } | null;
+  /** OAuth 1.0a (Trello): the endpoints for the request and access tokens. */
+  oauth1?: { requestTokenUrl: string; accessTokenUrl: string; scope: string };
   clientId: () => string;
   clientSecret: () => string;
   /** The environment names behind clientId and clientSecret, for the not-configured message. */
@@ -117,7 +130,149 @@ export function editorIsGranted(provider: ConnectorProvider, secretJson: string 
   return granted.includes(provider.requiredScope);
 }
 
-const SIGN_IN: ConnectorProvider[] = [asana];
+/**
+ * Airtable's token endpoint wants the client credentials in a Basic header, and
+ * the sign-in uses PKCE. Its access tokens lapse, and the refresh token renews them.
+ */
+const airtable: ConnectorProvider = {
+  id: "airtable",
+  credentialType: "airtableOAuth2Api",
+  displayName: "Airtable",
+  initials: "AT",
+  authorizeUrl: "https://airtable.com/oauth2/v1/authorize",
+  tokenUrl: "https://airtable.com/oauth2/v1/token",
+  identityUrl: "https://api.airtable.com/v0/meta/whoami",
+  scopes: ["data.records:read", "data.records:write", "schema.bases:read"],
+  tokenAuth: "basic",
+  pkce: true,
+  clientId: () => env.airtable.clientId,
+  clientSecret: () => env.airtable.clientSecret,
+  settingNames: ["AIRTABLE_CLIENT_ID", "AIRTABLE_CLIENT_SECRET"],
+  accountFrom: (json) => {
+    const data = json as { id?: string; email?: string };
+    const accountRef = (data.email ?? data.id ?? "").toLowerCase();
+    if (!accountRef) return null;
+    return { accountRef, label: data.email ? `${data.email} (Airtable)` : "Airtable" };
+  },
+  signIn: true,
+};
+
+/**
+ * Notion answers the token request with the workspace and its owner, so there is
+ * no identity call. The token does not expire. Its endpoint takes a JSON body
+ * and the client credentials in a Basic header.
+ */
+const notion: ConnectorProvider = {
+  id: "notion",
+  credentialType: "notionOAuth2Api",
+  displayName: "Notion",
+  initials: "NO",
+  authorizeUrl: "https://api.notion.com/v1/oauth/authorize?owner=user",
+  tokenUrl: "https://api.notion.com/v1/oauth/token",
+  scopes: [],
+  tokenAuth: "basic",
+  tokenBody: "json",
+  clientId: () => env.notion.clientId,
+  clientSecret: () => env.notion.clientSecret,
+  settingNames: ["NOTION_CLIENT_ID", "NOTION_CLIENT_SECRET"],
+  accountFrom: () => null,
+  identityFromToken: (json) => {
+    const data = json as {
+      workspace_id?: string;
+      workspace_name?: string;
+      owner?: { user?: { person?: { email?: string } } };
+    };
+    const accountRef = (data.owner?.user?.person?.email ?? data.workspace_id ?? "").toLowerCase();
+    if (!accountRef) return null;
+    return { accountRef, label: `${data.workspace_name ?? "Notion"} (Notion)` };
+  },
+  signIn: true,
+};
+
+/**
+ * Trello signs in with OAuth 1.0a: a request token, the person's approval, then
+ * an access token. The app key and secret are the Power-Up's API key and secret.
+ * Its tokens do not expire here (see the authorize call), so there is no refresh.
+ */
+const trello: ConnectorProvider = {
+  id: "trello",
+  credentialType: "trelloApi",
+  displayName: "Trello",
+  initials: "TR",
+  authorizeUrl: "https://trello.com/1/OAuthAuthorizeToken",
+  tokenUrl: "https://trello.com/1/OAuthGetAccessToken",
+  identityUrl: "https://api.trello.com/1/members/me",
+  scopes: [],
+  oauth1: {
+    requestTokenUrl: "https://trello.com/1/OAuthGetRequestToken",
+    accessTokenUrl: "https://trello.com/1/OAuthGetAccessToken",
+    scope: "read,write",
+  },
+  clientId: () => env.trello.clientId,
+  clientSecret: () => env.trello.clientSecret,
+  settingNames: ["TRELLO_API_KEY", "TRELLO_API_SECRET"],
+  accountFrom: (json) => {
+    const data = json as { username?: string; fullName?: string; id?: string };
+    const accountRef = (data.username ?? data.id ?? "").toLowerCase();
+    if (!accountRef) return null;
+    return { accountRef, label: data.fullName ? `${data.fullName} (Trello)` : "Trello" };
+  },
+  signIn: true,
+};
+
+/**
+ * Microsoft 365 through Microsoft's identity platform. The common endpoint takes
+ * work and personal accounts. offline_access is what makes it issue a refresh
+ * token. Admin consent may be needed in some work tenants.
+ */
+const microsoft365: ConnectorProvider = {
+  id: "microsoft365",
+  credentialType: "microsoftGraphOAuth2Api",
+  displayName: "Microsoft 365",
+  initials: "MS",
+  authorizeUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+  tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+  identityUrl: "https://graph.microsoft.com/v1.0/me",
+  scopes: ["offline_access", "User.Read", "Files.ReadWrite.All", "Sites.ReadWrite.All"],
+  clientId: () => env.microsoft.clientId,
+  clientSecret: () => env.microsoft.clientSecret,
+  settingNames: ["MICROSOFT_CLIENT_ID", "MICROSOFT_CLIENT_SECRET"],
+  accountFrom: (json) => {
+    const data = json as { id?: string; mail?: string; userPrincipalName?: string; displayName?: string };
+    const accountRef = (data.mail ?? data.userPrincipalName ?? data.id ?? "").toLowerCase();
+    if (!accountRef) return null;
+    return { accountRef, label: data.displayName ? `${data.displayName} (Microsoft 365)` : "Microsoft 365" };
+  },
+  signIn: true,
+};
+
+/**
+ * Stripe Connect, OAuth for Standard accounts: the person connects their own
+ * Stripe account. The token answer names the account (stripe_user_id), so there
+ * is no identity call. The client secret is the platform's secret key.
+ */
+const stripe: ConnectorProvider = {
+  id: "stripe",
+  credentialType: "stripeConnectOAuth2Api",
+  displayName: "Stripe",
+  initials: "ST",
+  authorizeUrl: "https://connect.stripe.com/oauth/authorize",
+  tokenUrl: "https://connect.stripe.com/oauth/token",
+  scopes: ["read_write"],
+  omitClientIdOnToken: true,
+  clientId: () => env.stripe.connectClientId,
+  clientSecret: () => env.stripe.secretKey,
+  settingNames: ["STRIPE_CONNECT_CLIENT_ID", "STRIPE_SECRET_KEY"],
+  accountFrom: () => null,
+  identityFromToken: (json) => {
+    const accountId = (json as { stripe_user_id?: string }).stripe_user_id;
+    if (!accountId) return null;
+    return { accountRef: accountId, label: `Stripe account ${accountId}` };
+  },
+  signIn: true,
+};
+
+const SIGN_IN: ConnectorProvider[] = [asana, airtable, notion, trello, microsoft365, stripe];
 const ALL: ConnectorProvider[] = [
   ...SIGN_IN,
   googleDrive,

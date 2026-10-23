@@ -196,6 +196,19 @@ export const env = {
     clientId: process.env.ASANA_CLIENT_ID ?? "",
     clientSecret: process.env.ASANA_CLIENT_SECRET ?? "",
   },
+  notion: {
+    clientId: process.env.NOTION_CLIENT_ID ?? "",
+    clientSecret: process.env.NOTION_CLIENT_SECRET ?? "",
+  },
+  airtable: {
+    clientId: process.env.AIRTABLE_CLIENT_ID ?? "",
+    clientSecret: process.env.AIRTABLE_CLIENT_SECRET ?? "",
+  },
+  /** Trello's Power-Up API key and secret, under the names the provider's settings use. */
+  trello: {
+    clientId: process.env.TRELLO_API_KEY ?? "",
+    clientSecret: process.env.TRELLO_API_SECRET ?? "",
+  },
 
   /**
    * Stripe, for the paid plans (see lib/billing.ts). Not required to boot: without a
@@ -203,7 +216,15 @@ export const env = {
    * the Stripe prices for each paid plan; the webhook secret checks that a request
    * really came from Stripe.
    */
+  /** Microsoft 365's app registration (Entra), for the sign-in in lib/connectors. */
+  microsoft: {
+    clientId: process.env.MICROSOFT_CLIENT_ID ?? "",
+    clientSecret: process.env.MICROSOFT_CLIENT_SECRET ?? "",
+  },
+
   stripe: {
+    /** Stripe Connect's client id (ca_…), for the connect sign-in. Separate from the billing keys. */
+    connectClientId: process.env.STRIPE_CONNECT_CLIENT_ID ?? "",
     secretKey: process.env.STRIPE_SECRET_KEY ?? "",
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
     priceIds: {

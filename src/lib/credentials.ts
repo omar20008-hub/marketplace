@@ -116,6 +116,12 @@ export function credentialLabel(credentialType: string) {
     // rather than whichever product it was first written for.
     facebookGraphApi: "Facebook & Instagram",
     slackApi: "Slack",
+    notionOAuth2Api: "Notion",
+    airtableOAuth2Api: "Airtable",
+    trelloApi: "Trello",
+    asanaOAuth2Api: "Asana",
+    microsoftGraphOAuth2Api: "Microsoft 365",
+    stripeConnectOAuth2Api: "Stripe",
     microsoftTeamsOAuth2Api: "Microsoft Teams",
     hubspotApi: "HubSpot",
     openAiApi: "OpenAI",
