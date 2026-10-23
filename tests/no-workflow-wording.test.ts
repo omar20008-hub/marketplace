@@ -17,7 +17,7 @@ const FILES = [
   "src/app/(app)/marketplace/page.tsx",
   "src/app/(app)/marketplace/[slug]/page.tsx",
   "src/app/(app)/workspace/page.tsx",
-  "src/app/(app)/page.tsx",
+  "src/app/page.tsx",
   "src/app/(app)/admin/page.tsx",
   "src/app/login/page.tsx",
   "src/app/layout.tsx",

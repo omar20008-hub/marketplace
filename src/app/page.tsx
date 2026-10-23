@@ -16,7 +16,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: user
       ? "New task · Builder"
-      : "Builder · Agents and workflows you can run",
+      : "Builder · Agents and products you can run",
   };
 }
 
