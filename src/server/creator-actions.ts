@@ -33,7 +33,6 @@ export async function uploadProduct(
   const description = String(formData.get("description") ?? "").trim();
   const summary = String(formData.get("summary") ?? "").trim() || description.slice(0, 120);
   const category = String(formData.get("category") ?? "Operations");
-  const kind = String(formData.get("kind") ?? "WORKFLOW") === "AGENT" ? "AGENT" : "WORKFLOW";
   const actionType = String(formData.get("actionType") ?? "read") === "write" ? "write" : "read";
   const file = formData.get("file");
 
@@ -41,7 +40,7 @@ export async function uploadProduct(
     return { error: "A title and a description are required." };
   }
   if (!(file instanceof File) || file.size === 0) {
-    return { error: "Attach the exported workflow JSON." };
+    return { error: "Attach the exported agent JSON." };
   }
 
   const text = await file.text();
@@ -83,7 +82,7 @@ export async function uploadProduct(
         splitList(reply.requiredCredentials).length > 0
           ? `Your ${splitList(reply.requiredCredentials).join(", ")} account.`
           : "Nothing. Everything this needs is provided by the platform.",
-      kind,
+      kind: "AGENT",
       category,
       actionType: actionType === "write" ? "WRITE" : "READ",
       status: "IN_REVIEW",

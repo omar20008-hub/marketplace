@@ -1,0 +1,89 @@
+{
+  "name": "Claude Dev — Result Handler (Trello adapter)",
+  "nodes": [
+    {
+      "id": "300e65c6-6d4c-4503-9157-6a97be7c013f",
+      "name": "Callback Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "39acece8-ea95-4724-9920-a170fd1758d5",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "claude-dev-result",
+        "authentication": "headerAuth",
+        "options": {}
+      }
+    },
+    {
+      "id": "d1d3c6f0-aebd-4095-b270-6f0f61ef8002",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [220, 0],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "3347b616-2fc3-42a0-95bb-ebb445fe794a", "name": "review_list_id", "value": "REPLACE_REVIEW_LIST_ID", "type": "string" },
+            { "id": "8cffe766-b295-4230-adab-2e8a39479d8c", "name": "needs_attention_list_id", "value": "REPLACE_NEEDS_ATTENTION_LIST_ID", "type": "string" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "2579630a-23b1-4d78-a806-4162aabc07db",
+      "name": "Build Update",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 0],
+      "notes": "Builds the list move and the comment from the neutral result. Only the Tracker nodes know the tracker.",
+      "parameters": {
+        "jsCode": "const body = $('Callback Webhook').first().json.body || {};\nconst cfg = $('Config').first().json;\nif (!body.task_id) throw new Error('Missing task_id in callback payload');\nif (body.tracker && body.tracker !== 'trello') throw new Error('This workflow handles trello cards only, got: ' + body.tracker);\n\nconst lines = [];\nlet target;\nif (body.status === 'success') {\n  target = cfg.review_list_id;\n  lines.push('✅ أنهى Claude التطوير واجتاز الاختبارات والمراجعة، وفتح Pull Request لمراجعتك.');\n  lines.push(`PR: ${body.pr_url}`);\n} else if (body.status === 'blocked') {\n  target = cfg.needs_attention_list_id;\n  lines.push('⏸️ يحتاج Claude توضيحًا قبل التنفيذ. أجب على الأسئلة في وصف البطاقة ثم أعدها إلى قائمة Ready for Claude.');\n} else {\n  target = cfg.needs_attention_list_id;\n  lines.push('❌ لم يتمكن Claude من إكمال المهمة.');\n  if (body.reason) lines.push(`السبب: ${body.reason}`);\n}\nif (body.summary) lines.push('', 'الملخص:', body.summary);\nif (Array.isArray(body.questions) && body.questions.length) {\n  lines.push('', 'أسئلة:', ...body.questions.map(q => `• ${q}`));\n}\nif (body.tests_gate) lines.push('', `بوابة الاختبارات: ${body.tests_gate}`);\nif (body.run_url) lines.push(`سجل التشغيل: ${body.run_url}`);\n\nreturn [{ json: { task_id: String(body.task_id), target_list: target, comment: lines.join('\\n') } }];"
+      }
+    },
+    {
+      "id": "06256f21-d554-45de-805a-df99f14a39bd",
+      "name": "Tracker: move card",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 0],
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.trello.com/1/cards/{{ $json.task_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ idList: $json.target_list }) }}"
+      }
+    },
+    {
+      "id": "377ece84-bda5-4c6f-a9f8-cbac3263f839",
+      "name": "Tracker: comment result",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [880, 0],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $('Build Update').item.json.task_id }}/actions/comments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: $('Build Update').item.json.comment }) }}"
+      }
+    }
+  ],
+  "connections": {
+    "Callback Webhook": { "main": [[{ "node": "Config", "type": "main", "index": 0 }]] },
+    "Config": { "main": [[{ "node": "Build Update", "type": "main", "index": 0 }]] },
+    "Build Update": { "main": [[{ "node": "Tracker: move card", "type": "main", "index": 0 }]] },
+    "Tracker: move card": { "main": [[{ "node": "Tracker: comment result", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

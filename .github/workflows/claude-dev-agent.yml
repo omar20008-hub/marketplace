@@ -1,0 +1,278 @@
+name: Claude Dev Agent
+
+# Tracker-neutral. The dispatcher (n8n today; Trello or Notion later) sends a
+# repository_dispatch whose client_payload has the same shape whatever the
+# tracker is. workflow_dispatch exists for manual test runs.
+on:
+  repository_dispatch:
+    types: [task-ready]
+  workflow_dispatch:
+    inputs:
+      task_id:
+        description: "Tracker task id"
+        required: true
+      task_title:
+        description: "Task title"
+        required: true
+      task_description:
+        description: "Task description / acceptance criteria"
+        required: false
+        default: ""
+      task_url:
+        description: "Link to the task in the tracker"
+        required: false
+        default: ""
+      tracker:
+        description: "Tracker name, for the branch name and the report"
+        required: false
+        default: "manual"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+# One task at a time, which also protects subscription usage limits.
+concurrency:
+  group: claude-dev-agent
+  cancel-in-progress: false
+
+jobs:
+  develop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    # Same Postgres as ci.yml: the test gate needs a real database, and the
+    # knowledge tests need pgvector.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: builder
+          POSTGRES_PASSWORD: builder
+          POSTGRES_DB: builder
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TRACKER: ${{ github.event.client_payload.tracker || inputs.tracker || 'manual' }}
+      TASK_ID: ${{ github.event.client_payload.task_id || inputs.task_id }}
+      TASK_TITLE: ${{ github.event.client_payload.task_title || inputs.task_title }}
+      TASK_DESCRIPTION: ${{ github.event.client_payload.task_description || inputs.task_description }}
+      TASK_URL: ${{ github.event.client_payload.task_url || inputs.task_url }}
+      # JSON list of { name, mime_type, path } stored on the task-attachments branch by the dispatcher.
+      TASK_ATTACHMENTS: ${{ github.event.client_payload.attachments && toJSON(github.event.client_payload.attachments) || '[]' }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      # Test environment, same values as ci.yml. Fixed and safe to write down:
+      # the database is created and destroyed with the job.
+      DATABASE_URL: postgresql://builder:builder@localhost:5433/builder?schema=public
+      AUTH_SECRET: ci-auth-secret-not-used-for-anything-real-0123456789
+      SECRETS_KEY: 00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff
+      N8N_DRIVER: mock
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # postinstall runs `prisma generate`.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create and migrate the test database
+        run: npm run test:db:setup
+
+      - name: Prepare branch and task file
+        run: |
+          set -euo pipefail
+          # Tracker ids are external input: keep only characters that are safe in a branch name.
+          SAFE_TRACKER="${TRACKER//[^A-Za-z0-9_-]/}"
+          SAFE_ID="${TASK_ID//[^A-Za-z0-9_-]/}"
+          BRANCH="claude/${SAFE_TRACKER:-task}-${SAFE_ID}"
+          echo "BRANCH=$BRANCH" >> "$GITHUB_ENV"
+          git checkout -b "$BRANCH"
+          mkdir -p .claude-task
+          jq -n --arg tracker "$TRACKER" --arg id "$TASK_ID" --arg title "$TASK_TITLE" \
+                --arg description "$TASK_DESCRIPTION" --arg url "$TASK_URL" \
+                --argjson attachments "$TASK_ATTACHMENTS" \
+                '{tracker:$tracker, id:$id, title:$title, description:$description, url:$url, attachments:$attachments}' \
+                > .claude-task/task.json
+
+      # Attachments are stored by the dispatcher on the task-attachments branch (binary files, not in main).
+      # Paths come from the dispatch payload, so they must match the pattern the dispatcher produces.
+      - name: Fetch task attachments
+        run: |
+          set -uo pipefail
+          mkdir -p .claude-task/attachments
+          git fetch --quiet origin +task-attachments:refs/remotes/origin/task-attachments \
+            || echo "task-attachments branch is not available; no attachments fetched."
+          echo "$TASK_ATTACHMENTS" | jq -c '.[]?' | while read -r a; do
+            P=$(echo "$a" | jq -r '.path')
+            if ! [[ "$P" =~ ^[0-9a-f]{24}/[A-Za-z0-9_-]+-[A-Za-z0-9._-]+$ ]]; then
+              echo "Skipping unexpected attachment path: $P"
+              continue
+            fi
+            N=$(basename "$P")
+            if git show "origin/task-attachments:$P" > ".claude-task/attachments/$N" 2>/dev/null; then
+              echo "Fetched $N"
+            else
+              rm -f ".claude-task/attachments/$N"
+              echo "Missing attachment: $P"
+            fi
+          done
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      # Headless runs have no trust dialog to accept. Without this entry Claude ignores
+      # the project's permission allow-list and exits, so the trust is set explicitly.
+      - name: Trust the workspace for headless Claude
+        run: |
+          jq -n --arg dir "$GITHUB_WORKSPACE" '{projects: {($dir): {hasTrustDialogAccepted: true}}}' > "$HOME/.claude.json"
+
+      - name: Run Claude pipeline (orchestrator + subagents)
+        continue-on-error: true
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Same test command as CI, unless the repo variable overrides it.
+          TEST_COMMAND: ${{ vars.TEST_COMMAND || 'npm run typecheck && npm run lint && npm test' }}
+        run: |
+          claude -p "$(cat .claude/pipeline.md)" \
+            --settings .claude/pipeline-settings.json \
+            --permission-mode acceptEdits \
+            --max-turns 120 \
+            --output-format json > .claude-task/claude-output.json
+
+      # Print Claude's own output into the run log, so a failed run says why.
+      - name: Show Claude output
+        if: always()
+        run: |
+          if [ -f .claude-task/claude-output.json ]; then
+            head -c 4000 .claude-task/claude-output.json
+          else
+            echo "No claude-output.json was written."
+          fi
+
+      # Independent gate: never trust the agent's own claim that tests pass.
+      - name: Verify result and run test gate
+        id: verify
+        env:
+          TEST_COMMAND: ${{ vars.TEST_COMMAND || 'npm run typecheck && npm run lint && npm test' }}
+        run: |
+          set -uo pipefail
+          RESULT=.claude-task/result.json
+          REASON=""
+          if [ ! -f "$RESULT" ]; then
+            jq -n '{status:"failed", summary:"Claude did not produce result.json (max turns reached or runtime error)."}' > "$RESULT"
+          fi
+          STATUS=$(jq -r '.status // "failed"' "$RESULT")
+
+          git add -A
+          if git diff --cached --quiet; then CHANGES=false; else CHANGES=true; fi
+
+          # Defence in depth: the agent is told not to touch these, and this makes it enforced.
+          PROTECTED=$(git diff --cached --name-only | grep -E '^(\.github/|\.claude/|CLAUDE\.md$|\.env|Dockerfile$|docker-compose\.yml$)' || true)
+          git reset -q
+
+          TESTS=skipped
+          if [ -n "$PROTECTED" ]; then
+            STATUS=failed; REASON="Changed protected paths: $(echo $PROTECTED | tr '\n' ' ')"
+          elif [ "$STATUS" = "success" ]; then
+            if [ "$CHANGES" = "false" ]; then
+              STATUS=failed; REASON="No code changes were produced."
+            elif [ -n "$TEST_COMMAND" ]; then
+              if bash -c "$TEST_COMMAND" > .claude-task/gate-tests.log 2>&1; then
+                TESTS=passed
+              else
+                TESTS=failed; STATUS=failed; REASON="Independent test gate failed. See run artifacts."
+              fi
+            fi
+          fi
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          echo "reason=$REASON" >> "$GITHUB_OUTPUT"
+          echo "tests=$TESTS"   >> "$GITHUB_OUTPUT"
+
+      - name: Commit, push and open PR
+        id: pr
+        if: steps.verify.outputs.status == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name  "claude-dev-agent"
+          git config user.email "claude-dev-agent@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: ${TASK_TITLE} (${TRACKER} ${TASK_ID})"
+          git push -u origin "$BRANCH" --force
+
+          jq -r '"## Summary\n\(.summary)\n\n## Changes\n\((.changes // []) | map("- " + .) | join("\n"))\n\n## Tests\n\(.tests // "n/a")\n\n## Review\n\(.review_verdict // "n/a")"' \
+            .claude-task/result.json > pr-body.md
+          printf '\n\n---\nTask (%s): %s\nRun: %s\n' "$TRACKER" "$TASK_URL" "$RUN_URL" >> pr-body.md
+
+          EXISTING=$(gh pr list --head "$BRANCH" --json url -q '.[0].url')
+          if [ -n "$EXISTING" ]; then
+            PR_URL="$EXISTING"
+            gh pr edit "$PR_URL" --body-file pr-body.md
+          else
+            PR_URL=$(gh pr create --base "$DEFAULT_BRANCH" --head "$BRANCH" \
+                     --title "[Claude] ${TASK_TITLE}" --body-file pr-body.md)
+          fi
+          echo "url=$PR_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Upload pipeline artifacts (spec, test report, review, logs)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-task-${{ github.run_id }}
+          path: .claude-task/
+          include-hidden-files: true
+          if-no-files-found: ignore
+
+      - name: Report back to the dispatcher
+        if: always()
+        env:
+          CALLBACK_URL: ${{ secrets.N8N_CALLBACK_URL }}
+          CALLBACK_TOKEN: ${{ secrets.N8N_CALLBACK_TOKEN }}
+          STATUS: ${{ steps.verify.outputs.status || 'failed' }}
+          REASON: ${{ steps.verify.outputs.reason }}
+          TESTS: ${{ steps.verify.outputs.tests }}
+          PR_URL: ${{ steps.pr.outputs.url }}
+        run: |
+          mkdir -p .claude-task
+          RESULT=.claude-task/result.json
+          [ -f "$RESULT" ] || echo '{}' > "$RESULT"
+          if [ "$STATUS" = "success" ] && [ -z "$PR_URL" ]; then
+            STATUS=failed; REASON="Pull request creation failed."
+          fi
+          if [ -z "$REASON" ] && [ "$STATUS" = "failed" ]; then
+            REASON="Workflow failed before completion. Check the run log."
+          fi
+          PAYLOAD=$(jq -n --slurpfile r "$RESULT" \
+            --arg tracker "$TRACKER" --arg id "$TASK_ID" --arg status "$STATUS" \
+            --arg reason "$REASON" --arg pr "$PR_URL" --arg run "$RUN_URL" \
+            --arg tests "${TESTS:-skipped}" \
+            '{tracker:$tracker, task_id:$id, status:$status, reason:$reason, pr_url:$pr,
+              run_url:$run, tests_gate:$tests, summary:($r[0].summary // ""),
+              questions:($r[0].questions // [])}')
+          if [ -z "$CALLBACK_URL" ]; then
+            echo "N8N_CALLBACK_URL is not set; skipping the report."
+            echo "$PAYLOAD"
+            exit 0
+          fi
+          curl -sS --fail -X POST "$CALLBACK_URL" \
+            -H "Content-Type: application/json" \
+            -H "X-Callback-Token: $CALLBACK_TOKEN" \
+            -d "$PAYLOAD"

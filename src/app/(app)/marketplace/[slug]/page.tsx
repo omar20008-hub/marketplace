@@ -120,12 +120,9 @@ export default async function ProductPage({
       <div className="mt-5 grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="flex flex-col gap-7">
           <header className="flex gap-4">
-            <ProductGlyph category={product.category} kind={product.kind} size={56} />
+            <ProductGlyph category={product.category} size={56} />
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge tone="neutral">
-                  {product.kind === "AGENT" ? "Agent" : "Workflow"}
-                </Badge>
                 <Badge tone="neutral">{product.category}</Badge>
                 <Badge tone="platform">{invocationModeLabel(product.invocationMode)}</Badge>
                 <Mono>

@@ -142,7 +142,7 @@ export const mockDriver: N8nDriver = {
       return {
         ok: false,
         errorText:
-          "Missing the When Executed by Another Workflow trigger. A product " +
+          "Missing the callable trigger (When Executed by Another ...). A product " +
           "must start with one, with its input fields declared.",
       };
     }
@@ -370,6 +370,38 @@ export const mockDriver: N8nDriver = {
   async listTemplates(): Promise<TemplateRow[]> {
     // In mock mode the platform's own mirror is the only catalogue there is.
     return [];
+  },
+
+  async deactivateInstance() {
+    return { ok: true };
+  },
+
+  async runInstance(instanceWorkflowId: string) {
+    return { ok: true, items: [{ mock: true, instanceWorkflowId }] };
+  },
+
+  async getWorkflow() {
+    return { nodes: [], connections: {} };
+  },
+
+  async createCredential() {
+    return { id: `cred_${Math.random().toString(36).slice(2, 10)}` };
+  },
+
+  async deleteCredential() {
+    return { ok: true };
+  },
+
+  async createWorkflow() {
+    return { id: `wf_${Math.random().toString(36).slice(2, 10)}` };
+  },
+
+  async activateWorkflow() {
+    return { ok: true };
+  },
+
+  async deleteWorkflow() {
+    return { ok: true };
   },
 };
 

@@ -2,13 +2,15 @@
 
 import clsx from "clsx";
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { ArrowUp, CalendarClock, Grid2x2, Sparkles } from "lucide-react";
 import { startTask } from "@/server/run-actions";
 import { isSendKey } from "./send-key";
 import { PendingNote, PendingTextarea } from "./pending";
 import { AttachButton, AttachmentList, useAttachments } from "./attachments";
+import { VoiceBar, VoiceButton, VoiceNotice, useVoice } from "./voice-input";
+import { appendTranscript } from "./voice";
 
 function SendButton({ disabled }: { disabled: boolean }) {
   const { pending } = useFormStatus();
@@ -45,6 +47,23 @@ export function Composer({
 
   const pinnedTitle = products.find((p) => p.id === pinned)?.title;
 
+  // Dictated text is set in code, not typed, so the box is sized here too.
+  useEffect(() => {
+    const box = formRef.current?.querySelector("textarea");
+    if (box) {
+      box.style.height = "auto";
+      box.style.height = `${box.scrollHeight}px`;
+    }
+  }, [text]);
+
+  const voice = useVoice({
+    onText: (spoken) => setText((current) => appendTranscript(current, spoken)),
+    onCommand: (command) => {
+      if (command.kind === "clear") setText("");
+      else if (text.trim() && !attachments.uploading) formRef.current?.requestSubmit();
+    },
+  });
+
   return (
     <div className={clsx("w-full max-w-[720px]", className)}>
       <form
@@ -68,6 +87,7 @@ export function Composer({
         <div className="rounded-composer border border-line bg-canvas py-4 pr-3 pb-3 pl-5 shadow-[0_4px_24px_rgba(0,0,0,0.05)]">
           <PendingTextarea
             name="task"
+            dir="auto"
             rows={1}
             value={text}
             onChange={(event) => {
@@ -76,7 +96,7 @@ export function Composer({
               event.target.style.height = `${event.target.scrollHeight}px`;
             }}
             onKeyDown={(event) => {
-              if (isSendKey(event) && event.currentTarget.value.trim() ) {
+              if (isSendKey(event) && (event.currentTarget.value.trim() || attachments.items.length > 0)) {
                 event.preventDefault();
                 formRef.current?.requestSubmit();
               }
@@ -86,14 +106,25 @@ export function Composer({
           />
 
           <AttachmentList attachments={attachments} />
-          <div className="mt-3.5 flex items-center justify-between gap-2">
-            {/*
-              The design also draws a dictate button here. It is not rendered:
-              dictation has no contract behind it, and a control that does
-              nothing when clicked is worse than one that is not there.
-            */}
+          {voice.state.phase !== "idle" ? (
+            <div className="mt-3.5">
+              <VoiceBar
+                state={voice.state}
+                analyser={voice.analyser}
+                onConfirm={voice.confirm}
+                onCancel={voice.cancel}
+              />
+            </div>
+          ) : null}
+          <div
+            className={clsx(
+              "mt-3.5 flex items-center justify-between gap-2",
+              voice.state.phase !== "idle" && "hidden",
+            )}
+          >
             <div className="-ml-2 flex items-center gap-1.5">
               <AttachButton attachments={attachments} />
+              {voice.supported ? <VoiceButton onStart={voice.start} /> : null}
               <button
                 type="button"
                 onClick={() => setPicking((open) => !open)}
@@ -119,10 +150,11 @@ export function Composer({
               </Link>
             </div>
             <PendingNote className="mr-2 text-[13px] text-ink-3" />
-            <SendButton disabled={!text.trim() || attachments.uploading} />
+            <SendButton disabled={(!text.trim() && attachments.items.length === 0) || attachments.uploading} />
           </div>
         </div>
       </form>
+      <VoiceNotice notice={voice.state.phase === "idle" ? voice.state.notice : undefined} />
 
       {picking ? (
         <div className="mt-2 flex flex-col rounded-card border border-selected p-1.5">

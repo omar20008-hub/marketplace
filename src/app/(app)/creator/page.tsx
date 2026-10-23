@@ -248,7 +248,7 @@ export default async function CreatorPage({
                 ) : null}
                 <FootNote>
                   Informational only — re-upload the file with an explicit
-                  Execute Workflow Trigger schema to change this.
+                  input schema on the entry trigger to change this.
                 </FootNote>
               </Card>
             ) : null}

@@ -8,6 +8,8 @@ import { followUp } from "@/server/thread-actions";
 import { isSendKey } from "./send-key";
 import { PendingTextarea } from "./pending";
 import { AttachButton, AttachmentList, useAttachments } from "./attachments";
+import { VoiceBar, VoiceButton, VoiceNotice, useVoice } from "./voice-input";
+import { appendTranscript } from "./voice";
 
 function Send({ disabled }: { disabled: boolean }) {
   const { pending } = useFormStatus();
@@ -31,6 +33,13 @@ export function FollowUp({ threadId, waiting = false }: { threadId: string; wait
   const formRef = useRef<HTMLFormElement>(null);
   const sending = useRef(false);
   const attachments = useAttachments();
+  const voice = useVoice({
+    onText: (spoken) => setText((current) => appendTranscript(current, spoken)),
+    onCommand: (command) => {
+      if (command.kind === "clear") setText("");
+      else if (text.trim() && !waiting && !attachments.uploading) formRef.current?.requestSubmit();
+    },
+  });
 
   return (
     <form
@@ -53,16 +62,21 @@ export function FollowUp({ threadId, waiting = false }: { threadId: string; wait
       className="flex flex-col rounded-composer border border-line bg-canvas py-2.5 pr-2.5 pl-3"
     >
       <input type="hidden" name="threadId" value={threadId} />
-      <div className="flex items-end gap-2">
+      {voice.state.phase !== "idle" ? (
+        <VoiceBar state={voice.state} analyser={voice.analyser} onConfirm={voice.confirm} onCancel={voice.cancel} />
+      ) : null}
+      <div className={clsx("flex items-end gap-2", voice.state.phase !== "idle" && "hidden")}>
       <AttachButton attachments={attachments} />
+      {voice.supported ? <VoiceButton onStart={voice.start} /> : null}
       <PendingTextarea
         name="message"
+        dir="auto"
         readOnly={waiting}
         rows={1}
         value={text}
         onChange={(event) => setText(event.target.value)}
         onKeyDown={(event) => {
-          if (isSendKey(event) && event.currentTarget.value.trim() ) {
+          if (isSendKey(event) && (event.currentTarget.value.trim() || attachments.items.length > 0)) {
             event.preventDefault();
             formRef.current?.requestSubmit();
           }
@@ -70,9 +84,10 @@ export function FollowUp({ threadId, waiting = false }: { threadId: string; wait
         placeholder="Ask a follow-up or change the inputs…"
         className="max-h-32 min-h-9 flex-1 resize-none bg-transparent py-1.5 text-[15px] placeholder:text-ink-3 focus:outline-none"
       />
-      <Send disabled={!text.trim() || waiting || attachments.uploading} />
+      <Send disabled={(!text.trim() && attachments.items.length === 0) || waiting || attachments.uploading} />
       </div>
       <AttachmentList attachments={attachments} />
+      <VoiceNotice notice={voice.state.phase === "idle" ? voice.state.notice : undefined} />
     </form>
   );
 }

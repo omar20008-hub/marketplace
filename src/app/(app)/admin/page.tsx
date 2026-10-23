@@ -236,7 +236,7 @@ export default async function AdminPage({
                           {item.product.title} v{item.version}
                         </Link>
                         <div className="mt-0.5 text-xs text-ink-3">
-                          {item.product.kind === "AGENT" ? "Agent" : "Workflow"}
+                          Agent
                         </div>
                       </Td>
                       <Td className="whitespace-nowrap text-ink-2">

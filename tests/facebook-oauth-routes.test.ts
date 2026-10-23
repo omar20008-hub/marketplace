@@ -128,7 +128,7 @@ describe("GET /api/oauth/facebook/start", () => {
     expect(target.searchParams.get("client_id")).toBe("1234567890");
     expect(target.searchParams.get("redirect_uri")).toBe(`${APP}/api/oauth/facebook/callback`);
     const scopes = target.searchParams.get("scope")!.split(",");
-    expect(scopes).toEqual(expect.arrayContaining([...ALL, "instagram_content_publish"]));
+    expect(scopes).toEqual(expect.arrayContaining([...ALL, "instagram_content_publish", "ads_management", "ads_read"]));
     expect(target.searchParams.get("state")).toBeTruthy();
     // Only the client id travels to Facebook — never the app secret.
     expect(target.toString()).not.toContain("test-facebook-app-secret");

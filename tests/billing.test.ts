@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import Stripe from "stripe";
 
 /**
@@ -158,6 +158,26 @@ describe("billing: plan from Stripe's events", () => {
       }),
     );
     expect(forged.status).toBe(400);
+  });
+
+  it("logs why a webhook was refused, without the secret", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const payload = JSON.stringify(event("customer.subscription.deleted", subscription()));
+    const header = Stripe.webhooks.generateTestHeaderString({ payload, secret: "whsec_someone_else_0123456789" });
+
+    await POST(
+      new Request("https://x.test/api/billing/webhook", {
+        method: "POST",
+        body: payload,
+        headers: { "stripe-signature": header },
+      }),
+    );
+
+    const logged = warn.mock.calls.flat().join(" ");
+    expect(logged).toMatch(/signature does not match/);
+    expect(logged).toMatch(/secret looks like a signing secret: true/);
+    expect(logged).not.toContain(WEBHOOK_SECRET);
+    warn.mockRestore();
   });
 
   it("applies a properly signed event", async () => {

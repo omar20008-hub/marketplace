@@ -22,6 +22,12 @@ import bcrypt from "bcryptjs";
  */
 const COST = 10;
 
+/**
+ * The shortest password an account may be given, by the sign-up form and the
+ * Users tab's create-account form. scripts/create-admin.ts holds the same floor.
+ */
+export const MIN_PASSWORD_LENGTH = 12;
+
 export async function hashPassword(plain: string) {
   return bcrypt.hash(plain, COST);
 }

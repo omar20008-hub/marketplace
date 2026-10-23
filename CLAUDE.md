@@ -52,7 +52,7 @@ documented in `.env.example` / `.env.production.example`; they are set in Railwa
 not in the repository. Indexing needs a clock: set `KNOWLEDGE_TICK_INTERVAL_SECONDS=60`
 (built-in scheduler, `src/instrumentation.ts`), or run a worker service, or call
 `POST /api/knowledge/tick` every minute (header `x-schedule-token`). Also call
-`POST /api/accounts/keepalive` daily.
+`POST /api/accounts/keepalive` daily, and `POST /api/lifecycle/sweep` daily at 03:00 UTC (both with `x-schedule-token`).
 
 ## gstack (REQUIRED — global install)
 

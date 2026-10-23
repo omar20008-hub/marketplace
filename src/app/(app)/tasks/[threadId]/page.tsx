@@ -1,4 +1,4 @@
-import { Linkified } from "@/components/app/linkified";
+import { Linkified, MediaPreviews } from "@/components/app/linkified";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
@@ -75,13 +75,19 @@ export default async function ThreadPage({
           return (
             <div key={message.id} className="flex flex-col gap-4">
               {message.role === "USER" ? (
-                <div className="self-end rounded-card rounded-br-[6px] bg-fill px-4 py-2.5 text-[15px]">
-                  {message.body}
+                <div className="flex flex-col items-end gap-2 self-end">
+                  <div className="rounded-card rounded-br-[6px] bg-fill px-4 py-2.5 text-[15px]">
+                    {message.body}
+                  </div>
+                  <MediaPreviews text={message.body} />
                 </div>
               ) : (
-                <p className="text-[15px] leading-relaxed whitespace-pre-wrap">
-                  <Linkified text={message.body} />
-                </p>
+                <div>
+                  <p className="text-[15px] leading-relaxed whitespace-pre-wrap">
+                    <Linkified text={message.body} />
+                  </p>
+                  <MediaPreviews text={message.body} />
+                </div>
               )}
               {run ? <RunCard run={run as unknown as RunCardData} /> : null}
             </div>

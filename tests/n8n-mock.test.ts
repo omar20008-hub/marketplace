@@ -48,7 +48,7 @@ describe("upload — the structural condition", () => {
 
     expect(reply).toMatchObject({ ok: false });
     expect("errorText" in reply && reply.errorText).toContain(
-      "When Executed by Another Workflow",
+      "When Executed by Another ...",
     );
   });
 
