@@ -146,6 +146,18 @@ export const env = {
    * on the accounts page so the person knows which chat to open. Not a secret.
    */
   telegramBotUsername: process.env.TELEGRAM_BOT_USERNAME?.replace(/^@/, "") || null,
+  /** The WhatsApp Business number people message to link and chat (shown as text, never as a secret). */
+  whatsappBusinessNumber: process.env.WHATSAPP_BUSINESS_NUMBER?.trim() || null,
+
+  /**
+   * The bot's API token, and the secret Telegram echoes back on every update
+   * (set with setWebhook as secret_token). Empty secret refuses every update, so
+   * the receiver at /api/channels/telegram/webhook stays closed until it is set.
+   */
+  telegram: {
+    botToken: process.env.TELEGRAM_BOT_TOKEN ?? "",
+    webhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET ?? "",
+  },
 
   /**
    * The platform's own Google OAuth client, for connections the platform holds
@@ -184,6 +196,19 @@ export const env = {
     clientId: process.env.ASANA_CLIENT_ID ?? "",
     clientSecret: process.env.ASANA_CLIENT_SECRET ?? "",
   },
+  notion: {
+    clientId: process.env.NOTION_CLIENT_ID ?? "",
+    clientSecret: process.env.NOTION_CLIENT_SECRET ?? "",
+  },
+  airtable: {
+    clientId: process.env.AIRTABLE_CLIENT_ID ?? "",
+    clientSecret: process.env.AIRTABLE_CLIENT_SECRET ?? "",
+  },
+  /** Trello's Power-Up API key and secret, under the names the provider's settings use. */
+  trello: {
+    clientId: process.env.TRELLO_API_KEY ?? "",
+    clientSecret: process.env.TRELLO_API_SECRET ?? "",
+  },
 
   /**
    * Stripe, for the paid plans (see lib/billing.ts). Not required to boot: without a
@@ -191,7 +216,15 @@ export const env = {
    * the Stripe prices for each paid plan; the webhook secret checks that a request
    * really came from Stripe.
    */
+  /** Microsoft 365's app registration (Entra), for the sign-in in lib/connectors. */
+  microsoft: {
+    clientId: process.env.MICROSOFT_CLIENT_ID ?? "",
+    clientSecret: process.env.MICROSOFT_CLIENT_SECRET ?? "",
+  },
+
   stripe: {
+    /** Stripe Connect's client id (ca_…), for the connect sign-in. Separate from the billing keys. */
+    connectClientId: process.env.STRIPE_CONNECT_CLIENT_ID ?? "",
     secretKey: process.env.STRIPE_SECRET_KEY ?? "",
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
     priceIds: {
@@ -248,6 +281,98 @@ export const env = {
     model: process.env.MEMORY_MODEL ?? "gemini-3.1-flash-lite",
   },
 
+  /**
+   * Which Orchestrator answers chat. "n8n" (the default) sends each message to the
+   * MP · Orchestrator workflow. "platform" answers in this app with Gemini, and
+   * still runs the product workflows through n8n. It needs GEMINI_API_KEY, and the
+   * app refuses to start with the flag set and no key.
+   */
+  orchestrator: {
+    driver: (process.env.ORCHESTRATOR_DRIVER === "platform" ? "platform" : "n8n") as
+      | "platform"
+      | "n8n",
+    model: process.env.ORCHESTRATOR_MODEL ?? "gemini-3.1-flash-lite",
+    fallbackModel: process.env.ORCHESTRATOR_FALLBACK_MODEL ?? "gemini-2.5-flash-lite",
+    geminiApiKey: process.env.GEMINI_API_KEY ?? "",
+  },
+
+  /**
+   * Speech to text for the chat box: the audio decides its own language. Uses
+   * GEMINI_API_KEY; the fallback model is tried only when the first is unavailable.
+   */
+  voice: {
+    models: [
+      ...new Set(
+        [
+          process.env.VOICE_MODEL || process.env.ORCHESTRATOR_MODEL || "gemini-3.1-flash-lite",
+          process.env.VOICE_FALLBACK_MODEL || process.env.ORCHESTRATOR_FALLBACK_MODEL || "",
+        ].filter(Boolean),
+      ),
+    ],
+    geminiApiKey: process.env.GEMINI_API_KEY ?? "",
+  },
+
+  /**
+   * Reading the text in an image or a scanned PDF a person attaches (OCR). Uses
+   * GEMINI_API_KEY; with no key, such files are stored but their text is not read.
+   */
+  ocr: {
+    models: [
+      ...new Set(
+        [
+          process.env.OCR_MODEL || process.env.ORCHESTRATOR_MODEL || "gemini-3.1-flash-lite",
+          process.env.ORCHESTRATOR_FALLBACK_MODEL || "",
+        ].filter(Boolean),
+      ),
+    ],
+    geminiApiKey: process.env.GEMINI_API_KEY ?? "",
+  },
+
+  /**
+   * Who checks and runs a person's product copy when they use it. "n8n" (the default)
+   * sends the call to the MP · Dispatcher workflow. "platform" does the checks here
+   * and runs the copy through the n8n API. Checked against the live instance before
+   * it is switched on.
+   */
+  dispatcher: {
+    driver: (process.env.DISPATCHER_DRIVER === "platform" ? "platform" : "n8n") as
+      | "platform"
+      | "n8n",
+  },
+
+  /**
+   * Who installs a template for a person: the MP · Install Template workflow ("n8n",
+   * the default) or the platform, which creates the copy and its credentials in n8n
+   * itself. Checked against the live instance before it is switched on.
+   */
+  template: {
+    driver: (process.env.TEMPLATE_DRIVER === "platform" ? "platform" : "n8n") as
+      | "platform"
+      | "n8n",
+  },
+
+  /**
+   * Where a product's files are kept: the platform's own database ("platform") or the
+   * n8n Storage API ("n8n", the default). Checked against the live instance before it
+   * is switched on.
+   */
+  storage: {
+    driver: (process.env.STORAGE_DRIVER === "platform" ? "platform" : "n8n") as
+      | "platform"
+      | "n8n",
+  },
+
+  /**
+   * Who switches an approved template on: the MP · Review workflow ("n8n", the default)
+   * or the platform, through the n8n API. Rejections touch only the platform's record
+   * on the platform path.
+   */
+  review: {
+    driver: (process.env.REVIEW_DRIVER === "platform" ? "platform" : "n8n") as
+      | "platform"
+      | "n8n",
+  },
+
   n8n: {
     driver: (process.env.N8N_DRIVER === "live" ? "live" : "mock") as N8nDriver,
     baseUrl: process.env.N8N_BASE_URL ?? "",
@@ -277,3 +402,7 @@ export const env = {
     ),
   },
 } as const;
+
+if (env.orchestrator.driver === "platform" && !env.orchestrator.geminiApiKey) {
+  throw new Error("ORCHESTRATOR_DRIVER=platform needs GEMINI_API_KEY.");
+}

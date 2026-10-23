@@ -6,10 +6,18 @@
       "name": "Every 15 min",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [0, 0],
+      "position": [
+        0,
+        0
+      ],
       "parameters": {
         "rule": {
-          "interval": [{ "field": "minutes", "minutesInterval": 15 }]
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
         }
       }
     },
@@ -18,16 +26,44 @@
       "name": "Config",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [220, 0],
+      "position": [
+        220,
+        0
+      ],
       "notes": "List ids of the Trello board, and the GitHub target. Only the Tracker nodes read the list ids.",
       "parameters": {
         "assignments": {
           "assignments": [
-            { "id": "09f5a215-2737-40b7-bcb2-9e7d05852cf2", "name": "ready_list_id", "value": "REPLACE_READY_LIST_ID", "type": "string" },
-            { "id": "9cbef1e8-6364-4f46-bf1b-98d4b0d33d06", "name": "in_progress_list_id", "value": "REPLACE_IN_PROGRESS_LIST_ID", "type": "string" },
-            { "id": "00ef5e5b-3ca0-4f8a-b4c5-62d96578277c", "name": "github_owner", "value": "omar20008-hub", "type": "string" },
-            { "id": "b5c6f400-b333-489d-b7b5-9aad7b612407", "name": "github_repo", "value": "marketplace", "type": "string" },
-            { "id": "5654db47-91d0-4a26-bafc-aa65b5769b66", "name": "max_tasks_per_run", "value": 1, "type": "number" }
+            {
+              "id": "09f5a215-2737-40b7-bcb2-9e7d05852cf2",
+              "name": "ready_list_id",
+              "value": "REPLACE_READY_LIST_ID",
+              "type": "string"
+            },
+            {
+              "id": "9cbef1e8-6364-4f46-bf1b-98d4b0d33d06",
+              "name": "in_progress_list_id",
+              "value": "REPLACE_IN_PROGRESS_LIST_ID",
+              "type": "string"
+            },
+            {
+              "id": "00ef5e5b-3ca0-4f8a-b4c5-62d96578277c",
+              "name": "github_owner",
+              "value": "omar20008-hub",
+              "type": "string"
+            },
+            {
+              "id": "b5c6f400-b333-489d-b7b5-9aad7b612407",
+              "name": "github_repo",
+              "value": "marketplace",
+              "type": "string"
+            },
+            {
+              "id": "5654db47-91d0-4a26-bafc-aa65b5769b66",
+              "name": "max_tasks_per_run",
+              "value": 1,
+              "type": "number"
+            }
           ]
         },
         "options": {}
@@ -38,7 +74,10 @@
       "name": "Tracker: list ready cards",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [440, 0],
+      "position": [
+        440,
+        0
+      ],
       "parameters": {
         "method": "GET",
         "url": "=https://api.trello.com/1/lists/{{ $json.ready_list_id }}/cards",
@@ -48,7 +87,10 @@
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
-            { "name": "fields", "value": "name,desc,url,shortUrl" }
+            {
+              "name": "fields",
+              "value": "name,desc,url,shortUrl"
+            }
           ]
         }
       }
@@ -58,7 +100,10 @@
       "name": "Take One",
       "type": "n8n-nodes-base.limit",
       "typeVersion": 1,
-      "position": [660, 0],
+      "position": [
+        660,
+        0
+      ],
       "parameters": {
         "maxItems": "={{ $('Config').first().json.max_tasks_per_run }}"
       }
@@ -68,7 +113,10 @@
       "name": "Normalize Task",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1100, 0],
+      "position": [
+        1100,
+        0
+      ],
       "notes": "Converts the Trello card into the neutral shape the pipeline reads. Replace this when the tracker changes.",
       "parameters": {
         "jsCode": "return $input.all().map(item => {\n  const c = item.json;\n  return { json: {\n    tracker: 'trello',\n    task_id: String(c.id),\n    task_title: c.name || '',\n    task_description: (c.desc || '').slice(0, 16000),\n    task_url: c.url || c.shortUrl || ''\n  } };\n});"
@@ -79,7 +127,10 @@
       "name": "Dispatch to GitHub",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1320, 0],
+      "position": [
+        3080,
+        0
+      ],
       "parameters": {
         "method": "POST",
         "url": "=https://api.github.com/repos/{{ $('Config').first().json.github_owner }}/{{ $('Config').first().json.github_repo }}/dispatches",
@@ -88,13 +139,19 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Accept", "value": "application/vnd.github+json" },
-            { "name": "X-GitHub-Api-Version", "value": "2022-11-28" }
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ event_type: 'task-ready', client_payload: { tracker: $json.tracker, task_id: $json.task_id, task_title: $json.task_title, task_description: $json.task_description, task_url: $json.task_url } }) }}",
+        "jsonBody": "={{ JSON.stringify({ event_type: 'task-ready', client_payload: { tracker: $json.tracker, task_id: $json.task_id, task_title: $json.task_title, task_description: $json.task_description, task_url: $json.task_url, attachments: $json.attachments || [] } }) }}",
         "options": {}
       }
     },
@@ -103,10 +160,13 @@
       "name": "Tracker: move to in progress",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1540, 0],
+      "position": [
+        3300,
+        0
+      ],
       "parameters": {
         "method": "PUT",
-        "url": "=https://api.trello.com/1/cards/{{ $('Normalize Task').item.json.task_id }}",
+        "url": "=https://api.trello.com/1/cards/{{ $('Normalize Task').first().json.task_id }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "trelloApi",
         "options": {},
@@ -120,10 +180,13 @@
       "name": "Tracker: comment started",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1760, 0],
+      "position": [
+        3520,
+        0
+      ],
       "parameters": {
         "method": "POST",
-        "url": "=https://api.trello.com/1/cards/{{ $('Normalize Task').item.json.task_id }}/actions/comments",
+        "url": "=https://api.trello.com/1/cards/{{ $('Normalize Task').first().json.task_id }}/actions/comments",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "trelloApi",
         "options": {},
@@ -131,16 +194,370 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ text: '🤖 بدأ Claude العمل على هذه المهمة. ستصلك النتيجة هنا مع رابط الـ PR بعد التطوير والاختبار.' }) }}"
       }
+    },
+    {
+      "id": "5b0f1d2e-1a01-4c11-9a01-0a1b2c3d4e01",
+      "name": "Tracker: list attachments",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        -224
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.trello.com/1/cards/{{ $json.task_id }}/attachments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "id,name,mimeType,bytes,isUpload"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "5b0f1d2e-1a01-4c11-9a01-0a1b2c3d4e02",
+      "name": "Pick Attachments",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        -224
+      ],
+      "notes": "Uploaded files only, at most 10, each up to 10 MB. The path is what the GitHub workflow fetches.",
+      "parameters": {
+        "jsCode": "const cardId = $('Normalize Task').first().json.task_id;\nreturn $input.all()\n  .filter(i => i.json.isUpload === true && Number(i.json.bytes) <= 10000000)\n  .slice(0, 10)\n  .map(i => {\n    const a = i.json;\n    const safe = String(a.name || 'file').replace(/[^A-Za-z0-9._-]/g, '_');\n    return { json: { id: a.id, name: a.name, mimeType: a.mimeType || '', path: `${cardId}/${a.id}-${safe}` } };\n  });"
+      }
+    },
+    {
+      "id": "5b0f1d2e-1a01-4c11-9a01-0a1b2c3d4e03",
+      "name": "Tracker: download attachment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        -224
+      ],
+      "onError": "continueRegularOutput",
+      "notes": "Trello serves attachment files only with an OAuth header: a Header Auth credential, name Authorization, value OAuth oauth_consumer_key=\"<key>\", oauth_token=\"<token>\".",
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.trello.com/1/cards/{{ $(\"Normalize Task\").first().json.task_id }}/attachments/{{ $json.id }}/download/{{ encodeURIComponent($json.name) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "5b0f1d2e-1a01-4c11-9a01-0a1b2c3d4e04",
+      "name": "Encode Attachment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1980,
+        -224
+      ],
+      "parameters": {
+        "jsCode": "// Binary data may live on disk, so read the buffer instead of $binary.data.data.\n// A failed download has no binary: pass it on empty so its upload fails and it is left out.\nconst items = $input.all();\nconst out = [];\nfor (let i = 0; i < items.length; i++) {\n  let content = null;\n  if (items[i].binary && items[i].binary.data) {\n    const buf = await this.helpers.getBinaryDataBuffer(i, 'data');\n    content = buf.toString('base64');\n  }\n  out.push({ json: { content_b64: content }, pairedItem: { item: i } });\n}\nreturn out;"
+      }
+    },
+    {
+      "id": "5b0f1d2e-1a01-4c11-9a01-0a1b2c3d4e05",
+      "name": "Store attachment on task-attachments",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2200,
+        -224
+      ],
+      "onError": "continueRegularOutput",
+      "notes": "One file at a time: parallel writes to the same branch conflict.",
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.github.com/repos/{{ $('Config').first().json.github_owner }}/{{ $('Config').first().json.github_repo }}/contents/{{ $(\"Pick Attachments\").item.json.path }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ message: 'Attachment for task ' + $('Normalize Task').first().json.task_id, branch: 'task-attachments', content: $json.content_b64 }) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 1000
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "5b0f1d2e-1a01-4c11-9a01-0a1b2c3d4e06",
+      "name": "Tag Attachment",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2420,
+        -224
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ta-name",
+              "name": "att_name",
+              "value": "={{ $(\"Pick Attachments\").item.json.name }}",
+              "type": "string"
+            },
+            {
+              "id": "ta-mime",
+              "name": "att_mime",
+              "value": "={{ $(\"Pick Attachments\").item.json.mimeType }}",
+              "type": "string"
+            },
+            {
+              "id": "ta-path",
+              "name": "att_path",
+              "value": "={{ $(\"Pick Attachments\").item.json.path }}",
+              "type": "string"
+            },
+            {
+              "id": "ta-ok",
+              "name": "att_ok",
+              "value": "={{ !$json.error || JSON.stringify($json.error).includes('sha') }}",
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "5b0f1d2e-1a01-4c11-9a01-0a1b2c3d4e07",
+      "name": "Join Attachments",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        2640,
+        0
+      ],
+      "notes": "Lets the card through even when it has no attachments.",
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 2
+      }
+    },
+    {
+      "id": "5b0f1d2e-1a01-4c11-9a01-0a1b2c3d4e08",
+      "name": "Build Task",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2860,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const card = $('Normalize Task').first().json;\n// A failed upload is left out; an existing file (same attachment id) still counts.\nconst files = $input.all().map(i => i.json).filter(j => j.att_path && j.att_ok !== false);\nconst lines = files.map(f => `- ${f.att_name} (${f.att_mime || 'unknown'}): .claude-task/attachments/${f.att_path.split('/').pop()}`);\nconst note = lines.length ? `\\n\\n--- مرفقات البطاقة (محفوظة في .claude-task/attachments/) ---\\n${lines.join('\\n')}` : '';\nconst attachments = files.map(f => ({ name: f.att_name, mime_type: f.att_mime, path: f.att_path }));\nreturn [{ json: { ...card, task_description: (card.task_description + note).slice(0, 15000), attachments } }];"
+      }
     }
   ],
   "connections": {
-    "Every 15 min": { "main": [[{ "node": "Config", "type": "main", "index": 0 }]] },
-    "Config": { "main": [[{ "node": "Tracker: list ready cards", "type": "main", "index": 0 }]] },
-    "Tracker: list ready cards": { "main": [[{ "node": "Take One", "type": "main", "index": 0 }]] },
-    "Take One": { "main": [[{ "node": "Normalize Task", "type": "main", "index": 0 }]] },
-    "Normalize Task": { "main": [[{ "node": "Dispatch to GitHub", "type": "main", "index": 0 }]] },
-    "Dispatch to GitHub": { "main": [[{ "node": "Tracker: move to in progress", "type": "main", "index": 0 }]] },
-    "Tracker: move to in progress": { "main": [[{ "node": "Tracker: comment started", "type": "main", "index": 0 }]] }
+    "Every 15 min": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Tracker: list ready cards",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tracker: list ready cards": {
+      "main": [
+        [
+          {
+            "node": "Take One",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Take One": {
+      "main": [
+        [
+          {
+            "node": "Normalize Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Task": {
+      "main": [
+        [
+          {
+            "node": "Tracker: list attachments",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Join Attachments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dispatch to GitHub": {
+      "main": [
+        [
+          {
+            "node": "Tracker: move to in progress",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tracker: move to in progress": {
+      "main": [
+        [
+          {
+            "node": "Tracker: comment started",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tracker: list attachments": {
+      "main": [
+        [
+          {
+            "node": "Pick Attachments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pick Attachments": {
+      "main": [
+        [
+          {
+            "node": "Tracker: download attachment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tracker: download attachment": {
+      "main": [
+        [
+          {
+            "node": "Encode Attachment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Encode Attachment": {
+      "main": [
+        [
+          {
+            "node": "Store attachment on task-attachments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store attachment on task-attachments": {
+      "main": [
+        [
+          {
+            "node": "Tag Attachment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tag Attachment": {
+      "main": [
+        [
+          {
+            "node": "Join Attachments",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Join Attachments": {
+      "main": [
+        [
+          {
+            "node": "Build Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Task": {
+      "main": [
+        [
+          {
+            "node": "Dispatch to GitHub",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
   "settings": {
     "executionOrder": "v1"

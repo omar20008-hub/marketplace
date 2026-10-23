@@ -18,10 +18,13 @@ import {
   missingSettings,
 } from "@/lib/connectors/providers";
 import { TelegramLinkCard } from "./telegram-link-card";
+import { AgentKeyCard } from "./agent-key-card";
+import { WhatsappLinkCard } from "./whatsapp-link-card";
 import { ConnectorsTabs, DiscoverView } from "./discover-view";
 import { BrandMark } from "./brand-mark";
 import { slugForCredentialType } from "@/lib/connectors/catalog";
-import { telegramLinkFor } from "@/server/channel-links";
+import { channelLinkFor, telegramLinkFor, WHATSAPP } from "@/server/channel-links";
+import { agentKeyActive } from "@/server/agent-keys";
 import { env } from "@/lib/env";
 
 export const metadata = { title: "Connectors · Builder" };
@@ -58,6 +61,26 @@ const ALLOWS: Record<string, { grants: string[]; denies: string[] }> = {
   asanaOAuth2Api: {
     grants: ["Read and update the Asana work your account can already reach"],
     denies: ["Nothing beyond what your Asana account is allowed to do"],
+  },
+  notionOAuth2Api: {
+    grants: ["Read and update the pages and databases you share with the platform"],
+    denies: ["No access to pages you do not share"],
+  },
+  airtableOAuth2Api: {
+    grants: ["Read and write the bases and records you grant"],
+    denies: ["No access to bases you do not grant"],
+  },
+  trelloApi: {
+    grants: ["Read and update the boards and cards your account can reach"],
+    denies: ["Nothing beyond what your Trello account is allowed to do"],
+  },
+  microsoftGraphOAuth2Api: {
+    grants: ["Read and update the files and sites your Microsoft account can reach"],
+    denies: ["Nothing beyond what your Microsoft account is allowed to do"],
+  },
+  stripeConnectOAuth2Api: {
+    grants: ["Read and create the payments, invoices and customers of your Stripe account"],
+    denies: ["No payouts or changes to your Stripe account settings"],
   },
   openAiApi: {
     grants: ["Send prompts on your behalf"],
@@ -185,6 +208,8 @@ export default async function AccountsPage({
   ];
 
   const telegram = await telegramLinkFor(user.id);
+  const whatsapp = await channelLinkFor(user.id, WHATSAPP);
+  const assistantKey = await agentKeyActive(user.id);
 
   // Read on the server only: what leaves it is the names of the editors to reconnect for.
   const driveSecrets = await prisma.connector.findMany({
@@ -318,6 +343,11 @@ export default async function AccountsPage({
             linkedAt={telegram?.linkedAt.toISOString() ?? null}
             botUsername={env.telegramBotUsername}
           />
+          <WhatsappLinkCard
+            linkedAt={whatsapp?.linkedAt.toISOString() ?? null}
+            businessNumber={env.whatsappBusinessNumber}
+          />
+          <AgentKeyCard active={assistantKey} />
         </div>
       </div>
     </div>

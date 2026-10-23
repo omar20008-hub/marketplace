@@ -72,13 +72,7 @@ export function UploadForm() {
           />
         </Field>
 
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
-          <Field label="Type">
-            <Select name="kind" defaultValue="WORKFLOW">
-              <option value="WORKFLOW">Workflow</option>
-              <option value="AGENT">Agent</option>
-            </Select>
-          </Field>
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           <Field label="Category">
             <Select name="category" defaultValue="Operations">
               {CATEGORIES.map((category) => (
@@ -99,7 +93,7 @@ export function UploadForm() {
           </Field>
         </div>
 
-        <Field label="Workflow file" required>
+        <Field label="Agent file" required>
           <input
             type="file"
             name="file"
@@ -113,11 +107,12 @@ export function UploadForm() {
           <p className="text-[13px] font-medium">What the check requires</p>
           <ul className="mt-2 flex list-disc flex-col gap-1.5 pl-4 text-[13px] text-ink-2">
             <li>
-              A fully exported n8n workflow, starting with a{" "}
+              A fully exported n8n agent file whose first node is the callable
+              trigger (n8n&apos;s{" "}
               <span className="font-mono text-xs">
-                When Executed by Another Workflow
+                When Executed by Another ...
               </span>{" "}
-              trigger whose input fields are declared explicitly. Anything else is
+              node), with its input fields declared explicitly. Anything else is
               refused.
             </li>
             <li>

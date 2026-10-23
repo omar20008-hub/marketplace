@@ -3,7 +3,8 @@
 import { useActionState, useState } from "react";
 import { Button, Field, Input } from "@/components/ds";
 import { login, type LoginState } from "@/server/auth-actions";
-import { GoogleIcon } from "./google-icon";
+import Link from "next/link";
+import { GoogleButton } from "./google-button";
 
 export function LoginForm() {
   const [state, formAction, pending] = useActionState<LoginState, FormData>(
@@ -44,20 +45,14 @@ export function LoginForm() {
         </Button>
       </form>
 
-      <div className="mt-6 flex items-center gap-3">
-        <div className="flex-1 border-t border-selected" />
-        <p className="text-xs text-ink-3">or</p>
-        <div className="flex-1 border-t border-selected" />
-      </div>
+      <GoogleButton label="Sign in with Google" />
 
-      <a
-        href="/api/oauth/google/auth/start"
-        className="mt-6 flex w-full items-center justify-center gap-2 rounded-row border border-selected px-4 py-2.5 font-medium hover:bg-fill"
-      >
-        <GoogleIcon className="h-5 w-5" />
-        Sign in with Google
-      </a>
-
+      <p className="mt-6 text-center text-[13px] text-ink-2">
+        New to Builder?{" "}
+        <Link href="/signup" className="font-medium text-link-ink hover:underline">
+          Create an account
+        </Link>
+      </p>
     </>
   );
 }

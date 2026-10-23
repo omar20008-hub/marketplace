@@ -178,7 +178,7 @@ export function GuestLanding({ products }: { products: FeaturedProduct[] }) {
             <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
               <div className="flex flex-col gap-2.5 rounded-card border border-selected p-3.5">
                 <div className="flex items-center justify-between">
-                  <ProductGlyph category="Sales" kind="WORKFLOW" />
+                  <ProductGlyph category="Sales" />
                   <Badge tone="ready">Ready</Badge>
                 </div>
                 <div>
@@ -188,7 +188,7 @@ export function GuestLanding({ products }: { products: FeaturedProduct[] }) {
               </div>
               <div className="flex flex-col gap-2.5 rounded-card border border-selected p-3.5">
                 <div className="flex items-center justify-between">
-                  <ProductGlyph category="Operations" kind="AGENT" />
+                  <ProductGlyph category="Operations" />
                   <Badge tone="ready">Ready</Badge>
                 </div>
                 <div>
@@ -330,7 +330,7 @@ export function GuestLanding({ products }: { products: FeaturedProduct[] }) {
                     className="flex flex-col gap-3 rounded-card border border-selected p-4 hover:border-line"
                   >
                     <div className="flex items-center justify-between">
-                      <ProductGlyph category={product.category} kind={product.kind} />
+                      <ProductGlyph category={product.category} />
                       <span className="text-xs text-ink-3">{product.category}</span>
                     </div>
                     <div>

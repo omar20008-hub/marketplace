@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { hashPassword } from "@/lib/auth";
+import { installReadyProducts } from "@/server/auto-install";
 import { prisma } from "@/lib/db";
 import {
   GOOGLE_AUTH_CALLBACK_PATH,
@@ -16,6 +17,7 @@ import {
   readOAuthState,
 } from "@/lib/oauth-state";
 import { createSession } from "@/lib/session";
+import { WELCOME_PATH } from "@/lib/onboarding";
 
 /**
  * Where Google sends someone who chose "Sign in with Google". The state cookie
@@ -53,7 +55,12 @@ export async function GET(request: Request) {
     if (!identity) return finish("/login", { auth_error: "identity" });
 
     let user = await prisma.user.findUnique({ where: { email: identity.email } });
+    let created = false;
+    // A new account starts on the welcome page, which offers WhatsApp or the
+    // platform's own chat; someone signing back in goes where they were headed.
+    let returnTo = state.returnTo;
     if (!user) {
+      returnTo = WELCOME_PATH;
       const local = identity.email.split("@")[0];
       user = await prisma.user.create({
         data: {
@@ -65,11 +72,13 @@ export async function GET(request: Request) {
           planId: "free",
         },
       });
+      created = true;
     }
 
     await createSession(user.id);
+    if (created) after(() => installReadyProducts(user.id));
     revalidatePath("/", "layout");
-    return finish(state.returnTo, {});
+    return finish(returnTo, {});
   } catch (error) {
     console.error("Google sign-in failed", error instanceof Error ? error.message : error);
     return finish("/login", { auth_error: "google" });

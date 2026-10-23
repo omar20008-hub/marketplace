@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { findProviderByCredentialType, type ConnectorProvider } from "@/lib/connectors/providers";
+import { postToTokenEndpoint } from "@/lib/connectors/token-request";
 import { openCredential, sealCredential } from "@/lib/secrets";
 import { refreshInstallationStates } from "./installation-state";
 
@@ -30,16 +31,9 @@ export class ConnectorAuthError extends Error {
 type Answer = { access_token?: string; refresh_token?: string; expires_in?: number; error?: string };
 
 async function refresh(provider: ConnectorProvider, refreshToken: string) {
-  const response = await fetch(provider.tokenUrl, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "refresh_token",
-      client_id: provider.clientId(),
-      client_secret: provider.clientSecret(),
-      refresh_token: refreshToken,
-    }),
-    cache: "no-store",
+  const response = await postToTokenEndpoint(provider, {
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
   });
   const json = (await response.json().catch(() => null)) as Answer | null;
 
@@ -53,14 +47,18 @@ async function refresh(provider: ConnectorProvider, refreshToken: string) {
   return { ...json, access_token: json.access_token };
 }
 
+/**
+ * A token with no expiry (Notion's, Trello's) is usable for as long as the
+ * connection is ACTIVE. The tool revokes it, and a revoked one fails at the
+ * tool, which is where the connection is then marked for reconnecting.
+ */
+function notLapsing(expiresAt: Date | null): boolean {
+  return !expiresAt || expiresAt.getTime() - Date.now() > SKEW_MS;
+}
+
 async function readUsable(connectorId: string): Promise<string | null> {
   const connector = await prisma.connector.findUnique({ where: { id: connectorId } });
-  if (
-    connector?.status === "ACTIVE" &&
-    connector.secretJson &&
-    connector.expiresAt &&
-    connector.expiresAt.getTime() - Date.now() > SKEW_MS
-  ) {
+  if (connector?.status === "ACTIVE" && connector.secretJson && notLapsing(connector.expiresAt)) {
     return openCredential(connector.secretJson).access_token ?? null;
   }
   return null;
@@ -81,11 +79,7 @@ export async function getConnectorAccessToken(connectorId: string): Promise<stri
       }
 
       const secret = openCredential(connector.secretJson);
-      if (
-        secret.access_token &&
-        connector.expiresAt &&
-        connector.expiresAt.getTime() - Date.now() > SKEW_MS
-      ) {
+      if (secret.access_token && notLapsing(connector.expiresAt)) {
         return { kind: "ok" as const, token: secret.access_token };
       }
 

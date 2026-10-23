@@ -7,7 +7,6 @@ import {
   Scale,
   TrendingUp,
   UserRound,
-  Workflow,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -30,15 +29,13 @@ const FALLBACK = { tint: "#f4f4f4", ink: "#5d5d5d", icon: <Braces /> };
 
 export function ProductGlyph({
   category,
-  kind,
   size = 32,
 }: {
   category: string;
-  kind?: "AGENT" | "WORKFLOW";
   size?: number;
 }) {
   const style = CATEGORY[category] ?? FALLBACK;
-  const icon = kind === "AGENT" ? <Bot /> : kind === "WORKFLOW" ? <Workflow /> : style.icon;
+  const icon = style.icon;
   const glyphSize = Math.round(size * 0.55);
 
   return (

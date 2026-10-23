@@ -46,13 +46,14 @@ const Row = z.object({
 
 const Body = z.object({ rows: z.array(Row) });
 
+// ASCII only, like the creator upload's slugify. A Unicode slug (an Arabic title)
+// is stored and listed fine, but the product page's dynamic route 404s on it.
 function slugify(title: string) {
   return title
     .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 60);
+    .slice(0, 48);
 }
 
 function parseInputSchema(raw: string | undefined): Prisma.InputJsonValue {
@@ -111,7 +112,7 @@ export async function POST(request: Request) {
       }
       await prisma.product.create({
         data: {
-          slug: `${slugify(row.title)}-${row.templateId}`,
+          slug: `${slugify(row.title) || "product"}-${row.templateId}`,
           templateId: row.templateId,
           n8nWorkflowId: row.n8nWorkflowId ?? null,
           creatorId: creator.id,
@@ -119,7 +120,7 @@ export async function POST(request: Request) {
           summary: row.description.split("\n")[0].slice(0, 200),
           description: row.description,
           needsFromYou: "",
-          kind: "WORKFLOW",
+          kind: "AGENT",
           category: row.category ?? "general",
           actionType: row.actionType === "write" ? "WRITE" : "READ",
           status: STATUS[row.status],

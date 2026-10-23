@@ -19,14 +19,19 @@ import { isOnDemand } from "@/lib/invocation-mode";
 
 export const metadata = { title: "My workspace · Builder" };
 
-type Tab = "all" | "agents" | "workflows" | "attention" | "favourites";
+type Tab = "all" | "attention" | "favourites";
 
 export default async function WorkspacePage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: Tab }>;
+  searchParams: Promise<{ tab?: string }>;
 }) {
-  const { tab = "all" } = await searchParams;
+  const { tab: requestedTab } = await searchParams;
+  // An old ?tab=agents or ?tab=workflows link falls back to "all".
+  const tab: Tab =
+    requestedTab === "attention" || requestedTab === "favourites"
+      ? requestedTab
+      : "all";
   const user = await requireUser();
 
   const monthStart = new Date(
@@ -80,10 +85,6 @@ export default async function WorkspacePage({
 
   const visible = rows.filter((row) => {
     switch (tab) {
-      case "agents":
-        return row.installation.product.kind === "AGENT";
-      case "workflows":
-        return row.installation.product.kind === "WORKFLOW";
       case "attention":
         return attention.includes(row);
       case "favourites":
@@ -93,18 +94,11 @@ export default async function WorkspacePage({
     }
   });
 
-  const agents = visible.filter((row) => row.installation.product.kind === "AGENT");
-  const workflows = visible.filter(
-    (row) => row.installation.product.kind === "WORKFLOW",
-  );
-
   const usedBytes = storage._sum.sizeBytes ?? 0;
   const quotaBytes = Number(user.plan.storageBytes);
 
   const TABS: { key: Tab; label: string; badge?: number }[] = [
     { key: "all", label: "All" },
-    { key: "agents", label: "Agents" },
-    { key: "workflows", label: "Workflows" },
     { key: "attention", label: "Needs attention", badge: attention.length },
     { key: "favourites", label: "Favourites" },
   ];
@@ -155,7 +149,7 @@ export default async function WorkspacePage({
                         {installation.product.title}
                         <span className="font-normal text-ink-3">
                           {" "}
-                          · {installation.product.kind === "AGENT" ? "Agent" : "Workflow"} · v
+                          · Agent · v
                           {installation.pinnedVersion}
                         </span>
                       </div>
@@ -187,11 +181,8 @@ export default async function WorkspacePage({
             </section>
           ) : null}
 
-          {agents.length > 0 ? (
-            <ProductList title="My agents" rows={agents} />
-          ) : null}
-          {workflows.length > 0 ? (
-            <ProductList title="My workflows" rows={workflows} />
+          {visible.length > 0 ? (
+            <ProductList title="My agents" rows={visible} />
           ) : null}
 
           {visible.length === 0 ? (
@@ -290,7 +281,6 @@ function ProductList({
         slug: string;
         title: string;
         category: string;
-        kind: "AGENT" | "WORKFLOW";
         ratingAvg: number;
         invocationMode: string;
         usesKnowledge: boolean;
@@ -315,7 +305,6 @@ function ProductList({
           >
             <ProductGlyph
               category={installation.product.category}
-              kind={installation.product.kind}
               size={40}
             />
             <div className="min-w-0 flex-1">

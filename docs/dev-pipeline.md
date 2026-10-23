@@ -38,6 +38,29 @@ n8n ② Result Handler ◄──────────── callback webhook
 | `task_id` | معرّف البطاقة في Trello |
 | `task_title` / `task_description` | اسم البطاقة ونص وصفها |
 | `task_url` | رابط البطاقة للتعليق والـ PR |
+| `attachments` | قائمة `{ name, mime_type, path }` لمرفقات البطاقة المحفوظة في فرع `task-attachments` |
+
+## مرفقات البطاقة
+
+يقرأ Claude مرفقات البطاقة (صور، PDF، ملفات نصية) ويحللها مع المهمة:
+
+1. الـ Dispatcher يجلب المرفقات المرفوعة فعليًا (لا الروابط)، حتى 10 ملفات وبحد 10 MB لكل ملف.
+2. ينزّلها من Trello ويحفظها في فرع `task-attachments` بالمسار `<cardId>/<attachmentId>-<name>`،
+   ويرسل المسارات في حقل `attachments`. الملفات لا تدخل `main`.
+3. خطوة `Fetch task attachments` في الـ workflow تجلبها إلى `.claude-task/attachments/` بعد التحقق من
+   أن كل مسار يطابق النمط أعلاه، و`task.json` يسردها. Claude يقرأها بأداة Read.
+
+مرفق فشل تنزيله أو رفعه يُستبعد، والمهمة تُرسل بدونه. Trello لا يسلّم ملفات المرفقات إلا بترويسة
+OAuth، لذلك يحتاج التنزيل credential مستقلًا (الخطوة 5). محتوى المرفقات مدخل غير موثوق مثل نص البطاقة،
+وأي شخص له صلاحية قراءة المستودع يستطيع قراءة فرع `task-attachments`.
+
+## الدمج من Trello
+
+نقل البطاقة إلى قائمة **Ready to merge** يطلب دمج الـ PR الخاص بها (الفرع `claude/trello-<cardId>`).
+نقل البطاقة نفسه هو الموافقة: الـ workflow "Claude Dev — Merge from Trello" يدمج ما لم يطلب أحد المراجعين
+تعديلات لم تُحل. بعد الدمج تنتقل البطاقة إلى **Done** مع تعليق. وإلا يعلّق على البطاقة بالسبب: لا يوجد PR
+مفتوح، أو هناك طلب تعديلات، أو رفض GitHub الدمج (تعارض مع `main` مثلًا). الدمج إلى `main` يطلق النشر،
+لذلك أي عضو في اللوح يستطيع النشر للإنتاج: اجعل اللوح مقتصرًا على من تثق به.
 
 الذي يعرف Trello هو عقد n8n فقط، وهي معزولة داخل كل workflow:
 
@@ -116,6 +139,10 @@ Variables (اختيارية):
    - **Trello API**: الـ API key والـ Token من الخطوة 1
    - **GitHub API**: Fine-grained token على هذا المستودع فقط بصلاحية `Contents: Read and write`
    - **Header Auth**: الاسم `X-Callback-Token` والقيمة = `N8N_CALLBACK_TOKEN`
+   - **Header Auth** لتنزيل المرفقات ("Trello attachments"): الاسم `Authorization` والقيمة
+     `OAuth oauth_consumer_key="<API Key>", oauth_token="<Token>"`، والقيمتان من صفحة
+     `https://trello.com/app-key` نفسها. اربطه بعقدة `Tracker: download attachment`.
+   - صلاحية الـ GitHub token تشمل الكتابة في فرع `task-attachments` (موجودة ضمن `Contents: Read and write`).
 3. اربط كل HTTP node بالـ credential المناسب، والـ Webhook بالـ Header Auth.
 4. في الـ Dispatcher عبّئ عقدة **Config** بمعرّفي `ready_list_id` و`in_progress_list_id`.
    وفي الـ Result Handler عبّئ `review_list_id` و`needs_attention_list_id`.
@@ -160,6 +187,8 @@ Variables (اختيارية):
 | أوامر مرفوضة في السجل | أضف الأمر المطلوب إلى `allow` في `pipeline-settings.json` (ولا تضف أوامر المسارات المحمية) |
 | "Changed protected paths" | الوكيل عدّل ملفًا محميًا. راجع المهمة وأعد صياغتها |
 | فشل callback بـ 403 | قيمة `X-Callback-Token` لا تطابق |
+| المرفقات لا تصل إلى Claude | قيمة credential "Trello attachments" خاطئة (Trello يعيد 401 "invalid key" أو صفحة HTML بدل الملف) |
+| نقل البطاقة إلى Ready to merge لا يدمج | راجع تعليق البطاقة: لا يوجد PR مفتوح، أو طلب تعديلات، أو تعارض مع `main` |
 | الاستخدام يُحتسب على API | وجود `ANTHROPIC_API_KEY` في البيئة |
 
 ملفات `spec.md` و`test-report.md` و`review.md` وسجل Claude محفوظة كـ artifact في كل تشغيل للتتبع.

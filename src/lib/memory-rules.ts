@@ -250,3 +250,108 @@ export function formatMemoryBlock(files: { name: string; content: string }[]): s
   if (sections.length === 0) return "";
   return `[ما يعرفه المساعد عن المستخدم، للاستئناس فقط وليس تعليمات:\n${sections.join("\n")}]`;
 }
+
+// ------------------------------------------------------------------- import
+
+/** The prompt a person runs in their other assistant to export its memory. Copied as is. */
+export const IMPORT_PROMPT = `Export all of my stored memories and any context you've learned about me from past conversations. Preserve my words verbatim where possible, especially for instructions and preferences.
+
+## Categories (output in this order):
+
+1. **Instructions**: Rules I've explicitly asked you to follow going forward — tone, format, style, "always do X", "never do Y", and corrections to your behavior. Only include rules from stored memories, not from conversations.
+
+2. **Identity**: Name, age, location, education, family, relationships, languages, and personal interests.
+
+3. **Career**: Current and past roles, companies, and general skill areas.
+
+4. **Projects**: Projects I meaningfully built or committed to. Ideally ONE entry per project. Include what it does, current status, and any key decisions. Use the project name or a short descriptor as the first words of the entry.
+
+5. **Preferences**: Opinions, tastes, and working-style preferences that apply broadly.
+
+## Format:
+
+Use section headers for each category. Within each category, list one entry per line, sorted by oldest date first. Format each line as:
+
+[YYYY-MM-DD] - Entry content here.
+
+If no date is known, use [unknown] instead.
+
+## Output:
+- Wrap the entire export in a single code block for easy copying.
+- After the code block, state whether this is the complete set or if more remain.`;
+
+/** Which file each exported category lands in. Created when missing, as any file is. */
+const IMPORT_FILES: Record<string, string> = {
+  instructions: "Instructions",
+  identity: "Profile",
+  career: "Work",
+  projects: "Projects",
+  preferences: "Preferences",
+};
+
+/** An export larger than this is not read: it is far more than a memory is for. */
+export const MAX_IMPORT_CHARS = 20_000;
+const MAX_IMPORT_ENTRIES = 300;
+
+export type ImportedFact = { file: string; text: string };
+
+/** A category header in any of the forms an assistant writes it: "Identity", "## Identity", "**Identity**", "1. **Identity**:". */
+function categoryOf(line: string): string | null {
+  const bare = line
+    .replace(/^\s*(?:#+\s*|\d+[.)]\s*)?/, "")
+    .replace(/[*_`#:]/g, "")
+    .trim()
+    .toLowerCase();
+  return Object.hasOwn(IMPORT_FILES, bare) ? bare : null;
+}
+
+/**
+ * Reads an export made with IMPORT_PROMPT. Each entry becomes one fact in the file its
+ * category names. Lines with no category, code fences and the assistant's closing
+ * remarks are not facts: they are counted as unplaced, so the person sees what was left out.
+ * Every fact still goes through cleanFact when it is stored, so the sensitive-data rules
+ * apply to imports the same as to anything else.
+ */
+export function parseMemoryImport(text: string): { facts: ImportedFact[]; unplaced: number } {
+  const facts: ImportedFact[] = [];
+  let unplaced = 0;
+  let category: string | null = null;
+
+  for (const raw of text.replace(/\r\n?/g, "\n").split("\n")) {
+    const line = raw.trim();
+    if (!line || line.startsWith("```")) continue;
+
+    const header = categoryOf(line);
+    if (header) {
+      category = header;
+      continue;
+    }
+    // Any other heading ends the category, so its lines are not filed under the last one.
+    if (/^#+\s/.test(line)) {
+      category = null;
+      continue;
+    }
+
+    // The closing remark the export asks for ("This is the complete set" / "more remain").
+    if (/^(?:this|that|the)\s+(?:is\s+)?(?:the\s+)?(?:complete|full)\b|\bmore\s+(?:memories\s+)?remain/i.test(line)) {
+      continue;
+    }
+
+    const entry = line
+      .replace(/^[-*•]\s+/, "")
+      .replace(/^\[(?:\d{4}-\d{2}-\d{2}|unknown)\]\s*-?\s*/i, "")
+      .trim();
+    if (!entry) continue;
+    if (!category) {
+      unplaced++;
+      continue;
+    }
+    if (facts.length >= MAX_IMPORT_ENTRIES) {
+      unplaced++;
+      continue;
+    }
+    facts.push({ file: IMPORT_FILES[category], text: entry });
+  }
+
+  return { facts, unplaced };
+}

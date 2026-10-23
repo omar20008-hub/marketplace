@@ -8,6 +8,10 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/session", () => ({ createSession: vi.fn() }));
+// The new-person install runs after the response, which has no scope in a test.
+// Its own behaviour is covered in auto-install.test.ts.
+vi.mock("next/server", async (importOriginal) => ({ ...(await importOriginal<typeof import("next/server")>()), after: vi.fn() }));
+vi.mock("@/server/auto-install", () => ({ installReadyProducts: vi.fn(async () => ({ installed: [], skipped: 0 })) }));
 
 const { createSession } = await import("@/lib/session");
 const { prisma } = await import("@/lib/db");
@@ -95,13 +99,13 @@ describe("GET /api/oauth/google/auth/start", () => {
 });
 
 describe("GET /api/oauth/google/auth/callback", () => {
-  it("creates an account for a new address and signs it in", async () => {
+  it("creates an account for a new address, signs it in and welcomes it", async () => {
     googleGrants();
     const { nonce, cookie } = newOAuthState({ userId: "", verifier: "v", returnTo: "/" });
 
     const response = await callback(callbackRequest(`code=abc&state=${nonce}`, cookie));
 
-    expect(location(response).pathname).toBe("/");
+    expect(location(response).pathname).toBe("/welcome");
     const user = await prisma.user.findUniqueOrThrow({ where: { email: "new.person@acme.co" } });
     expect(user.planId).toBe("free");
     expect(createSession).toHaveBeenCalledWith(user.id);
@@ -118,10 +122,11 @@ describe("GET /api/oauth/google/auth/callback", () => {
       },
     });
     googleGrants();
-    const { nonce, cookie } = newOAuthState({ userId: "", verifier: "v", returnTo: "/" });
+    const { nonce, cookie } = newOAuthState({ userId: "", verifier: "v", returnTo: "/library" });
 
-    await callback(callbackRequest(`code=abc&state=${nonce}`, cookie));
+    const response = await callback(callbackRequest(`code=abc&state=${nonce}`, cookie));
 
+    expect(location(response).pathname).toBe("/library");
     expect(await prisma.user.count()).toBe(1);
     expect(createSession).toHaveBeenCalledWith(existing.id);
   });

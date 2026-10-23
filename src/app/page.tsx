@@ -90,7 +90,7 @@ export default async function HomePage() {
             What do you want to get done?
           </h1>
           <p className="mt-2.5 max-w-[520px] text-center text-[15px] text-ink-2">
-            Describe the task. We match it to an agent or workflow you already own,
+            Describe the task. We match it to an agent you already own,
             or suggest one from the Marketplace.
           </p>
 
@@ -127,10 +127,7 @@ export default async function HomePage() {
                   className="flex flex-col gap-2.5 rounded-card border border-selected p-3.5 hover:border-line"
                 >
                   <div className="flex items-center justify-between">
-                    <ProductGlyph
-                      category={installation.product.category}
-                      kind={installation.product.kind}
-                    />
+                    <ProductGlyph category={installation.product.category} />
                     <Badge tone={readiness.tone}>
                       {readiness.tone === "partial"
                         ? `${readiness.missing.length} setup`
@@ -144,7 +141,7 @@ export default async function HomePage() {
                     <div className="mt-0.5 text-xs text-ink-3">
                       {readiness.tone === "partial"
                         ? `Connect ${readiness.missing[0]} to run`
-                        : `${installation.product.kind === "AGENT" ? "Agent" : "Workflow"} · ${
+                        : `Agent · ${
                             (runsByInstallation.get(installation.id) ?? 0) > 1
                               ? `${runsByInstallation.get(installation.id)} runs`
                               : `last run ${relativeDays(installation.lastRunAt)}`

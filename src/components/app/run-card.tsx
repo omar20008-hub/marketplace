@@ -39,7 +39,6 @@ export type RunCardData = {
   artifacts: Artifact[];
   product: {
     title: string;
-    kind: "AGENT" | "WORKFLOW";
     slug: string;
     inputSchema: unknown;
   };
@@ -64,7 +63,8 @@ export function RunCard({ run }: { run: RunCardData }) {
 
   // Plan limit and connection blocks get the danger card from the design system.
   if (run.result === "BLOCKED") {
-    const planLimit = run.errorType === "plan limit";
+    const storageLimit = run.errorType === "storage limit";
+    const planLimit = run.errorType === "plan limit" || storageLimit;
     return (
       <Card tone="danger" className="flex flex-col gap-3 p-4">
         <div className="flex gap-3">
@@ -73,9 +73,11 @@ export function RunCard({ run }: { run: RunCardData }) {
           </span>
           <div className="min-w-0 flex-1">
             <div className="text-sm font-medium">
-              {planLimit
-                ? "Blocked — monthly run limit reached"
-                : "Blocked — a connection needs attention"}
+              {storageLimit
+                ? "Blocked — storage is full"
+                : planLimit
+                  ? "Blocked — monthly run limit reached"
+                  : "Blocked — a connection needs attention"}
             </div>
             <p className="mt-1 text-[13px] leading-relaxed text-ink-2">
               {run.message}
@@ -85,7 +87,7 @@ export function RunCard({ run }: { run: RunCardData }) {
         <div className="flex flex-wrap gap-2 sm:pl-[52px]">
           {planLimit ? (
             <>
-              <ButtonLink href="/workspace" size="sm">
+              <ButtonLink href="/pricing" size="sm">
                 See plan options
               </ButtonLink>
               <Button tone="secondary" size="sm">
@@ -154,7 +156,7 @@ export function RunCard({ run }: { run: RunCardData }) {
           <span className="text-xs text-ink-3">Matched from your workspace</span>
           <span className="text-sm font-medium">{run.product.title}</span>
           <span className="text-xs text-ink-3">
-            · {run.product.kind === "AGENT" ? "Agent" : "Workflow"} · v
+            · Agent · v
             {run.productVersion}
           </span>
           <Badge tone={failed ? "blocked" : "ready"}>

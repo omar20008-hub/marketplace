@@ -1,8 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/db";
 import type { Viewer } from "@/lib/auth";
-import { n8n } from "@/lib/n8n";
+import { env } from "@/lib/env";
+import { n8n, type DispatchOutput } from "@/lib/n8n";
 import { readinessFor } from "@/lib/readiness";
+import { dispatchInstance } from "./dispatch";
+import { storageOperation } from "./storage";
 import { fitsInPlan, storageFullMessage, storageUsedBytes } from "@/server/storage-quota";
 import type { Prisma } from "@/generated/prisma";
 
@@ -51,8 +54,14 @@ function stepLabels(product: {
   return labels;
 }
 
+/**
+ * The short handle a run is shown by ("run 3f9a1c07b2e4"). Run.runId is unique,
+ * so it needs enough randomness that two runs never draw the same one: two
+ * bytes (65,536 values) collided often enough to fail a run, and a test in CI.
+ * Six bytes keeps it short and makes a collision a practical impossibility.
+ */
 function handle() {
-  return randomBytes(2).toString("hex");
+  return randomBytes(6).toString("hex");
 }
 
 export function titleFor(task: string) {
@@ -80,12 +89,14 @@ export function orchestratorSession(userId: string, threadId?: string): string {
 }
 
 /**
- * The model behind the Orchestrator answers "503, high demand" in bursts that last a
- * few seconds (n8n already retries inside the call). One more try from here, after a
- * pause, turns most of those into an answer instead of an apology.
+ * No second try from here. A failed call is not always a failed run: a reply can be
+ * cut off after n8n has already started the work (a video takes about a minute, and
+ * the connection in front of n8n gives up before that), so a retry runs the same
+ * request again and charges for it twice. The "503, high demand" bursts are retried
+ * inside n8n, on the agent node itself.
  */
 export const orchestratorRuntime = {
-  retries: 1,
+  retries: 0,
   retryDelayMs: 4000,
   sleep: (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
 };
@@ -127,11 +138,14 @@ export async function executeRun({
   installationId,
   args,
   threadId,
+  onDispatch,
 }: {
-  user: Viewer;
+  user: Pick<Viewer, "id" | "plan">;
   installationId: string;
   args: Record<string, unknown>;
   threadId?: string;
+  /** Receives the dispatcher's full reply, which the stored run keeps only in part. */
+  onDispatch?: (reply: DispatchOutput) => void;
 }) {
   const installation = await prisma.installation.findFirst({
     where: { id: installationId, userId: user.id },
@@ -219,11 +233,24 @@ export async function executeRun({
   const schema = fields(installation.product);
 
   // userId comes from the session. Never from the form, never from a model.
-  const reply = await n8n.dispatch({
-    userId: user.id,
-    installationId: installation.installationId ?? installation.id,
-    args: { ...args, __schema: schema },
-  });
+  const copyId = installation.installationId ?? installation.id;
+  const reply =
+    env.dispatcher.driver === "platform"
+      ? await dispatchInstance({
+          userId: user.id,
+          installationId: copyId,
+          instanceWorkflowId: installation.instanceWorkflowId,
+          invocationMode: installation.product.invocationMode,
+          title: installation.product.title,
+          inputSchema: installation.product.inputSchema,
+          args,
+        })
+      : await n8n.dispatch({
+          userId: user.id,
+          installationId: copyId,
+          args: { ...args, __schema: schema },
+        });
+  onDispatch?.(reply);
 
   const durationMs = Date.now() - startedAt;
   const labels = stepLabels(installation.product);
@@ -321,13 +348,15 @@ export async function executeRun({
   if (outputs[0] && roomForResult) {
     const name = `${installation.product.slug}-${run.runId}.txt`;
     const content = Buffer.from(reply.toolOutput, "utf8").toString("base64");
-    const stored = await n8n.storage({
-      installationId: installation.installationId ?? installation.id,
-      operation: "put",
-      path: `results/${name}`,
-      content,
-      mimeType: "text/plain",
-    });
+    const stored = await storageOperation(
+      { id: installation.id, installationId: installation.installationId },
+      {
+        operation: "put",
+        path: `results/${name}`,
+        content,
+        mimeType: "text/plain",
+      },
+    );
 
     await prisma.artifact.create({
       data: {

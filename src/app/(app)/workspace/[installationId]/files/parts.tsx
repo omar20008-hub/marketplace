@@ -203,7 +203,16 @@ export function AttachFolder({ installationId }: { installationId: string }) {
       <input type="hidden" name="installationId" value={installationId} />
       <input type="hidden" name="folderId" value={folder?.id ?? ""} />
       <FolderPicker value={folder} onChange={setFolder} />
-      {state.error ? <p className="text-[13px] text-danger-ink">{state.error}</p> : null}
+      {state.error ? (
+        <p className="flex flex-wrap items-center gap-x-2 text-[13px] text-danger-ink">
+          {state.error}
+          {/plan/i.test(state.error) ? (
+            <a href="/pricing" className="font-medium underline">
+              See plan options
+            </a>
+          ) : null}
+        </p>
+      ) : null}
       <div>
         <Button type="submit" size="sm" disabled={!folder || pending}>
           {pending ? "Connecting…" : "Use this folder"}

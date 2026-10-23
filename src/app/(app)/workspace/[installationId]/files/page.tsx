@@ -166,7 +166,12 @@ export default async function FilesPage({
                     </a>
                   </p>
                 ) : source.lastError ? (
-                  <p className="text-[13px] text-warn-ink">{source.lastError}</p>
+                  <p className="flex flex-wrap items-center gap-x-2 text-[13px] text-warn-ink">
+                    {source.lastError}
+                    <a href="/pricing" className="font-medium underline">
+                      See plan options
+                    </a>
+                  </p>
                 ) : null}
 
                 <SourceActions sourceId={source.id} folderName={source.folderName} paused={source.status === "PAUSED"} />

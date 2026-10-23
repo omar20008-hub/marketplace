@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { MAX_IMPORT_CHARS, parseMemoryImport } from "@/lib/memory-rules";
 import {
   addFact,
   clearMemory,
@@ -74,6 +75,31 @@ export async function clearMemoriesAction(formData: FormData) {
   if (formData.get("confirm") !== "yes") back(null, "confirm");
   await clearMemory(user.id);
   back(null, "cleared");
+}
+
+/**
+ * Adds the lines of an export from another assistant (see IMPORT_PROMPT). Each line goes
+ * through addFact, so the sensitive-data rules and the file limits apply as they do
+ * everywhere else. The result is counted, so the person sees what was taken and what was not.
+ */
+export async function importMemoryAction(formData: FormData) {
+  const user = await requireUser();
+  const pasted = text(formData, "text").slice(0, MAX_IMPORT_CHARS);
+  const { facts, unplaced } = parseMemoryImport(pasted);
+  if (facts.length === 0) back(null, "import_empty");
+
+  let imported = 0;
+  let already = 0;
+  let skipped = unplaced;
+  for (const fact of facts) {
+    const result = await addFact(user.id, fact.text, { file: fact.file });
+    if (!result.ok) skipped++;
+    else if (result.duplicate) already++;
+    else imported++;
+  }
+
+  revalidatePath("/memory");
+  redirect(`/memory?note=imported&imported=${imported}&already=${already}&skipped=${skipped}`);
 }
 
 export async function setAutoMemoryAction(formData: FormData) {

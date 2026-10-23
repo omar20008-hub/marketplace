@@ -38,11 +38,18 @@ export async function GET(request: Request, { params }: { params: Promise<{ prov
 
   if (url.searchParams.get("error")) return finish(state.returnTo, { connect_error: "tool_denied" });
 
-  const code = url.searchParams.get("code");
+  // OAuth 1.0a tools return a verifier rather than a code, and echo the request token.
+  const code = url.searchParams.get(provider.oauth1 ? "oauth_verifier" : "code");
   if (!code) return finish(state.returnTo, { connect_error: "tool_failed" });
 
   try {
-    await completeSignIn(provider, { userId: user.id, code, request });
+    await completeSignIn(provider, {
+      userId: user.id,
+      code,
+      pending: state.verifier,
+      oauthToken: url.searchParams.get("oauth_token"),
+      request,
+    });
     return finish(state.returnTo, { connected: provider.credentialType });
   } catch (error) {
     const reason = error instanceof ConnectorSignInError ? error.code : "tool_failed";
