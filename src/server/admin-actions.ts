@@ -390,3 +390,43 @@ export async function setPlatformKey(formData: FormData) {
   revalidatePath("/admin");
   redirect(`/admin?view=keys&saved=${encodeURIComponent(credentialType)}`);
 }
+
+/**
+ * Removes a product from the platform. It works only when nothing depends on it:
+ * a product that someone has installed, has run, or was submitted from is refused
+ * with the counts, because those rows are the people's own history (and the credits
+ * charged for their runs). The person removing it must type the product's slug, so a
+ * stray click cannot remove the wrong one. The matching n8n template is not touched
+ * here; it is archived in n8n separately. The audit log records the removal.
+ */
+export async function removeProduct(formData: FormData) {
+  const admin = await requireRole("ADMIN");
+  const productId = String(formData.get("productId") ?? "");
+  const confirm = String(formData.get("confirm") ?? "").trim();
+
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    select: { id: true, slug: true, title: true },
+  });
+  if (!product) redirect("/admin?view=products&error=unknown");
+  if (confirm !== product.slug) {
+    redirect(`/admin?view=products&error=confirm&product=${encodeURIComponent(product.slug)}`);
+  }
+
+  const [installations, runs, submissions] = await Promise.all([
+    prisma.installation.count({ where: { productId: product.id } }),
+    prisma.run.count({ where: { productId: product.id } }),
+    prisma.submission.count({ where: { productId: product.id } }),
+  ]);
+  if (installations + runs + submissions > 0) {
+    redirect(
+      `/admin?view=products&error=in_use&product=${encodeURIComponent(product.slug)}` +
+        `&installs=${installations}&runs=${runs}&submissions=${submissions}`,
+    );
+  }
+
+  await prisma.product.delete({ where: { id: product.id } });
+  await record(admin.id, "product.removed", `product:${product.slug}`, `removed "${product.title}"`);
+  revalidatePath("/admin");
+  redirect(`/admin?view=products&saved=${encodeURIComponent(product.slug)}`);
+}
