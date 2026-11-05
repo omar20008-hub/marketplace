@@ -77,6 +77,16 @@ describe("runN8nCanary", () => {
     expect(state.install).toHaveBeenCalledWith(recent.id);
   });
 
+  it("still catches people up when there is no REST key to check", async () => {
+    state.probe.mockResolvedValue("unconfigured");
+    const recent = await person(new Date());
+
+    const status = await runN8nCanary();
+
+    expect(status.state).toBe("unconfigured");
+    expect(state.install).toHaveBeenCalledWith(recent.id);
+  });
+
   it("keeps the time a state began, so a long outage shows as long", async () => {
     const began = new Date("2026-11-01T00:00:00.000Z");
     state.probe.mockResolvedValue("unreachable");
