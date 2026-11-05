@@ -378,6 +378,11 @@ export const env = {
     baseUrl: process.env.N8N_BASE_URL ?? "",
     /** Full control of the n8n instance. Server-side only, always. */
     apiKey: process.env.N8N_API_KEY ?? "",
+    /**
+     * A second key, tried only when the first is refused (401). Created alongside the
+     * first in n8n, so rotating the first never leaves the platform without one.
+     */
+    apiKeyFallback: process.env.N8N_API_KEY_FALLBACK ?? "",
     webhookToken: process.env.N8N_WEBHOOK_TOKEN ?? "",
     uploadWebhookUrl: process.env.N8N_UPLOAD_WEBHOOK_URL ?? "",
     installWebhookUrl: process.env.N8N_INSTALL_WEBHOOK_URL ?? "",

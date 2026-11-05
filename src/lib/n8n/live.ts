@@ -92,31 +92,70 @@ async function postWebhook<T>(url: string, body: unknown): Promise<T> {
   }
 }
 
+/**
+ * Sends a request with the primary key, and with the fallback only when n8n refuses
+ * the first one (401). A refusal of both is returned as it is.
+ */
+async function withKeys(send: (key: string) => Promise<Response>): Promise<Response> {
+  const keys = [env.n8n.apiKey, env.n8n.apiKeyFallback].filter((key) => key.length > 0);
+  let response = await send(keys[0] ?? "");
+  for (const key of keys.slice(1)) {
+    if (response.status !== 401) break;
+    response = await send(key);
+  }
+  return response;
+}
+
 async function restPost(path: string, body?: unknown): Promise<Response> {
-  return fetch(`${env.n8n.baseUrl}${path}`, {
-    method: "POST",
-    headers: {
-      "X-N8N-API-KEY": env.n8n.apiKey,
-      ...(body === undefined ? {} : { "content-type": "application/json" }),
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-    cache: "no-store",
-  });
+  return withKeys((key) =>
+    fetch(`${env.n8n.baseUrl}${path}`, {
+      method: "POST",
+      headers: {
+        "X-N8N-API-KEY": key,
+        ...(body === undefined ? {} : { "content-type": "application/json" }),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      cache: "no-store",
+    }),
+  );
 }
 
 async function restDelete(path: string): Promise<Response> {
-  return fetch(`${env.n8n.baseUrl}${path}`, {
-    method: "DELETE",
-    headers: { "X-N8N-API-KEY": env.n8n.apiKey },
-    cache: "no-store",
-  });
+  return withKeys((key) =>
+    fetch(`${env.n8n.baseUrl}${path}`, {
+      method: "DELETE",
+      headers: { "X-N8N-API-KEY": key },
+      cache: "no-store",
+    }),
+  );
+}
+
+/**
+ * Whether n8n accepts the platform's key, read on the same path the other calls use.
+ * "rejected" is the one that matters: it means every key the platform holds was refused.
+ */
+export async function probeN8nApi(): Promise<"ok" | "rejected" | "unreachable"> {
+  try {
+    const response = await withKeys((key) =>
+      fetch(`${env.n8n.baseUrl}/workflows?limit=1`, {
+        headers: { "X-N8N-API-KEY": key },
+        cache: "no-store",
+      }),
+    );
+    if (response.status === 401 || response.status === 403) return "rejected";
+    return response.ok ? "ok" : "unreachable";
+  } catch {
+    return "unreachable";
+  }
 }
 
 async function restGet<T>(path: string): Promise<T> {
-  const response = await fetch(`${env.n8n.baseUrl}${path}`, {
-    headers: { "X-N8N-API-KEY": env.n8n.apiKey },
-    cache: "no-store",
-  });
+  const response = await withKeys((key) =>
+    fetch(`${env.n8n.baseUrl}${path}`, {
+      headers: { "X-N8N-API-KEY": key },
+      cache: "no-store",
+    }),
+  );
   if (!response.ok) {
     throw new N8nError(`n8n GET ${path} replied ${response.status}`);
   }

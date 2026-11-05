@@ -769,6 +769,14 @@ model SubmissionIssue {
   answer       String?
 }
 
+/// Small facts the platform writes about itself from background jobs (for example the
+/// last result of the n8n key check), so an admin can see them without reading logs.
+model PlatformStatus {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
 model AuditLog {
   id        String   @id @default(cuid())
   actorId   String

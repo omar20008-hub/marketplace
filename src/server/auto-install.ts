@@ -25,6 +25,14 @@ export async function installReadyProducts(userId: string): Promise<{ installed:
   const installed: string[] = [];
   let skipped = 0;
 
+  // While n8n refuses the platform's key, every build would fail the same way. The
+  // hourly check (n8n-canary.ts) gives these people their products once it answers.
+  const health = await prisma.platformStatus.findUnique({ where: { key: "n8n.api" } });
+  if ((health?.value as { state?: string } | null)?.state === "rejected") {
+    console.error("Auto-install skipped: n8n refuses the platform's key");
+    return { installed, skipped };
+  }
+
   const storage = await prisma.storageAdapter.findUnique({ where: { backend: STORAGE } });
   if (!storage?.active) return { installed, skipped };
 
