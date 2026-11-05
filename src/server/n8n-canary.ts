@@ -18,7 +18,7 @@ export const N8N_STATUS_KEY = "n8n.api";
 /** How far back a sign-up still gets its catch-up install. */
 const CATCH_UP_DAYS = 7;
 /** People handled per run, so one run stays short when many missed out. */
-const CATCH_UP_BATCH = 25;
+const CATCH_UP_BATCH = 8;
 
 export type N8nApiStatus = {
   state: "ok" | "rejected" | "unreachable";

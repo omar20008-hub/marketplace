@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { runDuePosts } from "@/server/posts/scheduled-posts";
+import { runN8nCanary } from "@/server/n8n-canary";
 import { tickKnowledge } from "./worker";
 
 /**
@@ -29,6 +30,10 @@ import { tickKnowledge } from "./worker";
 
 /** An arbitrary constant: the advisory lock every tick pass takes. */
 const LOCK_KEY = 734_000_101;
+/** The n8n check takes its own lock, so it never makes a knowledge pass skip. */
+const CANARY_LOCK_KEY = 734_000_102;
+/** The n8n connection is checked once an hour, from whichever process gets there first. */
+const CANARY_EVERY_MS = 60 * 60 * 1000;
 /** Leave room under the interval, and under a request's own limit, for one pass. */
 const PASS_BUDGET_MS = 45_000;
 /** Hold-time ceiling for the lock's transaction; a pass is budgeted far below it. */
@@ -43,11 +48,14 @@ export type LockResult<T> = { ran: true; value: T } | { ran: false };
  * as a transaction that does nothing else, so it is released the moment the pass
  * ends — or the connection dies — and can never be left behind.
  */
-export async function withTickLock<T>(fn: () => Promise<T>): Promise<LockResult<T>> {
+export async function withTickLock<T>(
+  fn: () => Promise<T>,
+  key: number = LOCK_KEY,
+): Promise<LockResult<T>> {
   return prisma.$transaction(
     async (tx) => {
       const [row] = await tx.$queryRaw<{ locked: boolean }[]>`
-        SELECT pg_try_advisory_xact_lock(${LOCK_KEY}::bigint) AS locked`;
+        SELECT pg_try_advisory_xact_lock(${key}::bigint) AS locked`;
       if (!row?.locked) return { ran: false as const };
       return { ran: true as const, value: await fn() };
     },
@@ -75,6 +83,31 @@ export async function runScheduledPass(
         (failed > 0 ? ` types=${types}` : ""),
     );
   }
+}
+
+let lastCanaryAt = 0;
+
+/**
+ * Checks the n8n connection at most once an hour (n8n-canary.ts), and only where the
+ * platform really talks to n8n. The clock is passed in so the hourly gate can be tested.
+ */
+export async function maybeRunCanary(
+  now: number = Date.now(),
+  check: typeof runN8nCanary = runN8nCanary,
+  log: (line: string) => void = console.log,
+): Promise<boolean> {
+  if (env.n8n.driver !== "live") return false;
+  if (now - lastCanaryAt < CANARY_EVERY_MS) return false;
+  lastCanaryAt = now;
+
+  const result = await withTickLock(() => check(), CANARY_LOCK_KEY);
+  if (result.ran) log(`n8n check: ${result.value.state}, caught up ${result.value.caughtUp}`);
+  return result.ran;
+}
+
+/** Test hook: forget when the last check ran. */
+export function resetCanaryClock() {
+  lastCanaryAt = 0;
 }
 
 /** What an error may say in a log: its kind, never its message (which can quote a query or a value). */
@@ -190,6 +223,9 @@ export function startKnowledgeScheduler(): Scheduler | null {
       } finally {
         const { outcomes } = await runDuePosts();
         if (outcomes.length > 0) console.log(`post tick: ${outcomes.length} due`);
+        // The n8n connection rides the same clock, hourly. A failure here is reported
+        // by the pass's own handler and does not stop the next pass.
+        await maybeRunCanary();
       }
     },
     onError: (error) => console.error(`Knowledge tick failed: ${describeError(error)}`),
