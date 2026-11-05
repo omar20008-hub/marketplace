@@ -21,6 +21,7 @@ const { installReadyProducts } = await import("@/server/auto-install");
 const PLAN_ID = "auto-install-plan";
 
 async function wipe() {
+  await prisma.platformStatus.deleteMany({});
   await prisma.installationCredential.deleteMany({});
   await prisma.installation.deleteMany({});
   await prisma.requirement.deleteMany({});
@@ -208,6 +209,17 @@ describe("installReadyProducts", () => {
 
     expect(state.install).toHaveBeenCalledTimes(2);
     expect(result.installed).toHaveLength(1);
+  });
+
+  it("remembers how the pass went, with the newest refusal, for the Health tab", async () => {
+    const { creator, person } = await setup();
+    await product(creator.id, "First");
+    state.install.mockResolvedValue({ ok: false, errorText: "n8n said no" });
+
+    await installReadyProducts(person.id);
+
+    const row = await prisma.platformStatus.findUniqueOrThrow({ where: { key: "auto-install.last" } });
+    expect(row.value).toMatchObject({ installed: 0, refused: 1, lastError: "n8n said no" });
   });
 
   it("does nothing while the platform storage is not active", async () => {

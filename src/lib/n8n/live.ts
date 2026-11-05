@@ -134,7 +134,10 @@ async function restDelete(path: string): Promise<Response> {
  * Whether n8n accepts the platform's key, read on the same path the other calls use.
  * "rejected" is the one that matters: it means every key the platform holds was refused.
  */
-export async function probeN8nApi(): Promise<"ok" | "rejected" | "unreachable"> {
+export async function probeN8nApi(): Promise<"ok" | "rejected" | "unreachable" | "unconfigured"> {
+  // Installs normally go through webhooks. With no REST address or key set here there
+  // is nothing to check, and that is a choice (the key is full control of n8n), not a fault.
+  if (!env.n8n.baseUrl || (!env.n8n.apiKey && !env.n8n.apiKeyFallback)) return "unconfigured";
   try {
     const response = await withKeys((key) =>
       fetch(`${env.n8n.baseUrl}/workflows?limit=1`, {

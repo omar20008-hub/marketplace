@@ -21,7 +21,7 @@ const CATCH_UP_DAYS = 7;
 const CATCH_UP_BATCH = 8;
 
 export type N8nApiStatus = {
-  state: "ok" | "rejected" | "unreachable";
+  state: "ok" | "rejected" | "unreachable" | "unconfigured";
   checkedAt: string;
   /** When the current state began, so a long outage is visible as long. */
   since: string;
@@ -36,7 +36,9 @@ export async function runN8nCanary(now = new Date()): Promise<N8nApiStatus> {
   const since = before && before.state === state ? before.since : now.toISOString();
   let caughtUp = 0;
 
-  if (state === "ok") {
+  // "unconfigured" means there is no REST key to test, so installs are not held back
+  // and the catch-up runs: its own results are the signal (see auto-install.ts).
+  if (state === "ok" || state === "unconfigured") {
     const window = new Date(now.getTime() - CATCH_UP_DAYS * 24 * 60 * 60 * 1000);
     const missed = await prisma.user.findMany({
       where: { createdAt: { gte: window }, installations: { none: {} } },
@@ -56,7 +58,7 @@ export async function runN8nCanary(now = new Date()): Promise<N8nApiStatus> {
     create: { key: N8N_STATUS_KEY, value: status },
     update: { value: status },
   });
-  if (state !== "ok") {
+  if (state === "rejected" || state === "unreachable") {
     console.error(`n8n API ${state}: installs are paused until it answers again`);
   }
   return status;
