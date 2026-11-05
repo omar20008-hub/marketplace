@@ -24,8 +24,10 @@ const MESSAGES: Record<string, string> = {
  *
  * Choosing is explicit, on a button beside a folder, and separate from opening
  * it: clicking a name goes inside, so a folder is never picked by accident on
- * the way to the one below it. My Drive and Shared with me themselves cannot be
- * picked, since indexing a whole drive is never what anyone means.
+ * the way to the one below it. The folder you are inside has its own button
+ * beside the path, so a folder with no subfolders can still be chosen. My Drive
+ * and Shared with me themselves cannot be picked, since indexing a whole drive
+ * is never what anyone means.
  */
 export function FolderPicker({
   value,
@@ -98,25 +100,39 @@ export function FolderPicker({
         </p>
       ) : null}
 
-      <nav aria-label="Folder path" className="flex flex-wrap items-center gap-1 text-[13px]">
-        {trail.map((crumb, index) => (
-          <span key={crumb.id} className="flex items-center gap-1">
-            {index > 0 ? <ChevronRight size={13} className="text-ink-3" /> : null}
-            <button
-              type="button"
-              disabled={index === trail.length - 1}
-              onClick={() => setTrail(trail.slice(0, index + 1))}
-              className={
-                index === trail.length - 1
-                  ? "font-medium text-ink"
-                  : "text-ink-2 underline-offset-2 hover:underline"
-              }
-            >
-              {crumb.name}
-            </button>
-          </span>
-        ))}
-      </nav>
+      <div className="flex items-center justify-between gap-2">
+        <nav aria-label="Folder path" className="flex min-w-0 flex-wrap items-center gap-1 text-[13px]">
+          {trail.map((crumb, index) => (
+            <span key={crumb.id} className="flex items-center gap-1">
+              {index > 0 ? <ChevronRight size={13} className="text-ink-3" /> : null}
+              <button
+                type="button"
+                disabled={index === trail.length - 1}
+                onClick={() => setTrail(trail.slice(0, index + 1))}
+                className={
+                  index === trail.length - 1
+                    ? "font-medium text-ink"
+                    : "text-ink-2 underline-offset-2 hover:underline"
+                }
+              >
+                {crumb.name}
+              </button>
+            </span>
+          ))}
+        </nav>
+        {/* The folder you are inside can be chosen too, not only the ones listed in it. */}
+        {current.id !== ROOT.id && current.id !== SHARED.id ? (
+          <Button
+            type="button"
+            size="sm"
+            className="flex-none whitespace-nowrap"
+            tone={value?.id === current.id ? "primary" : "secondary"}
+            onClick={() => onChange({ id: current.id, name: current.name })}
+          >
+            {value?.id === current.id ? "Selected" : "Select this folder"}
+          </Button>
+        ) : null}
+      </div>
 
       <div className="max-h-64 overflow-y-auto rounded-card border border-selected">
         {error ? (
