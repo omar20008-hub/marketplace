@@ -1,6 +1,6 @@
 import { Button, Card, FootNote, Input, SectionLabel } from "@/components/ds";
 import { prisma } from "@/lib/db";
-import { removeProduct } from "@/server/admin-actions";
+import { removeFromMarketplace, removeProduct } from "@/server/admin-actions";
 
 /**
  * Every product on the platform, with what depends on it. A product is removed by
@@ -42,7 +42,7 @@ export async function ProductsAdmin({
         removed; remove those copies first.
       </FootNote>
 
-      {saved ? <FootNote>Removed {saved}.</FootNote> : null}
+      {saved ? <FootNote>Removed {saved}. Nothing else was changed.</FootNote> : null}
       {error === "confirm" ? (
         <FootNote>The slug did not match {product}. Nothing was removed.</FootNote>
       ) : null}
@@ -66,20 +66,39 @@ export async function ProductsAdmin({
               </div>
             </div>
 
+            {item.status !== "DELETED" ? (
+              <form action={removeFromMarketplace} className="flex flex-wrap items-center gap-2">
+                <input type="hidden" name="productId" value={item.id} />
+                <Input
+                  name="confirm"
+                  autoComplete="off"
+                  placeholder={`Type ${item.slug} to take it off the marketplace`}
+                  className="min-w-0 flex-1"
+                  required
+                />
+                <Button type="submit" tone="danger" size="sm">
+                  Remove from marketplace
+                </Button>
+              </form>
+            ) : null}
+
             {inUse ? (
-              <FootNote>In use, so it cannot be removed.</FootNote>
+              <FootNote>
+                In use, so its record cannot be deleted. Removing it from the marketplace is enough
+                to stop new installs and calls.
+              </FootNote>
             ) : (
               <form action={removeProduct} className="flex flex-wrap items-center gap-2">
                 <input type="hidden" name="productId" value={item.id} />
                 <Input
                   name="confirm"
                   autoComplete="off"
-                  placeholder={`Type ${item.slug} to confirm`}
+                  placeholder={`Type ${item.slug} to delete the record`}
                   className="min-w-0 flex-1"
                   required
                 />
                 <Button type="submit" tone="danger" size="sm">
-                  Remove product
+                  Delete record
                 </Button>
               </form>
             )}

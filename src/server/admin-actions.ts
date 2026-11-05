@@ -430,3 +430,36 @@ export async function removeProduct(formData: FormData) {
   revalidatePath("/admin");
   redirect(`/admin?view=products&saved=${encodeURIComponent(product.slug)}`);
 }
+
+/**
+ * Takes a product off the marketplace for everyone without deleting anything. The
+ * product's status becomes DELETED: the shop, the Orchestrator's tool list and new
+ * installs stop seeing it, while the people who already have it keep their rows and
+ * their history. The slug must be typed, as for removeProduct. Undo by setting the
+ * product back to PUBLISHED in the database.
+ */
+export async function removeFromMarketplace(formData: FormData) {
+  const admin = await requireRole("ADMIN");
+  const productId = String(formData.get("productId") ?? "");
+  const confirm = String(formData.get("confirm") ?? "").trim();
+
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    select: { id: true, slug: true, title: true, status: true },
+  });
+  if (!product) redirect("/admin?view=products&error=unknown");
+  if (confirm !== product.slug) {
+    redirect(`/admin?view=products&error=confirm&product=${encodeURIComponent(product.slug)}`);
+  }
+
+  await prisma.product.update({ where: { id: product.id }, data: { status: "DELETED" } });
+  await record(
+    admin.id,
+    "product.removed-from-marketplace",
+    `product:${product.slug}`,
+    `was ${product.status}; removed from the marketplace for everyone`,
+  );
+  revalidatePath("/admin");
+  revalidatePath("/marketplace");
+  redirect(`/admin?view=products&saved=${encodeURIComponent(product.slug)}&mode=shop`);
+}
