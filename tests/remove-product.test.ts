@@ -30,7 +30,7 @@ vi.mock("next/navigation", () => ({
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
 const { prisma } = await import("@/lib/db");
-const { removeProduct } = await import("@/server/admin-actions");
+const { removeProduct, removeFromMarketplace } = await import("@/server/admin-actions");
 
 const PLAN_ID = "remove-product-plan";
 
@@ -141,5 +141,38 @@ describe("removeProduct", () => {
     expect(to).toContain("error=in_use");
     expect(to).toContain("installs=1");
     expect(await prisma.product.findUnique({ where: { id: product.id } })).not.toBeNull();
+  });
+
+  it("takes a product off the marketplace for everyone, even when installed, and keeps its rows", async () => {
+    const { admin, product } = await setup();
+    const person = await prisma.user.create({
+      data: { email: `person-${Math.random()}@test.local`, name: "P", passwordHash: "x", initials: "P", planId: PLAN_ID },
+    });
+    await prisma.installation.create({
+      data: {
+        installationId: `inst-${Math.random()}`,
+        userId: person.id,
+        productId: product.id,
+        pinnedVersion: "1.0",
+        storageBackend: "platform",
+        status: "ACTIVE",
+      },
+    });
+    viewer.current = { id: admin.id, roles: ["ADMIN"] };
+    const to = await refusedTo(removeFromMarketplace(form({ productId: product.id, confirm: product.slug })));
+    expect(to).toContain("saved=");
+    const after = await prisma.product.findUniqueOrThrow({ where: { id: product.id } });
+    expect(after.status).toBe("DELETED");
+    expect(await prisma.installation.count({ where: { productId: product.id } })).toBe(1);
+    const entry = await prisma.auditLog.findFirst({ where: { action: "product.removed-from-marketplace" } });
+    expect(entry?.actorId).toBe(admin.id);
+  });
+
+  it("does nothing to the product when the slug is wrong", async () => {
+    const { admin, product } = await setup();
+    viewer.current = { id: admin.id, roles: ["ADMIN"] };
+    const to = await refusedTo(removeFromMarketplace(form({ productId: product.id, confirm: "nope" })));
+    expect(to).toContain("error=confirm");
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: product.id } })).status).not.toBe("DELETED");
   });
 });
