@@ -22,6 +22,7 @@ import { CreateUserForm } from "./create-user-form";
 import { DecisionPanel } from "./decision-panel";
 import { PlatformKeys } from "./platform-keys";
 import { ProductsAdmin } from "./products-admin";
+import { HealthAdmin } from "./health-admin";
 
 export const metadata = { title: "Admin · Builder" };
 
@@ -42,7 +43,7 @@ function AdminTabs({ active, openCount }: { active: string; openCount?: number }
   return (
     <nav className="mt-4 flex gap-1 overflow-x-auto text-sm">
       {TABS.map((tab) => {
-        const linkable = tab.key === "submissions" || tab.key === "users" || tab.key === "keys" || tab.key === "products";
+        const linkable = ["submissions", "users", "keys", "products", "health"].includes(tab.key);
         const isActive = tab.key === active;
         const className = isActive
           ? "flex items-center gap-1.5 rounded-full bg-fill px-3.5 py-[7px] font-medium whitespace-nowrap text-ink"
@@ -104,6 +105,16 @@ export default async function AdminPage({
     submissions,
   } = await searchParams;
   const admin = await requireRole("ADMIN");
+
+  if (view === "health") {
+    return (
+      <div className="px-5 py-5 lg:px-7">
+        <PageTitle title="Admin" />
+        <AdminTabs active="health" />
+        <HealthAdmin />
+      </div>
+    );
+  }
 
   if (view === "products") {
     return (
