@@ -66,7 +66,10 @@ async function seedUser(connected = true, expiresAt: Date | null = null) {
 }
 
 /** A Meta stand-in: answers each create with an id, or refuses the named step. */
-function metaStub(refuse?: "campaigns" | "adsets" | "ads") {
+function metaStub(
+  refuse?: "campaigns" | "adsets" | "ads",
+  detail: Record<string, unknown> = {},
+) {
   const calls: { url: string; body: URLSearchParams }[] = [];
   let n = 0;
   const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -76,7 +79,7 @@ function metaStub(refuse?: "campaigns" | "adsets" | "ads") {
     const step = url.split("/").pop()!;
     if (refuse && url.includes(`/${refuse}`)) {
       return new Response(
-        JSON.stringify({ error: { message: "Invalid parameter", code: 100 } }),
+        JSON.stringify({ error: { message: "Invalid parameter", code: 100, ...detail } }),
         { status: 400, headers: { "content-type": "application/json" } },
       );
     }
@@ -204,6 +207,23 @@ describe("createAdCampaign", () => {
     expect(row.error).toContain("Meta refused the adset (100): Invalid parameter");
     expect(row.error).not.toContain(TOKEN);
     expect(meta.calls).toHaveLength(2);
+  });
+
+  it("passes Meta's own explanation to the person, not just \"Invalid parameter\"", async () => {
+    const user = await seedUser();
+    const meta = metaStub("adsets", {
+      error_subcode: 1885272,
+      error_user_title: "Budget Too Low",
+      error_user_msg: "The minimum budget for this ad set is SAR 4.00 a day.",
+    });
+
+    await createAdCampaign(user.id, valid(), meta.fetcher, NOW);
+
+    const row = await prisma.adCampaign.findFirstOrThrow({ where: { userId: user.id } });
+    expect(row.error).toContain("Meta refused the adset (100): Invalid parameter");
+    expect(row.error).toContain("Budget Too Low: The minimum budget for this ad set is SAR 4.00 a day.");
+    expect(row.error).toContain("subcode 1885272");
+    expect(row.error).not.toContain(TOKEN);
   });
 
   it("refuses without a connected Facebook account and creates nothing", async () => {

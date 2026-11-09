@@ -33,6 +33,28 @@ const OPTIMIZATION: Record<AdCampaignInput["objective"], string> = {
 
 type Post = (path: string, body: Record<string, string>) => Promise<{ id?: string }>;
 
+type MetaErrorBody = {
+  message?: string;
+  code?: number;
+  error_subcode?: number;
+  error_user_title?: string;
+  error_user_msg?: string;
+};
+
+/**
+ * Meta's `message` is often just "Invalid parameter"; what the person can act on is
+ * in `error_user_msg` (and the subcode names the rule). Dropping them left a refusal
+ * nobody could read, so they travel with the message.
+ */
+function describeMetaError(error: MetaErrorBody | undefined, fallback: string): string {
+  if (!error) return fallback;
+  const parts = [error.message ?? fallback];
+  const detail = [error.error_user_title, error.error_user_msg].filter(Boolean).join(": ");
+  if (detail) parts.push(detail);
+  if (error.error_subcode) parts.push(`subcode ${error.error_subcode}`);
+  return parts.join(" — ");
+}
+
 /** A POST to the Graph API. Exported so tests can stand in for Meta. */
 export function graphPost(accessToken: string, fetcher: typeof fetch = fetch): Post {
   return async (path, body) => {
@@ -44,11 +66,11 @@ export function graphPost(accessToken: string, fetcher: typeof fetch = fetch): P
     });
     const json = (await response.json().catch(() => ({}))) as {
       id?: string;
-      error?: { message?: string; code?: number };
+      error?: MetaErrorBody;
     };
     if (!response.ok || json.error || !json.id) {
       throw new MetaAdsError(
-        json.error?.message ?? `Meta answered HTTP ${response.status} without an id.`,
+        describeMetaError(json.error, `Meta answered HTTP ${response.status} without an id.`),
         String(json.error?.code ?? response.status),
         "campaign",
       );
@@ -151,11 +173,14 @@ export async function setObjectStatus(
   });
   const json = (await response.json().catch(() => ({}))) as {
     success?: boolean;
-    error?: { message?: string; code?: number };
+    error?: MetaErrorBody;
   };
   if (!response.ok || json.error || json.success !== true) {
     throw new MetaAdsError(
-      json.error?.message ?? `Meta answered HTTP ${response.status} without confirming the change.`,
+      describeMetaError(
+        json.error,
+        `Meta answered HTTP ${response.status} without confirming the change.`,
+      ),
       String(json.error?.code ?? response.status),
       step,
     );
