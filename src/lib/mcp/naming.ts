@@ -30,7 +30,8 @@ export function aliasFor(displayName: string): string {
 /**
  * One alias per server, unique among them. The first to ask keeps the plain alias
  * and later ones get _2, _3, so the order the caller passes (oldest first) decides
- * who keeps which, and an alias does not change when a newer server is added.
+ * who keeps which. Pass every server the person still has, whatever its state, or an
+ * alias would change whenever an older server lapsed.
  */
 export function assignAliases<T extends { id: string; displayName: string }>(servers: T[]): Map<string, string> {
   const taken = new Set<string>();
@@ -40,7 +41,10 @@ export function assignAliases<T extends { id: string; displayName: string }>(ser
     let alias = base;
     for (let n = 2; taken.has(alias); n++) {
       const suffix = `_${n}`;
-      alias = `${base.slice(0, MAX_ALIAS_CHARS - suffix.length)}${suffix}`;
+      // Cut the base first and drop any underscore it ends on, so "abc_" + "_2" cannot
+      // become "abc__2", whose "__" would be read as the tool separator.
+      const room = base.slice(0, MAX_ALIAS_CHARS - suffix.length).replace(/_+$/, "");
+      alias = `${room || "server"}${suffix}`;
     }
     taken.add(alias);
     aliases.set(server.id, alias);

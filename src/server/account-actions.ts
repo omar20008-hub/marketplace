@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { MCP_CREDENTIAL } from "@/lib/mcp/naming";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { openCredential, sealCredential } from "@/lib/secrets";
@@ -29,6 +30,8 @@ export async function connectAccount(
   const reusable = String(formData.get("reusable") ?? "all") === "all";
 
   if (!credentialType) return { error: "Pick a service to connect." };
+  // An MCP server has its own form: it checks the address, and caps how many a person can have.
+  if (credentialType === MCP_CREDENTIAL) return { error: "Connect an MCP server from its own form." };
   if (isPlatformOAuth(credentialType)) {
     return { error: "Connect this one with the Google sign-in button." };
   }

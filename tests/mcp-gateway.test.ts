@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * The platform's MCP endpoint. It must answer only to a key, show a person only the
@@ -23,6 +23,8 @@ const { issueAgentKey, revokeAgentKeys } = await import("@/server/agent-keys");
 const { sealCredential, openCredential } = await import("@/lib/secrets");
 const { McpError } = await import("@/lib/mcp/client");
 const { connectMcpServer } = await import("@/server/mcp-actions");
+const { connectAccount } = await import("@/server/account-actions");
+const { transport } = await import("@/lib/mcp/transport");
 
 const PLAN_ID = "test-plan-mcp";
 const MCP = "mcpServer";
@@ -350,6 +352,109 @@ describe("calling a tool", () => {
   });
 });
 
+describe("keeping the gateway up", () => {
+  const call = (name: unknown, args?: unknown) => ({
+    jsonrpc: "2.0",
+    id: 9,
+    method: "tools/call",
+    params: { name, ...(args === undefined ? {} : { arguments: args }) },
+  });
+
+  it("skips a server whose stored secret cannot be read, and still serves the others", async () => {
+    const user = await makeUser("a@example.test");
+    const key = await installKey(user.id);
+    await server(user.id, "Good", { at: 1_000 });
+    await prisma.connector.create({
+      data: {
+        userId: user.id, credentialType: MCP, displayName: "Broken", initials: "BR",
+        accountRef: "https://broken.example.com/mcp", status: "ACTIVE", reusable: true,
+        secretJson: "v1.not.a.real.secret", createdAt: new Date(2_000),
+      },
+    });
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    gatewayRuntime.listTools = vi.fn(async () => [{ name: "t" }]) as unknown as typeof gatewayRuntime.listTools;
+
+    expect((await toolsOf(await rpc(key, listCall))).map((t) => t.name)).toEqual(["good__t"]);
+  });
+
+  it("does not ask a server that just failed again straight away", async () => {
+    const user = await makeUser("a@example.test");
+    const key = await installKey(user.id);
+    await server(user.id, "Flaky");
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const listTools = vi.fn(async () => {
+      throw new McpError("The server could not be reached.", "unreachable");
+    });
+    gatewayRuntime.listTools = listTools as unknown as typeof gatewayRuntime.listTools;
+
+    await rpc(key, listCall);
+    await rpc(key, listCall);
+    await rpc(key, listCall);
+    expect(listTools).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not switch a server off for a 403, only for a 401", async () => {
+    const user = await makeUser("a@example.test");
+    const key = await installKey(user.id);
+    const connector = await server(user.id, "n8n");
+    gatewayRuntime.callTool = vi.fn(async () => {
+      throw new McpError("The server refused access with that token.", "forbidden");
+    }) as unknown as typeof gatewayRuntime.callTool;
+
+    const answer = await (await rpc(key, call("n8n__t", {}))).json();
+    expect(answer.error.message).toContain("refused access");
+    expect((await prisma.connector.findUniqueOrThrow({ where: { id: connector.id } })).status).toBe("ACTIVE");
+  });
+
+  it("does not rename a server's tools when an older server with the same name lapses", async () => {
+    const user = await makeUser("a@example.test");
+    const key = await installKey(user.id);
+    const older = await server(user.id, "n8n", { url: "https://one.example.com/mcp", at: 1_000 });
+    await server(user.id, "n8n", { url: "https://two.example.com/mcp", at: 2_000 });
+    gatewayRuntime.listTools = vi.fn(async () => [{ name: "t" }]) as unknown as typeof gatewayRuntime.listTools;
+
+    expect((await toolsOf(await rpc(key, listCall))).map((t) => t.name).sort()).toEqual(["n8n_2__t", "n8n__t"]);
+    await prisma.connector.update({ where: { id: older.id }, data: { status: "EXPIRED" } });
+    // The newer server is still n8n_2: it did not quietly become n8n.
+    expect((await toolsOf(await rpc(key, listCall))).map((t) => t.name)).toEqual(["n8n_2__t"]);
+  });
+
+  it("accepts a response sent by the client with a 202, as the transport says", async () => {
+    const user = await makeUser("a@example.test");
+    const key = await installKey(user.id);
+    expect((await rpc(key, { jsonrpc: "2.0", id: 5, result: {} })).status).toBe(202);
+  });
+
+  it("refuses a request body over the limit", async () => {
+    const user = await makeUser("a@example.test");
+    const key = await installKey(user.id);
+    const big = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping", params: { pad: "x".repeat(1024 * 1024) } });
+    expect((await rpc(key, big)).status).toBe(413);
+  });
+
+  it("limits how many requests one person can have running at once", async () => {
+    const user = await makeUser("a@example.test");
+    const key = await installKey(user.id);
+    await server(user.id, "n8n");
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    gatewayRuntime.callTool = vi.fn(async () => {
+      await gate;
+      return { content: [] };
+    }) as unknown as typeof gatewayRuntime.callTool;
+
+    const running = Array.from({ length: 8 }, () => rpc(key, call("n8n__t", {})));
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const ninth = await rpc(key, call("n8n__t", {}));
+    expect(ninth.status).toBe(429);
+
+    release();
+    for (const response of await Promise.all(running)) expect(response.status).toBe(200);
+    // And once they are done, the person can ask again.
+    expect((await rpc(key, call("n8n__t", {}))).status).toBe(200);
+  });
+});
+
 describe("connecting a server", () => {
   const form = (fields: Record<string, string>) => {
     const data = new FormData();
@@ -363,30 +468,38 @@ describe("connecting a server", () => {
     return user;
   }
 
-  it("checks the server, then keeps its address and token sealed", async () => {
-    const user = await asUser("a@example.test");
-    const listTools = vi.fn(async () => [{ name: "a" }, { name: "b" }]);
-    gatewayRuntime.listTools = listTools as unknown as typeof gatewayRuntime.listTools;
-    // The action calls the client directly, so stub the network under it.
-    const fetchStub = vi.fn(async (_url: string, init: { body?: string; method: string }) => {
-      const body = init.body ? JSON.parse(init.body) : undefined;
-      if (init.method === "DELETE") return new Response(null, { status: 204 });
-      if (body?.id === undefined) return new Response(null, { status: 202 });
+  const realSend = transport.send;
+  afterEach(() => {
+    transport.send = realSend;
+  });
+
+  /** A server that answers the handshake and lists two tools, or answers every request with `status`. */
+  function stubNetwork(status = 200) {
+    transport.send = (async (req: { method: string; body?: string }) => {
+      if (status !== 200) return { status, headers: {}, text: "no" };
+      const body = req.body ? JSON.parse(req.body) : undefined;
+      if (req.method === "DELETE") return { status: 204, headers: {}, text: "" };
+      if (body?.id === undefined) return { status: 202, headers: {}, text: "" };
       const result =
         body.method === "initialize"
           ? { protocolVersion: "2025-06-18", capabilities: {} }
           : { tools: [{ name: "a" }, { name: "b" }] };
-      return new Response(JSON.stringify({ jsonrpc: "2.0", id: body.id, result }), {
+      return {
+        status: 200,
         headers: { "content-type": "application/json" },
-      });
-    });
-    vi.stubGlobal("fetch", fetchStub);
+        text: JSON.stringify({ jsonrpc: "2.0", id: body.id, result }),
+      };
+    }) as unknown as typeof transport.send;
+  }
+
+  it("checks the server, then keeps its address and token sealed", async () => {
+    const user = await asUser("a@example.test");
+    stubNetwork();
 
     const state = await connectMcpServer(
       {},
       form({ name: "n8n", url: "https://93.184.216.34/mcp", token: "tok-123", reusable: "all" }),
     );
-    vi.unstubAllGlobals();
 
     expect(state).toEqual({ done: true, message: "Connected. 2 tools found." });
     const saved = await prisma.connector.findFirstOrThrow({ where: { userId: user.id, credentialType: MCP } });
@@ -405,11 +518,14 @@ describe("connecting a server", () => {
     expect((await connectMcpServer({}, form({ name: "x", url: "https://93.184.216.34/mcp?token=1" }))).error).toMatch(/token field/);
     expect((await connectMcpServer({}, form({ name: "", url: "https://93.184.216.34/mcp" }))).error).toMatch(/name/);
 
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("no", { status: 401 })));
+    stubNetwork(401);
     expect((await connectMcpServer({}, form({ name: "x", url: "https://93.184.216.34/mcp", token: "bad" }))).error).toMatch(
       /did not accept the access token/,
     );
-    vi.unstubAllGlobals();
+    stubNetwork(403);
+    expect((await connectMcpServer({}, form({ name: "x", url: "https://93.184.216.34/mcp", token: "weak" }))).error).toMatch(
+      /refused access/,
+    );
 
     expect(await prisma.connector.count({ where: { userId: user.id } })).toBe(0);
   });
@@ -430,5 +546,15 @@ describe("connecting a server", () => {
     for (let i = 0; i < 10; i++) await server(user.id, `s${i}`);
     const state = await connectMcpServer({}, form({ name: "eleventh", url: "https://93.184.216.34/mcp" }));
     expect(state.error).toMatch(/at most 10/);
+  });
+
+  it("cannot be sidestepped by the generic connect action, which would skip those checks", async () => {
+    const user = await asUser("a@example.test");
+    const state = await connectAccount(
+      {},
+      form({ credentialType: MCP, "field.url": "https://169.254.169.254/x", "field.accountRef": "https://169.254.169.254/x" }),
+    );
+    expect(state.error).toMatch(/own form/);
+    expect(await prisma.connector.count({ where: { userId: user.id } })).toBe(0);
   });
 });

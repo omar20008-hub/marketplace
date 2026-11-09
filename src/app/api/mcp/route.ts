@@ -16,6 +16,29 @@ import { handleRpc, type RpcRequest } from "@/server/mcp-gateway";
  */
 
 const MAX_BODY_BYTES = 1024 * 1024;
+/** How many requests one person may have running at once; the rest wait their turn at the client. */
+const MAX_IN_FLIGHT = 8;
+const inFlight = new Map<string, number>();
+
+/** The body as text, refusing to read past the limit, so a huge one is never buffered. */
+async function readCapped(request: Request): Promise<string | null> {
+  if (Number(request.headers.get("content-length")) > MAX_BODY_BYTES) return null;
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_BODY_BYTES) {
+      await reader.cancel().catch(() => undefined);
+      return null;
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
 
 function rpcError(id: RpcRequest["id"], code: number, message: string, status = 200) {
   return NextResponse.json({ jsonrpc: "2.0", id: id ?? null, error: { code, message } }, { status });
@@ -41,8 +64,8 @@ export async function POST(request: Request) {
     );
   }
 
-  const text = await request.text();
-  if (text.length > MAX_BODY_BYTES) return rpcError(null, -32600, "The request is too large.", 413);
+  const text = await readCapped(request);
+  if (text === null) return rpcError(null, -32600, "The request is too large.", 413);
 
   let message: unknown;
   try {
@@ -55,20 +78,38 @@ export async function POST(request: Request) {
     return rpcError(null, -32600, "Send one JSON-RPC message per request.", 400);
   }
 
-  const rpc = message as Partial<RpcRequest>;
+  const rpc = message as Partial<RpcRequest> & { result?: unknown; error?: unknown };
+  // A client may send a response to something we never asked; the transport says to accept it.
+  if (rpc.jsonrpc === "2.0" && rpc.method === undefined && ("result" in rpc || "error" in rpc)) {
+    return new NextResponse(null, { status: 202 });
+  }
   if (rpc.jsonrpc !== "2.0" || typeof rpc.method !== "string") {
-    // A response or a malformed message: nothing for us to answer.
     return rpcError(rpc.id, -32600, "Not a JSON-RPC 2.0 request.", 400);
   }
 
-  const outcome = await handleRpc(userId, rpc as RpcRequest);
-  // A notification gets no body, as the transport says.
-  if (!outcome) return new NextResponse(null, { status: 202 });
+  const running = inFlight.get(userId) ?? 0;
+  if (running >= MAX_IN_FLIGHT) {
+    return NextResponse.json({ error: "Too many requests at once" }, { status: 429, headers: { "retry-after": "1" } });
+  }
+  inFlight.set(userId, running + 1);
+  try {
+    const outcome = await handleRpc(userId, rpc as RpcRequest);
+    // A notification gets no body, as the transport says.
+    if (!outcome) return new NextResponse(null, { status: 202 });
 
-  return NextResponse.json(
-    { jsonrpc: "2.0", id: rpc.id ?? null, ...outcome },
-    { headers: { "cache-control": "no-store" } },
-  );
+    return NextResponse.json(
+      { jsonrpc: "2.0", id: rpc.id ?? null, ...outcome },
+      { headers: { "cache-control": "no-store" } },
+    );
+  } catch (error) {
+    // The kind of failure only; the request may carry a person's tool arguments.
+    console.error("MCP gateway failed", error instanceof Error ? error.name : "unknown");
+    return rpcError(rpc.id, -32603, "The platform could not complete that request.", 500);
+  } finally {
+    const left = (inFlight.get(userId) ?? 1) - 1;
+    if (left <= 0) inFlight.delete(userId);
+    else inFlight.set(userId, left);
+  }
 }
 
 export async function GET() {

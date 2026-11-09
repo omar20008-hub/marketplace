@@ -9,7 +9,9 @@ import { prisma } from "@/lib/db";
  * nowhere else; the platform keeps only a hash. It opens exactly one door — this
  * installation's search — so the worst a leaked key does is let someone ask
  * questions of one user's attached folders, and issuing a new one (every
- * activation does) ends it. The platform's own master token never goes near a
+ * activation does) ends it. It also opens the MCP gateway (api/mcp) for that
+ * installation's owner: a leaked key can use the MCP servers the owner marked for
+ * their agents and workflows, so keep that list to what a workflow may do. The platform's own master token never goes near a
  * template.
  */
 

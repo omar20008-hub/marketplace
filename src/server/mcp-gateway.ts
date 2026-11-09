@@ -29,7 +29,18 @@ const INVALID_PARAMS = -32602;
 const SERVER_ERROR = -32000;
 
 const LIST_CACHE_MS = 60_000;
+/** A server that failed is not asked again for a little while, so a dead one costs one wait, not one per call. */
+const FAILURE_CACHE_MS = 30_000;
+const MAX_CACHED = 500;
 const listCache = new Map<string, { at: number; tools: McpTool[] }>();
+const failureCache = new Map<string, { at: number; error: McpError }>();
+
+/** Keeps the caches from growing without bound on a long-running process. */
+function trim<T>(cache: Map<string, T>) {
+  if (cache.size <= MAX_CACHED) return;
+  const oldest = cache.keys().next().value;
+  if (oldest !== undefined) cache.delete(oldest);
+}
 
 /** Replaceable in tests, so no test reaches a real server. */
 export const gatewayRuntime = { listTools, callTool };
@@ -37,15 +48,26 @@ export const gatewayRuntime = { listTools, callTool };
 type Connected = { id: string; displayName: string; alias: string; server: McpServer };
 
 async function connectedServers(userId: string): Promise<Connected[]> {
-  const rows = await prisma.connector.findMany({
-    where: { userId, credentialType: MCP_CREDENTIAL, status: "ACTIVE", reusable: true },
-    orderBy: { createdAt: "asc" },
+  // Aliases are worked out over every server the person still has, in a fixed order, so
+  // one lapsing or being kept private does not rename the others.
+  const all = await prisma.connector.findMany({
+    where: { userId, credentialType: MCP_CREDENTIAL, status: { not: "REVOKED" } },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   });
-  const aliases = assignAliases(rows);
+  const aliases = assignAliases(all);
+
   const connected: Connected[] = [];
-  for (const row of rows) {
-    if (!row.secretJson) continue;
-    const secret = openCredential(row.secretJson);
+  for (const row of all) {
+    if (row.status !== "ACTIVE" || !row.reusable || !row.secretJson) continue;
+    let secret: Record<string, string>;
+    try {
+      secret = openCredential(row.secretJson);
+    } catch {
+      // A row that cannot be read (a rotated secrets key, a damaged value) must not
+      // take the person's other servers down with it.
+      console.warn(`MCP gateway: could not read the stored secret of "${aliases.get(row.id)}"`);
+      continue;
+    }
     if (!secret.url) continue;
     connected.push({
       id: row.id,
@@ -60,17 +82,30 @@ async function connectedServers(userId: string): Promise<Connected[]> {
 async function toolsOf(connected: Connected): Promise<McpTool[]> {
   const cached = listCache.get(connected.id);
   if (cached && Date.now() - cached.at < LIST_CACHE_MS) return cached.tools;
-  const tools = await gatewayRuntime.listTools(connected.server);
-  listCache.set(connected.id, { at: Date.now(), tools });
-  return tools;
+  const failed = failureCache.get(connected.id);
+  if (failed && Date.now() - failed.at < FAILURE_CACHE_MS) throw failed.error;
+
+  try {
+    const tools = await gatewayRuntime.listTools(connected.server);
+    listCache.set(connected.id, { at: Date.now(), tools });
+    trim(listCache);
+    return tools;
+  } catch (error) {
+    if (error instanceof McpError) {
+      failureCache.set(connected.id, { at: Date.now(), error });
+      trim(failureCache);
+    }
+    throw error;
+  }
 }
 
-/** Forgets a server's cached tool list, for when it is connected again or removed. */
+/** Forgets what is cached about a server, for when it is connected again or removed. */
 export function forgetTools(connectorId: string) {
   listCache.delete(connectorId);
+  failureCache.delete(connectorId);
 }
 
-/** A server whose token was refused is marked for reconnecting, as any other connection is. */
+/** A server whose token was refused (401) is marked for reconnecting, as any other connection is. */
 async function markExpired(userId: string, connectorId: string) {
   await prisma.connector.updateMany({
     where: { id: connectorId, userId, status: "ACTIVE" },

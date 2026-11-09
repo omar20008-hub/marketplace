@@ -7,6 +7,7 @@ import {
   splitNamespacedName,
 } from "@/lib/mcp/naming";
 import { callTool, listTools, McpError, type McpServer } from "@/lib/mcp/client";
+import { transport, type TransportRequest, type TransportResponse } from "@/lib/mcp/transport";
 
 describe("which addresses may be connected", () => {
   it.each([
@@ -108,6 +109,22 @@ describe("naming tools across servers", () => {
     expect([...aliases.values()]).toEqual(["n8n", "n8n_2", "notion", "n8n_3"]);
   });
 
+  it("never lets a numbered alias end up with a double underscore, which would be read as the separator", () => {
+    // 19 characters, with an underscore where the suffix has to be cut in.
+    const name = "abcdefghijklmnopq r";
+    const aliases = assignAliases([
+      { id: "1", displayName: name },
+      { id: "2", displayName: name },
+      { id: "3", displayName: name },
+    ]);
+    for (const alias of aliases.values()) {
+      expect(alias).not.toContain("__");
+      const round = splitNamespacedName(namespacedName(alias, "tool")!);
+      expect(round).toEqual({ alias, tool: "tool" });
+    }
+    expect(new Set(aliases.values()).size).toBe(3);
+  });
+
   it("joins and splits a tool name, with the tool's own double underscores intact", () => {
     expect(namespacedName("n8n", "search")).toBe("n8n__search");
     const name = namespacedName("notion", "pages__create")!;
@@ -125,9 +142,11 @@ describe("naming tools across servers", () => {
 
 // ------------------------------------------------------------------ client
 
-type Seen = { method: string; headers: Record<string, string>; body: unknown };
+type Seen = { method: string; headers: Record<string, string>; body: unknown; timeoutMs: number };
 
-/** An in-memory MCP server behind a stubbed fetch, recording what it was sent. */
+const realSend = transport.send;
+
+/** An in-memory MCP server in place of the network, recording what it was sent. */
 function fakeServer(options: {
   sse?: boolean;
   session?: string;
@@ -138,40 +157,37 @@ function fakeServer(options: {
   protocol?: string;
 }) {
   const seen: Seen[] = [];
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (_url: string, init: { method: string; headers: Record<string, string>; body?: string }) => {
-      const body = init.body ? JSON.parse(init.body) : undefined;
-      seen.push({ method: init.method, headers: init.headers, body });
-      if (options.status && options.status !== 200) return new Response("no", { status: options.status });
-      if (init.method === "DELETE") return new Response(null, { status: 204 });
-      if (body && body.id === undefined) return new Response(null, { status: 202 });
+  transport.send = (async (req: TransportRequest): Promise<TransportResponse> => {
+    const body = req.body ? JSON.parse(req.body) : undefined;
+    seen.push({ method: req.method, headers: req.headers, body, timeoutMs: req.timeoutMs });
+    if (options.status && options.status !== 200) return { status: options.status, headers: {}, text: "no" };
+    if (req.method === "DELETE") return { status: 204, headers: {}, text: "" };
+    if (body && body.id === undefined) return { status: 202, headers: {}, text: "" };
 
-      let result: unknown;
-      if (body.method === "initialize") {
-        result = { protocolVersion: options.protocol ?? "2025-06-18", capabilities: {}, serverInfo: { name: "fake" } };
-      } else if (body.method === "tools/list") {
-        const pages = options.tools ?? [[]];
-        const index = body.params?.cursor ? Number(body.params.cursor) : 0;
-        result = { tools: pages[index], ...(index + 1 < pages.length ? { nextCursor: String(index + 1) } : {}) };
-      } else if (body.method === "tools/call") {
-        result = options.toolResult ?? { content: [{ type: "text", text: "done" }] };
-      }
-      const message = options.rpcError
-        ? { jsonrpc: "2.0", id: body.id, error: { code: -32000, message: options.rpcError } }
-        : { jsonrpc: "2.0", id: body.id, result };
+    let result: unknown;
+    if (body.method === "initialize") {
+      result = { protocolVersion: options.protocol ?? "2025-06-18", capabilities: {}, serverInfo: { name: "fake" } };
+    } else if (body.method === "tools/list") {
+      const pages = options.tools ?? [[]];
+      const index = body.params?.cursor ? Number(body.params.cursor) : 0;
+      result = { tools: pages[index], ...(index + 1 < pages.length ? { nextCursor: String(index + 1) } : {}) };
+    } else if (body.method === "tools/call") {
+      result = options.toolResult ?? { content: [{ type: "text", text: "done" }] };
+    }
+    const message = options.rpcError
+      ? { jsonrpc: "2.0", id: body.id, error: { code: -32000, message: options.rpcError } }
+      : { jsonrpc: "2.0", id: body.id, result };
 
-      const headers: Record<string, string> = {};
-      if (options.session && body.method === "initialize") headers["mcp-session-id"] = options.session;
-      if (options.sse) {
-        headers["content-type"] = "text/event-stream";
-        const noise = `: keep-alive\n\nevent: message\ndata: ${JSON.stringify({ jsonrpc: "2.0", method: "notifications/progress" })}\n\n`;
-        return new Response(`${noise}event: message\ndata: ${JSON.stringify(message)}\n\n`, { headers });
-      }
-      headers["content-type"] = "application/json";
-      return new Response(JSON.stringify(message), { headers });
-    }),
-  );
+    const headers: Record<string, string> = {};
+    if (options.session && body.method === "initialize") headers["mcp-session-id"] = options.session;
+    if (options.sse) {
+      headers["content-type"] = "text/event-stream";
+      const noise = `: keep-alive\n\nevent: message\ndata: ${JSON.stringify({ jsonrpc: "2.0", method: "notifications/progress" })}\n\n`;
+      return { status: 200, headers, text: `${noise}event: message\ndata: ${JSON.stringify(message)}\n\n` };
+    }
+    headers["content-type"] = "application/json";
+    return { status: 200, headers, text: JSON.stringify(message) };
+  }) as typeof transport.send;
   return seen;
 }
 
@@ -179,7 +195,9 @@ function fakeServer(options: {
 const SERVER: McpServer = { url: "https://93.184.216.34/mcp", bearer: "secret-token" };
 
 describe("the MCP client", () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    transport.send = realSend;
+  });
 
   it("greets the server, says it is ready, lists tools, and sends the token on every request", async () => {
     const seen = fakeServer({ tools: [[{ name: "search" }, { name: "create" }]] });
@@ -201,6 +219,11 @@ describe("the MCP client", () => {
     expect(seen[0].headers["mcp-protocol-version"]).toBeUndefined();
     expect(seen[1].headers["mcp-protocol-version"]).toBe("2025-03-26");
     expect(seen[2].headers["mcp-protocol-version"]).toBe("2025-03-26");
+  });
+
+  it("refuses a server that picks a protocol version this client does not know", async () => {
+    fakeServer({ tools: [[]], protocol: "1999-01-01" });
+    await expect(listTools(SERVER)).rejects.toMatchObject({ code: "protocol" });
   });
 
   it("carries the session id the server issued, and ends the session when done", async () => {
@@ -232,19 +255,19 @@ describe("the MCP client", () => {
     expect(call.body).toMatchObject({ params: { name: "answer", arguments: { q: "life" } } });
   });
 
-  it("says the token was refused on a 401 or 403", async () => {
+  it("tells a refused token (401) from a token that may not do this (403)", async () => {
     fakeServer({ status: 401 });
     await expect(listTools(SERVER)).rejects.toMatchObject({ code: "unauthorized" });
-    vi.unstubAllGlobals();
     fakeServer({ status: 403 });
-    await expect(listTools(SERVER)).rejects.toMatchObject({ code: "unauthorized" });
+    await expect(listTools(SERVER)).rejects.toMatchObject({ code: "forbidden" });
   });
 
-  it("says an address is not an MCP server on a 404, and unreachable on a 500", async () => {
+  it("says an address is not an MCP server on a 404, and unreachable on a 500 or a redirect", async () => {
     fakeServer({ status: 404 });
     await expect(listTools(SERVER)).rejects.toMatchObject({ code: "protocol" });
-    vi.unstubAllGlobals();
     fakeServer({ status: 500 });
+    await expect(listTools(SERVER)).rejects.toMatchObject({ code: "unreachable" });
+    fakeServer({ status: 307 });
     await expect(listTools(SERVER)).rejects.toMatchObject({ code: "unreachable" });
   });
 
@@ -253,32 +276,28 @@ describe("the MCP client", () => {
     await expect(listTools(SERVER)).rejects.toMatchObject({ code: "protocol", message: "bad things" });
   });
 
-  it("does not follow a redirect, and reports an unreachable server", async () => {
-    const calls: { redirect?: string }[] = [];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (_url: string, init: { redirect?: string }) => {
-        calls.push(init);
-        throw new TypeError("redirect mode is set to error");
-      }),
-    );
-    await expect(listTools(SERVER)).rejects.toMatchObject({ code: "unreachable" });
-    expect(calls[0].redirect).toBe("error");
+  it("passes a transport failure on as it is, so the caller sees why", async () => {
+    transport.send = vi.fn(async () => {
+      throw new McpError("The server took too long to answer.", "timeout");
+    }) as unknown as typeof transport.send;
+    await expect(listTools(SERVER)).rejects.toMatchObject({ code: "timeout" });
   });
 
-  it("refuses to connect at all to a private address", async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
+  it("refuses to connect at all to a private address, or a plain-http one", async () => {
+    const send = vi.fn();
+    transport.send = send as unknown as typeof transport.send;
     await expect(listTools({ url: "https://10.0.0.1/mcp" })).rejects.toMatchObject({ code: "unsafe" });
     await expect(listTools({ url: "http://93.184.216.34/mcp" })).rejects.toBeInstanceOf(McpError);
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
   });
 
-  it("does not buffer an oversized answer", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response("x".repeat(3 * 1024 * 1024), { headers: { "content-type": "application/json" } })),
-    );
-    await expect(listTools(SERVER)).rejects.toMatchObject({ code: "too_large" });
+  it("gives every request a bounded time, so a slow server costs a bounded wait", async () => {
+    const seen = fakeServer({ tools: [[{ name: "a" }]] });
+    await listTools(SERVER);
+    const [initialize, initialized, list] = seen;
+    expect(initialize.timeoutMs).toBeLessThanOrEqual(10_000);
+    expect(initialized.timeoutMs).toBeLessThanOrEqual(10_000);
+    expect(list.timeoutMs).toBeLessThanOrEqual(15_000);
+    expect(list.timeoutMs).toBeGreaterThan(0);
   });
 });

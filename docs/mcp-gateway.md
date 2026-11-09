@@ -20,6 +20,10 @@ that person's own servers.
 
 Send it as `Authorization: Bearer <key>`. No key, or a revoked one, is a 401.
 
+An installation key is stored inside the n8n workflow it belongs to, so treat what it
+can reach as exposed to whoever can read that workflow. It opens every server its owner
+marked *My agents and workflows*, so keep that list to what a workflow may do.
+
 ## Connecting a server
 
 Connectors → Discover → **MCP server** (or Connect an account → MCP server):
@@ -43,9 +47,12 @@ not collide: `n8n__search`, `notion__search`. Two servers with the same name get
 `n8n` and `n8n_2`, the older keeping the plain one. A tool's description starts with
 the server's name in brackets. Only tools are offered: no resources or prompts.
 
-A server that is down is left out of the list, and the others are still offered. A
-server that refuses its token is marked **Expired** on the Connectors page and stops
-being offered until it is connected again.
+A server that is down is left out of the list, and the others are still offered; one
+that failed is not asked again for 30 seconds. A server that refuses its token (HTTP
+401) is marked **Expired** on the Connectors page and stops being offered until it is
+connected again. A 403 (the token is known but may not do this) is reported to the
+caller and does not switch the server off. A server's prefix does not change when an
+older server of the same name lapses.
 
 ## Using it
 
@@ -91,20 +98,25 @@ is reachable at a public https address.
   `.local`, `.internal` and `.railway.internal` names, and any name that resolves to a
   private, loopback, link-local (including the cloud metadata address) or otherwise
   non-public address, IPv4 or IPv6, including IPv4 hidden inside IPv6. Redirects are
-  never followed. The name is resolved when the person connects and again for each
-  call; a name that changes its answer between the two (DNS rebinding) is a narrowed
-  gap, not a closed one.
+  never followed. The check is made as the socket connects: the platform opens these
+  connections itself (`src/lib/mcp/transport.ts`) and the lookup that feeds the
+  connection is the one that refuses non-public answers, so a name that answers
+  "public" and then "internal" (DNS rebinding) cannot get through.
 - **Tokens.** Sealed with the platform's secrets key, never returned by the gateway,
   never logged. Disconnecting a server (Revoke) removes the token.
-- **Limits.** 300 requests a minute per person; 1 MB per request; 2 MB per server
-  answer; at most 200 tools per server; 15 s to connect, 20 s to list, 60 s per call.
-  Tool names longer than 64 characters or with characters clients reject are left out.
+- **Limits.** 300 requests a minute and 8 at once per person; 1 MB per request; 2 MB per
+  server answer; at most 200 tools (5 pages) per server; a whole session has 25 s to
+  list or 65 s for a call, however many round trips it takes. Tool names longer than
+  64 characters or with characters clients reject are left out.
 - **What is logged.** The server's alias and the kind of failure. Never arguments,
   results or tokens.
 
 ## Not covered yet
 
 - MCP servers that sign in with OAuth (Notion's hosted server among them).
+- Servers that speak only the older HTTP+SSE transport (a separate `/sse` endpoint,
+  as older MCP server triggers offer). They are reported as "did not answer as an MCP
+  server". Streamable HTTP is required.
 - Scoping a server to one installation. Today every server marked for agents and
   workflows is offered to all of that person's keys.
 - Resources, prompts, and server-to-client notifications. Each call stands alone: no
@@ -115,6 +127,11 @@ is reachable at a public https address.
 
 The client half was run against the official MCP SDK's reference server (event-stream
 and plain JSON replies, with sessions and bearer auth), and the gateway was driven by
-the official SDK client with both key types. Neither has been run against a real n8n
-or Notion server: the session that built it could not reach them. The first real
-connection is the test that counts.
+the official SDK client with both key types. The transport is tested against a real TLS
+server: it refuses a name that resolves to a private address at connect time, returns a
+redirect instead of following it, refuses an oversized answer whether declared or
+streamed, stops reading an event stream once it has its answer, and gives up on a
+server that never replies. An independent review found a DNS-rebinding gap, a bypass
+through the generic connect action and several smaller problems; each was fixed and has
+a test. None of it has been run against a real n8n or Notion server: the session that
+built it could not reach them. The first real connection is the test that counts.

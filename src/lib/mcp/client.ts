@@ -1,4 +1,8 @@
 import { assertPublicHttpsUrl, UnsafeUrlError } from "./safe-url";
+import { McpError } from "./errors";
+import { transport, type TransportResponse } from "./transport";
+
+export { McpError };
 
 /**
  * A small MCP client over Streamable HTTP, for the servers people connect.
@@ -9,6 +13,9 @@ import { assertPublicHttpsUrl, UnsafeUrlError } from "./safe-url";
  * details are the spec's (modelcontextprotocol.io, "Transports"): a request is a
  * POST of one JSON-RPC message, and the answer is either JSON or a stream of
  * server-sent events carrying it.
+ *
+ * A session has one time budget for all of its requests, so a slow server costs a
+ * bounded amount however many pages or round trips it makes us take.
  */
 
 export type McpServer = { url: string; bearer?: string };
@@ -27,24 +34,16 @@ export type McpCallResult = {
   isError?: boolean;
 };
 
-export class McpError extends Error {
-  constructor(
-    message: string,
-    readonly code: "unsafe" | "unreachable" | "unauthorized" | "protocol" | "too_large" | "timeout",
-  ) {
-    super(message);
-    this.name = "McpError";
-  }
-}
-
 const CLIENT_INFO = { name: "builder-platform", version: "1.0.0" };
-/** Newest first. The server answers with the one it speaks; we continue with that. */
+/** Newest first. The server answers with the one it speaks; we continue with that, if we know it. */
 export const SUPPORTED_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"] as const;
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const MAX_TOOLS = 200;
-const MAX_PAGES = 10;
+const MAX_PAGES = 5;
 
-const TIMEOUTS = { handshake: 15_000, list: 20_000, call: 60_000 } as const;
+/** Whole-session budgets, and the most any one request may take. */
+const BUDGET = { list: 25_000, call: 65_000 } as const;
+const REQUEST_CAP = { handshake: 10_000, page: 15_000, close: 5_000 } as const;
 
 type JsonRpcMessage = {
   jsonrpc: "2.0";
@@ -53,29 +52,7 @@ type JsonRpcMessage = {
   error?: { code: number; message: string; data?: unknown };
 };
 
-/** The body, read up to a limit, so a hostile server cannot make us buffer without end. */
-async function readCapped(response: Response): Promise<string> {
-  const length = Number(response.headers.get("content-length"));
-  if (length > MAX_RESPONSE_BYTES) throw new McpError("The server's answer is too large.", "too_large");
-  if (!response.body) return "";
-
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > MAX_RESPONSE_BYTES) {
-      await reader.cancel().catch(() => undefined);
-      throw new McpError("The server's answer is too large.", "too_large");
-    }
-    chunks.push(value);
-  }
-  return Buffer.concat(chunks).toString("utf8");
-}
-
-/** The JSON-RPC message with this id, from a JSON body or an event stream. */
+/** The JSON-RPC message with this id, from a JSON body or an event stream. Throws if it is not (yet) there. */
 function messageFor(text: string, contentType: string, id: number): JsonRpcMessage {
   const candidates: unknown[] = [];
   if (contentType.includes("text/event-stream")) {
@@ -89,7 +66,7 @@ function messageFor(text: string, contentType: string, id: number): JsonRpcMessa
       try {
         candidates.push(JSON.parse(data));
       } catch {
-        // A comment or a malformed event: not the answer.
+        // A comment, or an event still arriving: not the answer.
       }
     }
   } else {
@@ -109,93 +86,98 @@ function messageFor(text: string, contentType: string, id: number): JsonRpcMessa
   throw new McpError("The server did not answer the request.", "protocol");
 }
 
-type Session = {
-  call: (method: string, params?: unknown, timeoutMs?: number) => Promise<unknown>;
-  close: () => Promise<void>;
-};
-
-async function send(
-  server: McpServer,
-  body: unknown,
-  headers: Record<string, string>,
-  timeoutMs: number,
-  method: "POST" | "DELETE" = "POST",
-): Promise<Response> {
-  try {
-    await assertPublicHttpsUrl(server.url);
-  } catch (error) {
-    if (error instanceof UnsafeUrlError) throw new McpError("That address cannot be used.", "unsafe");
-    throw error;
-  }
-
-  const all: Record<string, string> = { ...headers };
-  if (server.bearer) all.authorization = `Bearer ${server.bearer}`;
-  try {
-    return await fetch(server.url, {
-      method,
-      headers: all,
-      body: method === "POST" ? JSON.stringify(body) : undefined,
-      // A public name must not be able to send us somewhere private.
-      redirect: "error",
-      cache: "no-store",
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-  } catch (error) {
-    if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
-      throw new McpError("The server took too long to answer.", "timeout");
-    }
-    throw new McpError("The server could not be reached.", "unreachable");
-  }
-}
-
-function failFor(response: Response): McpError {
-  if (response.status === 401 || response.status === 403) {
-    return new McpError("The server did not accept the access token.", "unauthorized");
-  }
-  if (response.status === 404 || response.status === 405 || response.status === 415) {
+function failFor(status: number): McpError {
+  if (status === 401) return new McpError("The server did not accept the access token.", "unauthorized");
+  if (status === 403) return new McpError("The server refused access with that token.", "forbidden");
+  if (status === 404 || status === 405 || status === 415) {
     return new McpError("That address did not answer as an MCP server.", "protocol");
   }
-  return new McpError(`The server answered ${response.status}.`, "unreachable");
+  return new McpError(`The server answered ${status}.`, "unreachable");
 }
 
-/** Opens a session, runs `run`, and closes it whatever happened. */
-export async function withSession<T>(server: McpServer, run: (session: Session) => Promise<T>): Promise<T> {
+const ok = (response: TransportResponse) => response.status >= 200 && response.status < 300;
+
+type Session = {
+  call: (method: string, params?: unknown, capMs?: number) => Promise<unknown>;
+};
+
+/** Opens a session within `budgetMs`, runs `run`, and closes it whatever happened. */
+export async function withSession<T>(
+  server: McpServer,
+  budgetMs: number,
+  run: (session: Session) => Promise<T>,
+): Promise<T> {
+  const deadline = Date.now() + budgetMs;
   let nextId = 1;
   let sessionId: string | null = null;
   let protocol: string = SUPPORTED_PROTOCOLS[0];
   let initialized = false;
 
-  const baseHeaders = (): Record<string, string> => {
-    const headers: Record<string, string> = {
+  const headers = (): Record<string, string> => {
+    const all: Record<string, string> = {
       "content-type": "application/json",
       accept: "application/json, text/event-stream",
     };
-    if (sessionId) headers["mcp-session-id"] = sessionId;
+    if (server.bearer) all.authorization = `Bearer ${server.bearer}`;
+    if (sessionId) all["mcp-session-id"] = sessionId;
     // Named on every request after the handshake, as the spec asks, never on the handshake itself.
-    if (initialized) headers["mcp-protocol-version"] = protocol;
-    return headers;
+    if (initialized) all["mcp-protocol-version"] = protocol;
+    return all;
   };
 
-  const call: Session["call"] = async (method, params, timeoutMs = TIMEOUTS.list) => {
-    const id = nextId++;
-    const response = await send(
-      server,
-      { jsonrpc: "2.0", id, method, ...(params === undefined ? {} : { params }) },
-      baseHeaders(),
-      timeoutMs,
-    );
-    if (!response.ok) {
-      await response.body?.cancel().catch(() => undefined);
-      throw failFor(response);
+  async function post(
+    method: "POST" | "DELETE",
+    body: unknown,
+    capMs: number,
+    until?: (text: string) => boolean,
+  ): Promise<TransportResponse> {
+    let url: URL;
+    try {
+      url = await assertPublicHttpsUrl(server.url);
+    } catch (error) {
+      if (error instanceof UnsafeUrlError) throw new McpError("That address cannot be used.", "unsafe");
+      throw error;
     }
-    const text = await readCapped(response);
-    const message = messageFor(text, response.headers.get("content-type") ?? "", id);
+    const timeoutMs = Math.min(capMs, deadline - Date.now());
+    if (timeoutMs <= 0) throw new McpError("The server took too long to answer.", "timeout");
+    return transport.send({
+      url,
+      method,
+      headers: headers(),
+      body: method === "POST" ? JSON.stringify(body) : undefined,
+      timeoutMs,
+      maxBytes: MAX_RESPONSE_BYTES,
+      until: until ? (text) => until(text) : undefined,
+    });
+  }
+
+  const call: Session["call"] = async (method, params, capMs = REQUEST_CAP.page) => {
+    const id = nextId++;
+    const response = await post(
+      "POST",
+      { jsonrpc: "2.0", id, method, ...(params === undefined ? {} : { params }) },
+      capMs,
+      // An event stream may stay open after it has answered; stop as soon as our answer is in.
+      (text) => {
+        try {
+          messageFor(text, "text/event-stream", id);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+    );
+    if (!ok(response)) throw failFor(response.status);
+    const message = messageFor(response.text, response.headers["content-type"] ?? "", id);
     if (message.error) throw new McpError(message.error.message || "The server reported an error.", "protocol");
 
     if (method === "initialize") {
-      sessionId = response.headers.get("mcp-session-id");
       const negotiated = (message.result as { protocolVersion?: unknown } | undefined)?.protocolVersion;
-      if (typeof negotiated === "string") protocol = negotiated;
+      if (typeof negotiated !== "string" || !(SUPPORTED_PROTOCOLS as readonly string[]).includes(negotiated)) {
+        throw new McpError("The server speaks a protocol version this platform does not support.", "protocol");
+      }
+      protocol = negotiated;
+      sessionId = response.headers["mcp-session-id"] ?? null;
       initialized = true;
     }
     return message.result;
@@ -204,33 +186,37 @@ export async function withSession<T>(server: McpServer, run: (session: Session) 
   await call(
     "initialize",
     { protocolVersion: SUPPORTED_PROTOCOLS[0], capabilities: {}, clientInfo: CLIENT_INFO },
-    TIMEOUTS.handshake,
+    REQUEST_CAP.handshake,
   );
-  const ready = await send(server, { jsonrpc: "2.0", method: "notifications/initialized" }, baseHeaders(), TIMEOUTS.handshake);
-  await ready.body?.cancel().catch(() => undefined);
-  if (!ready.ok) throw failFor(ready);
-
-  const close = async () => {
-    if (!sessionId) return;
-    // Best effort: the session is ours to end, and a server that refuses is no worse off.
-    const response = await send(server, undefined, baseHeaders(), 5_000, "DELETE").catch(() => null);
-    await response?.body?.cancel().catch(() => undefined);
-  };
+  const ready = await post("POST", { jsonrpc: "2.0", method: "notifications/initialized" }, REQUEST_CAP.handshake);
+  if (!ok(ready)) throw failFor(ready.status);
 
   try {
-    return await run({ call, close });
+    return await run({ call });
   } finally {
-    await close();
+    if (sessionId) {
+      // Best effort, and outside the budget: the session is ours to end, and a
+      // server that refuses is no worse off.
+      await transport
+        .send({
+          url: new URL(server.url),
+          method: "DELETE",
+          headers: headers(),
+          timeoutMs: REQUEST_CAP.close,
+          maxBytes: 4096,
+        })
+        .catch(() => undefined);
+    }
   }
 }
 
 /** Every tool the server offers, following its pages, up to a sensible bound. */
 export async function listTools(server: McpServer): Promise<McpTool[]> {
-  return withSession(server, async (session) => {
+  return withSession(server, BUDGET.list, async (session) => {
     const tools: McpTool[] = [];
     let cursor: string | undefined;
     for (let page = 0; page < MAX_PAGES; page++) {
-      const result = (await session.call("tools/list", cursor ? { cursor } : {}, TIMEOUTS.list)) as {
+      const result = (await session.call("tools/list", cursor ? { cursor } : {})) as {
         tools?: unknown;
         nextCursor?: unknown;
       };
@@ -246,13 +232,9 @@ export async function listTools(server: McpServer): Promise<McpTool[]> {
   });
 }
 
-export async function callTool(
-  server: McpServer,
-  name: string,
-  args: unknown,
-): Promise<McpCallResult> {
-  return withSession(server, async (session) => {
-    const result = await session.call("tools/call", { name, arguments: args ?? {} }, TIMEOUTS.call);
+export async function callTool(server: McpServer, name: string, args: unknown): Promise<McpCallResult> {
+  return withSession(server, BUDGET.call, async (session) => {
+    const result = await session.call("tools/call", { name, arguments: args ?? {} }, BUDGET.call);
     if (!result || typeof result !== "object") throw new McpError("The tool's answer was not understood.", "protocol");
     return result as McpCallResult;
   });

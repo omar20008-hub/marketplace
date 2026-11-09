@@ -40,6 +40,7 @@ const failureText: Record<McpError["code"], string> = {
   unsafe: "That address cannot be connected.",
   unreachable: "The server could not be reached. Check the address.",
   unauthorized: "The server did not accept the access token.",
+  forbidden: "The server refused access with that token.",
   protocol: "That address did not answer as an MCP server.",
   too_large: "The server's answer was too large to use.",
   timeout: "The server took too long to answer.",

@@ -121,7 +121,8 @@ export async function assertPublicHttpsUrl(raw: string, resolve: Resolver = reso
   if (url.search || url.hash) throw new UnsafeUrlError("query");
   if (url.port && url.port !== "443") throw new UnsafeUrlError("port");
 
-  const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  // "internal." is the same name as "internal", so the trailing dot must not hide it.
+  const host = url.hostname.replace(/^\[|\]$/g, "").replace(/\.$/, "").toLowerCase();
   if (
     !host ||
     host === "localhost" ||
