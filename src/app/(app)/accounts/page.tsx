@@ -19,13 +19,11 @@ import {
 } from "@/lib/connectors/providers";
 import { SavedLoginsCard } from "./saved-logins-card";
 import { TelegramLinkCard } from "./telegram-link-card";
-import { AgentKeyCard } from "./agent-key-card";
 import { WhatsappLinkCard } from "./whatsapp-link-card";
 import { ConnectorsTabs, DiscoverView } from "./discover-view";
 import { BrandMark } from "./brand-mark";
 import { slugForCredentialType } from "@/lib/connectors/catalog";
 import { channelLinkFor, telegramLinkFor, WHATSAPP } from "@/server/channel-links";
-import { agentKeyActive } from "@/server/agent-keys";
 import { env } from "@/lib/env";
 
 export const metadata = { title: "Connectors · Builder" };
@@ -212,7 +210,6 @@ export default async function AccountsPage({
 
   const telegram = await telegramLinkFor(user.id);
   const whatsapp = await channelLinkFor(user.id, WHATSAPP);
-  const assistantKey = await agentKeyActive(user.id);
 
   // Read on the server only: what leaves it is the names of the editors to reconnect for.
   const driveSecrets = await prisma.connector.findMany({
@@ -359,7 +356,6 @@ export default async function AccountsPage({
             linkedAt={whatsapp?.linkedAt.toISOString() ?? null}
             businessNumber={env.whatsappBusinessNumber}
           />
-          <AgentKeyCard active={assistantKey} />
         </div>
       </div>
     </div>
