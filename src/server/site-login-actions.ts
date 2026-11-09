@@ -23,13 +23,13 @@ export async function saveLoginAction(formData: FormData): Promise<void> {
   if (!result.ok) {
     redirect(`/logins/add/${encodeURIComponent(token)}?error=${result.reason}`);
   }
-  revalidatePath("/logins");
-  redirect("/logins?saved=1");
+  revalidatePath("/accounts");
+  redirect("/accounts?login_saved=1");
 }
 
 export async function removeLoginAction(formData: FormData): Promise<void> {
   const user = await requireUser();
   const id = String(formData.get("id") ?? "");
   if (id) await deleteSiteLogin(user.id, id);
-  revalidatePath("/logins");
+  revalidatePath("/accounts");
 }

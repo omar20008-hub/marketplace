@@ -8,7 +8,6 @@ import {
   oauthStartUrl,
 } from "@/lib/credentials";
 import { connectErrorText } from "@/lib/google-oauth";
-import Link from "next/link";
 import { Badge, ButtonAnchor, ButtonLink, Card, PageTitle } from "@/components/ds";
 import { disconnectAccount } from "@/server/account-actions";
 import { ConnectPanel, type Connectable } from "./connect-panel";
@@ -18,6 +17,7 @@ import {
   listProviders,
   missingSettings,
 } from "@/lib/connectors/providers";
+import { SavedLoginsCard } from "./saved-logins-card";
 import { TelegramLinkCard } from "./telegram-link-card";
 import { AgentKeyCard } from "./agent-key-card";
 import { WhatsappLinkCard } from "./whatsapp-link-card";
@@ -104,6 +104,7 @@ export default async function AccountsPage({
     connect?: string;
     connected?: string;
     connect_error?: string;
+    login_saved?: string;
     tab?: string;
     q?: string;
   }>;
@@ -112,6 +113,7 @@ export default async function AccountsPage({
     connect,
     connected: justConnected,
     connect_error: connectError,
+    login_saved: loginSaved,
     tab,
     q,
   } = await searchParams;
@@ -230,14 +232,15 @@ export default async function AccountsPage({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
         <PageTitle title="Connectors" meta={`· ${connected} connected`} />
         <ConnectorsTabs active="yours" />
-        <Link href="/logins" className="text-sm text-ink-2 hover:text-ink">
-          Saved logins
-        </Link>
       </div>
 
       {connectError ? (
         <p role="alert" className="mt-3 text-[13px] text-danger-ink">
           {connectErrorText(connectError)}
+        </p>
+      ) : loginSaved ? (
+        <p role="status" className="mt-3 text-[13px] text-ready-ink">
+          Login saved.
         </p>
       ) : justConnected ? (
         <p role="status" className="mt-3 text-[13px] text-ready-ink">
@@ -342,7 +345,12 @@ export default async function AccountsPage({
         </div>
 
         <div className="flex flex-col gap-4">
-          <ConnectPanel options={connectable} preselect={connect} />
+          {/* The connect form only opens when a Connect / Reconnect link asks for it. */}
+          {connect ? (
+            <ConnectPanel options={connectable} preselect={connect} />
+          ) : (
+            <SavedLoginsCard userId={user.id} />
+          )}
           <TelegramLinkCard
             linkedAt={telegram?.linkedAt.toISOString() ?? null}
             botUsername={env.telegramBotUsername}
