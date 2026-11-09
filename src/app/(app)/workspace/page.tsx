@@ -38,31 +38,45 @@ export default async function WorkspacePage({
     Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1),
   );
 
-  const [installations, accounts, runCounts, runsThisMonth, storage, schedules, artifactCount] =
-    await Promise.all([
-      prisma.installation.findMany({
-        where: { userId: user.id, status: { in: ["ACTIVE", "PARTIAL", "DISABLED"] } },
-        include: { product: { include: { requirements: true } } },
-        orderBy: { installedAt: "asc" },
-      }),
-      prisma.connector.findMany({ where: { userId: user.id, status: { not: "REVOKED" } } }),
-      prisma.run.groupBy({
-        by: ["installationId"],
-        where: { userId: user.id },
-        _count: { _all: true },
-      }),
-      prisma.run.count({
-        where: { userId: user.id, startedAt: { gte: monthStart }, charged: true },
-      }),
-      prisma.artifact.aggregate({
-        where: { run: { userId: user.id } },
-        _sum: { sizeBytes: true },
-      }),
-      prisma.schedule.count({ where: { userId: user.id } }),
-      prisma.artifact.count({ where: { run: { userId: user.id } } }),
-    ]);
+  const [
+    installations,
+    accounts,
+    runCounts,
+    runsThisMonth,
+    storage,
+    schedules,
+    artifactCount,
+  ] = await Promise.all([
+    prisma.installation.findMany({
+      where: {
+        userId: user.id,
+        status: { in: ["ACTIVE", "PARTIAL", "DISABLED"] },
+      },
+      include: { product: { include: { requirements: true } } },
+      orderBy: { installedAt: "asc" },
+    }),
+    prisma.connector.findMany({
+      where: { userId: user.id, status: { not: "REVOKED" } },
+    }),
+    prisma.run.groupBy({
+      by: ["installationId"],
+      where: { userId: user.id },
+      _count: { _all: true },
+    }),
+    prisma.run.count({
+      where: { userId: user.id, startedAt: { gte: monthStart }, charged: true },
+    }),
+    prisma.artifact.aggregate({
+      where: { run: { userId: user.id } },
+      _sum: { sizeBytes: true },
+    }),
+    prisma.schedule.count({ where: { userId: user.id } }),
+    prisma.artifact.count({ where: { run: { userId: user.id } } }),
+  ]);
 
-  const runsBy = new Map(runCounts.map((row) => [row.installationId, row._count._all]));
+  const runsBy = new Map(
+    runCounts.map((row) => [row.installationId, row._count._all]),
+  );
 
   const rows = installations.map((installation) => ({
     installation,
@@ -110,24 +124,31 @@ export default async function WorkspacePage({
         meta={`· ${rows.length} products · ${attention.length} need attention`}
       />
 
-      <nav className="mt-4 flex gap-1 overflow-x-auto text-sm">
-        {TABS.map((item) => (
-          <Link
-            key={item.key}
-            href={item.key === "all" ? "/workspace" : `/workspace?tab=${item.key}`}
-            className={
-              item.key === tab
-                ? "flex items-center gap-1.5 rounded-full bg-fill px-3.5 py-[7px] font-medium whitespace-nowrap text-ink"
-                : "flex items-center gap-1.5 rounded-full px-3.5 py-[7px] whitespace-nowrap text-ink-2 hover:text-ink"
-            }
-          >
-            {item.label}
-            {item.badge ? (
-              <span className="text-xs text-ink-3">{item.badge}</span>
-            ) : null}
-          </Link>
-        ))}
-      </nav>
+      {/* Tabs only help once there is something to filter by. */}
+      {attention.length > 0 ||
+      rows.some((row) => row.installation.favourite) ||
+      tab !== "all" ? (
+        <nav className="mt-4 flex gap-1 overflow-x-auto text-sm">
+          {TABS.map((item) => (
+            <Link
+              key={item.key}
+              href={
+                item.key === "all" ? "/workspace" : `/workspace?tab=${item.key}`
+              }
+              className={
+                item.key === tab
+                  ? "flex items-center gap-1.5 rounded-full bg-fill px-3.5 py-[7px] font-medium whitespace-nowrap text-ink"
+                  : "flex items-center gap-1.5 rounded-full px-3.5 py-[7px] whitespace-nowrap text-ink-2 hover:text-ink"
+              }
+            >
+              {item.label}
+              {item.badge ? (
+                <span className="text-xs text-ink-3">{item.badge}</span>
+              ) : null}
+            </Link>
+          ))}
+        </nav>
+      ) : null}
 
       <div className="mt-5 grid grid-cols-1 gap-7 lg:grid-cols-[minmax(0,1fr)_280px]">
         <div className="flex flex-col gap-7">
@@ -149,8 +170,7 @@ export default async function WorkspacePage({
                         {installation.product.title}
                         <span className="font-normal text-ink-3">
                           {" "}
-                          · Agent · v
-                          {installation.pinnedVersion}
+                          · Agent · v{installation.pinnedVersion}
                         </span>
                       </div>
                       {/* A connection problem outranks a restriction note: one
@@ -200,7 +220,10 @@ export default async function WorkspacePage({
               <span className="text-[13px] font-medium">{user.plan.name}</span>
             </div>
             <div className="flex items-center justify-between text-xs text-ink-3">
-              <button type="button" className="text-link hover:text-link-strong">
+              <button
+                type="button"
+                className="text-link hover:text-link-strong"
+              >
                 Manage
               </button>
               <span>
@@ -245,7 +268,9 @@ export default async function WorkspacePage({
               <RailLink
                 href="/accounts"
                 label="Connectors"
-                value={String(accounts.filter((a) => a.status !== "PENDING").length)}
+                value={String(
+                  accounts.filter((a) => a.status !== "PENDING").length,
+                )}
               />
               <RailLink
                 href="/results"
@@ -287,7 +312,17 @@ function ProductList({
         usesPosts: boolean;
       };
     };
-    readiness: { tone: "ready" | "partial" | "plan" | "blocked" | "restricted" | "platform" | "neutral"; label: string };
+    readiness: {
+      tone:
+        | "ready"
+        | "partial"
+        | "plan"
+        | "blocked"
+        | "restricted"
+        | "platform"
+        | "neutral";
+      label: string;
+    };
     runs: number;
   }[];
 }) {
@@ -303,10 +338,7 @@ function ProductList({
             key={installation.id}
             className="flex flex-wrap items-center gap-3 border-b border-selected py-3"
           >
-            <ProductGlyph
-              category={installation.product.category}
-              size={40}
-            />
+            <ProductGlyph category={installation.product.category} size={40} />
             <div className="min-w-0 flex-1">
               <Link
                 href={`/marketplace/${installation.product.slug}`}

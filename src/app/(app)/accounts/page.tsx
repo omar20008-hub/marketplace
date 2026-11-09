@@ -8,6 +8,7 @@ import {
   oauthStartUrl,
 } from "@/lib/credentials";
 import { connectErrorText } from "@/lib/google-oauth";
+import Link from "next/link";
 import { Badge, ButtonAnchor, ButtonLink, Card, PageTitle } from "@/components/ds";
 import { disconnectAccount } from "@/server/account-actions";
 import { ConnectPanel, type Connectable } from "./connect-panel";
@@ -229,6 +230,9 @@ export default async function AccountsPage({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
         <PageTitle title="Connectors" meta={`· ${connected} connected`} />
         <ConnectorsTabs active="yours" />
+        <Link href="/logins" className="text-sm text-ink-2 hover:text-ink">
+          Saved logins
+        </Link>
       </div>
 
       {connectError ? (
