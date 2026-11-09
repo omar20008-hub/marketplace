@@ -5,6 +5,7 @@ import { useActionState, useState } from "react";
 import { Check, Minus } from "lucide-react";
 import { Button, ButtonAnchor, Card, FootNote, Input, SectionLabel } from "@/components/ds";
 import { connectAccount, type ConnectState } from "@/server/account-actions";
+import { McpForm } from "./mcp-form";
 
 export type Connectable = {
   credentialType: string;
@@ -15,6 +16,8 @@ export type Connectable = {
   oauthLabel?: string;
   /** Set when the user can also sign in on the service itself (Facebook); the token form stays as the second way. */
   signInUrl?: string;
+  /** "mcp": an MCP server the person names, instead of a tool the platform knows. */
+  kind?: "mcp";
   allows: { grants: string[]; denies: string[] };
   fields: {
     name: string;
@@ -66,7 +69,9 @@ export function ConnectPanel({
         ))}
       </div>
 
-      {option ? (
+      {option?.kind === "mcp" ? (
+        <McpForm key={option.credentialType} allows={option.allows} />
+      ) : option ? (
         <form action={formAction} className="flex flex-col gap-4">
           <input type="hidden" name="credentialType" value={option.credentialType} />
           <input type="hidden" name="displayName" value={option.displayName} />

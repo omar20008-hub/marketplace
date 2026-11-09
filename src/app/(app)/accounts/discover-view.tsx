@@ -100,7 +100,7 @@ function stateOf(
   available: Set<string>,
   connectedTypes: Set<string>,
 ): CardState {
-  if (entry.credentialType && connectedTypes.has(entry.credentialType)) return "connected";
+  if (!entry.multiple && entry.credentialType && connectedTypes.has(entry.credentialType)) return "connected";
   if (entry.href) return "connect";
   if (entry.credentialType && available.has(entry.credentialType)) return "connect";
   return "soon";

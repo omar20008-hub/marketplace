@@ -17,9 +17,19 @@ export type CatalogEntry = {
   credentialType?: string;
   /** Where the tool is set up, when it is not connected through the panel. */
   href?: string;
+  /** More than one connection is normal (an MCP server per tool), so it never reads as "Connected". */
+  multiple?: boolean;
 };
 
 export const CATALOG: CatalogEntry[] = [
+  {
+    name: "MCP server",
+    by: "Any provider",
+    description: "Connect any MCP server, such as n8n's or Notion's, so your agents and workflows can use its tools",
+    initials: "MC",
+    credentialType: "mcpServer",
+    multiple: true,
+  },
   {
     name: "Google Suite",
     by: "Google",

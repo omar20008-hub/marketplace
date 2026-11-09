@@ -23,6 +23,7 @@ import { AgentKeyCard } from "./agent-key-card";
 import { WhatsappLinkCard } from "./whatsapp-link-card";
 import { ConnectorsTabs, DiscoverView } from "./discover-view";
 import { BrandMark } from "./brand-mark";
+import { MCP_CREDENTIAL } from "@/lib/mcp/naming";
 import { slugForCredentialType } from "@/lib/connectors/catalog";
 import { channelLinkFor, telegramLinkFor, WHATSAPP } from "@/server/channel-links";
 import { agentKeyActive } from "@/server/agent-keys";
@@ -87,6 +88,19 @@ const ALLOWS: Record<string, { grants: string[]; denies: string[] }> = {
     grants: ["Send prompts on your behalf"],
     denies: ["No access to your account settings"],
   },
+  [MCP_CREDENTIAL]: {
+    grants: ["Let your agents and workflows use the tools this server offers, through the platform"],
+    denies: ["Agents and workflows never see the server's token"],
+  },
+};
+
+/** The panel's entry for an MCP server: the person names it, so there are no fields to read from n8n. */
+const MCP_OPTION: Connectable = {
+  credentialType: MCP_CREDENTIAL,
+  displayName: "MCP server",
+  kind: "mcp",
+  allows: ALLOWS[MCP_CREDENTIAL],
+  fields: [],
 };
 
 const CONNECTABLE: { credentialType: string; displayName: string }[] = [
@@ -160,6 +174,7 @@ export default async function AccountsPage({
     const available = new Set([
       ...CONNECTABLE.map((item) => item.credentialType),
       ...connectorOptions.map((option) => option.credentialType),
+      MCP_CREDENTIAL,
     ]);
     const connectedTypes = new Set(
       accounts.filter((a) => a.status === "ACTIVE").map((a) => a.credentialType),
@@ -208,6 +223,7 @@ export default async function AccountsPage({
     }),
     )),
     ...connectorOptions,
+    MCP_OPTION,
   ];
 
   const telegram = await telegramLinkFor(user.id);
