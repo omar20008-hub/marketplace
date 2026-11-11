@@ -1,0 +1,356 @@
+import { prisma } from "@/lib/db";
+import type { Viewer } from "@/lib/auth";
+import { n8n } from "@/lib/n8n";
+import {
+  GOOGLE_DRIVE_CREDENTIAL,
+  hasFacebookSignIn,
+  knownCredentialSchema,
+  oauthStartUrl,
+} from "@/lib/credentials";
+import { connectErrorText } from "@/lib/google-oauth";
+import { Badge, ButtonAnchor, ButtonLink, Card } from "@/components/ds";
+import { disconnectAccount } from "@/server/account-actions";
+import { ConnectPanel, type Connectable } from "../accounts/connect-panel";
+import {
+  connectorStartUrl,
+  editorsWithoutGrant,
+  listProviders,
+  missingSettings,
+} from "@/lib/connectors/providers";
+import { SavedLoginsCard } from "../accounts/saved-logins-card";
+import { TelegramLinkCard } from "../accounts/telegram-link-card";
+import { WhatsappLinkCard } from "../accounts/whatsapp-link-card";
+import { DiscoverView as ConnectorCatalog } from "../accounts/discover-view";
+import { BrandMark } from "../accounts/brand-mark";
+import { slugForCredentialType } from "@/lib/connectors/catalog";
+import { channelLinkFor, telegramLinkFor, WHATSAPP } from "@/server/channel-links";
+import { env } from "@/lib/env";
+
+/**
+ * What each connection is allowed to do, in the user's words. The design puts
+ * this in front of the consent step on purpose — a scope list is the one thing
+ * a person needs before handing over access.
+ */
+const ALLOWS: Record<string, { grants: string[]; denies: string[] }> = {
+  facebookGraphApi: {
+    grants: ["Publish posts and stories", "Read your post insights"],
+    denies: ["No access to messages or followers"],
+  },
+  slackApi: {
+    grants: ["Post to the channels you name"],
+    denies: ["No access to direct messages"],
+  },
+  hubspotApi: {
+    grants: ["Read and update the records a product touches"],
+    denies: ["No access to billing or user administration"],
+  },
+  googleDriveOAuth2Api: {
+    grants: [
+      "Read the folders you choose to index",
+      "Create files, and read and edit the Sheets, Docs and Slides you work with",
+    ],
+    denies: ["Reads only the folders you choose to index"],
+  },
+  googleSheetsOAuth2Api: {
+    grants: ["Read and write the sheets you name"],
+    denies: ["No access to the rest of your Drive"],
+  },
+  asanaOAuth2Api: {
+    grants: ["Read and update the Asana work your account can already reach"],
+    denies: ["Nothing beyond what your Asana account is allowed to do"],
+  },
+  notionOAuth2Api: {
+    grants: ["Read and update the pages and databases you share with the platform"],
+    denies: ["No access to pages you do not share"],
+  },
+  airtableOAuth2Api: {
+    grants: ["Read and write the bases and records you grant"],
+    denies: ["No access to bases you do not grant"],
+  },
+  trelloApi: {
+    grants: ["Read and update the boards and cards your account can reach"],
+    denies: ["Nothing beyond what your Trello account is allowed to do"],
+  },
+  microsoftGraphOAuth2Api: {
+    grants: ["Read and update the files and sites your Microsoft account can reach"],
+    denies: ["Nothing beyond what your Microsoft account is allowed to do"],
+  },
+  stripeConnectOAuth2Api: {
+    grants: ["Read and create the payments, invoices and customers of your Stripe account"],
+    denies: ["No payouts or changes to your Stripe account settings"],
+  },
+  openAiApi: {
+    grants: ["Send prompts on your behalf"],
+    denies: ["No access to your account settings"],
+  },
+};
+
+const CONNECTABLE: { credentialType: string; displayName: string }[] = [
+  { credentialType: "facebookGraphApi", displayName: "Facebook & Instagram" },
+  { credentialType: "slackApi", displayName: "Slack" },
+  { credentialType: "hubspotApi", displayName: "HubSpot" },
+  { credentialType: "openAiApi", displayName: "AI model" },
+  { credentialType: GOOGLE_DRIVE_CREDENTIAL, displayName: "Google Suite" },
+];
+
+/** The tools signed into through the generic connector sign-in, shared by My Connectors and Discover. */
+async function connectorOptionsList(): Promise<Connectable[]> {
+  // Offered only once their app is configured on the server: a button that cannot work is
+  // worse than none.
+  return listProviders()
+    .filter((provider) => missingSettings(provider).length === 0)
+    .map((provider) => ({
+      credentialType: provider.credentialType,
+      displayName: provider.displayName,
+      allows: ALLOWS[provider.credentialType] ?? { grants: [], denies: [] },
+      oauthStartUrl: connectorStartUrl(provider),
+      oauthLabel: provider.displayName,
+      fields: [],
+    }));
+}
+
+/** The "Discover" catalogue of tools. Connectable ones link into the connect form on My Connectors. */
+export async function ConnectorsDiscover({ user, q }: { user: Viewer | null; q: string }) {
+  const [accounts, connectorOptions] = await Promise.all([
+    user
+      ? prisma.connector.findMany({
+          where: { userId: user.id, status: { not: "REVOKED" } },
+          select: { credentialType: true, status: true },
+        })
+      : Promise.resolve([]),
+    connectorOptionsList(),
+  ]);
+  const available = new Set([
+    ...CONNECTABLE.map((item) => item.credentialType),
+    ...connectorOptions.map((option) => option.credentialType),
+  ]);
+  const connectedTypes = new Set(
+    accounts.filter((a) => a.status === "ACTIVE").map((a) => a.credentialType),
+  );
+  return <ConnectorCatalog q={q} available={available} connectedTypes={connectedTypes} />;
+}
+
+/** The "My Connectors" view of Tuning: connected accounts, links to chat apps and saved logins. */
+export async function ConnectorsView({
+  user,
+  connect,
+  connected: justConnected,
+  connectError,
+  loginSaved,
+}: {
+  user: Viewer;
+  connect?: string;
+  connected?: string;
+  connectError?: string;
+  loginSaved?: string;
+}) {
+  const accounts = await prisma.connector.findMany({
+    where: { userId: user.id, status: { not: "REVOKED" } },
+    // secretJson is deliberately absent from this selection.
+    select: {
+      id: true,
+      credentialType: true,
+      displayName: true,
+      initials: true,
+      accountRef: true,
+      scope: true,
+      status: true,
+      expiresAt: true,
+      links: { select: { installationId: true } },
+    },
+    orderBy: [{ status: "asc" }, { displayName: "asc" }],
+  });
+
+  const usedBy = await prisma.installationCredential.groupBy({
+    by: ["credentialType"],
+    _count: { _all: true },
+  });
+  const useCount = new Map(usedBy.map((row) => [row.credentialType, row._count._all]));
+
+  const connectorOptions = await connectorOptionsList();
+
+  const connectable: Connectable[] = [
+    ...(await Promise.all(
+    CONNECTABLE.map(async (item) => {
+      const oauthStartHref =
+        item.credentialType === GOOGLE_DRIVE_CREDENTIAL ? oauthStartUrl("/accounts") : undefined;
+      // The same order as the setup wizard: what is known to be right first, then n8n's own answer.
+      const schema = oauthStartHref
+        ? null
+        : (knownCredentialSchema(item.credentialType) ??
+          (await n8n.credentialSchema(item.credentialType)));
+      return {
+        credentialType: item.credentialType,
+        displayName: item.displayName,
+        allows: ALLOWS[item.credentialType] ?? { grants: [], denies: [] },
+        oauthStartUrl: oauthStartHref,
+        oauthLabel: oauthStartHref ? "Google" : undefined,
+        // Facebook has both: the sign-in, and a pasted access token as the second way.
+        signInUrl: hasFacebookSignIn(item.credentialType)
+          ? oauthStartUrl("/accounts", item.credentialType)
+          : undefined,
+        fields: schema
+          ? Object.entries(schema.properties).map(([name, property]) => ({
+              name,
+              label: property.title ?? name,
+              description: property.description ?? null,
+              secret: property.format === "password",
+              required: schema.required?.includes(name) ?? false,
+            }))
+          : [],
+      };
+    }),
+    )),
+    ...connectorOptions,
+  ];
+
+  const telegram = await telegramLinkFor(user.id);
+  const whatsapp = await channelLinkFor(user.id, WHATSAPP);
+
+  // Read on the server only: what leaves it is the names of the editors to reconnect for.
+  const driveSecrets = await prisma.connector.findMany({
+    where: { userId: user.id, credentialType: GOOGLE_DRIVE_CREDENTIAL, status: "ACTIVE" },
+    select: { id: true, secretJson: true },
+  });
+  const reconnectFor = new Map<string, string[]>();
+  for (const drive of driveSecrets) {
+    const names = editorsWithoutGrant(drive.secretJson);
+    if (names.length > 0) reconnectFor.set(drive.id, names);
+  }
+
+  const connected = accounts.filter((a) => a.status !== "PENDING").length;
+
+  return (
+    <div className="px-5 py-5 lg:px-7">
+      <p className="text-[13px] text-ink-3">{connected} connected</p>
+
+      {connectError ? (
+        <p role="alert" className="mt-3 text-[13px] text-danger-ink">
+          {connectErrorText(connectError)}
+        </p>
+      ) : loginSaved ? (
+        <p role="status" className="mt-3 text-[13px] text-ready-ink">
+          Login saved.
+        </p>
+      ) : justConnected ? (
+        <p role="status" className="mt-3 text-[13px] text-ready-ink">
+          Connected.
+        </p>
+      ) : null}
+
+      <div className="mt-5 grid grid-cols-1 gap-7 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="flex flex-col gap-2">
+          {accounts.map((account) => {
+            const uses = useCount.get(account.credentialType) ?? 0;
+            return (
+              <Card key={account.id} className="flex flex-wrap items-center gap-3 p-3.5">
+                <BrandMark
+                  slug={slugForCredentialType(account.credentialType)}
+                  initials={account.initials}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium">{account.displayName}</div>
+                  {reconnectFor.has(account.id) ? (
+                    <div className="mt-0.5 text-xs text-danger-ink">
+                      Reconnect to allow {reconnectFor.get(account.id)!.join(", ")}.
+                    </div>
+                  ) : null}
+                  <div className="mt-0.5 text-xs text-ink-3">
+                    {account.status === "EXPIRED"
+                      ? "Access expired. Scheduled runs that need it are blocked."
+                      : account.scope === "PLATFORM"
+                        ? uses > 0
+                          ? `Platform connection · used by ${uses} product${uses === 1 ? "" : "s"}`
+                          : "Platform connection · no action needed"
+                        : account.status === "PENDING"
+                          ? "Not connected."
+                          : [
+                              account.accountRef,
+                              uses > 0
+                                ? `used by ${uses} product${uses === 1 ? "" : "s"}`
+                                : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                  </div>
+                </div>
+
+                {account.status === "EXPIRED" ? (
+                  account.credentialType === GOOGLE_DRIVE_CREDENTIAL ||
+                  hasFacebookSignIn(account.credentialType) ? (
+                    <ButtonAnchor
+                      href={oauthStartUrl("/accounts", account.credentialType)}
+                      size="sm"
+                    >
+                      Reconnect
+                    </ButtonAnchor>
+                  ) : (
+                    <ButtonLink
+                      href={`/tuning?tab=connectors&connect=${account.credentialType}`}
+                      size="sm"
+                    >
+                      Reconnect
+                    </ButtonLink>
+                  )
+                ) : account.scope === "PLATFORM" ? (
+                  <Badge tone="platform">Platform</Badge>
+                ) : account.status === "PENDING" ? (
+                  // The button that does the connecting is on the row itself, not only in
+                  // the "Connect an account" panel further down.
+                  account.credentialType === GOOGLE_DRIVE_CREDENTIAL ||
+                  hasFacebookSignIn(account.credentialType) ? (
+                    <ButtonAnchor
+                      href={oauthStartUrl("/accounts", account.credentialType)}
+                      size="sm"
+                    >
+                      Connect
+                    </ButtonAnchor>
+                  ) : (
+                    <ButtonLink href={`/tuning?tab=connectors&connect=${account.credentialType}`} size="sm">
+                      Connect
+                    </ButtonLink>
+                  )
+                ) : (
+                  <>
+                    <Badge tone="ready">Active</Badge>
+                    {reconnectFor.has(account.id) ? (
+                      <ButtonAnchor href={oauthStartUrl("/accounts", account.credentialType)} size="sm">
+                        Reconnect
+                      </ButtonAnchor>
+                    ) : null}
+                    <form action={disconnectAccount}>
+                      <input type="hidden" name="accountId" value={account.id} />
+                      <button
+                        type="submit"
+                        className="text-[13px] text-ink-2 hover:text-danger-ink"
+                      >
+                        Revoke
+                      </button>
+                    </form>
+                  </>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+
+        <div className="flex flex-col gap-4">
+          {/* The connect form only opens when a Connect / Reconnect link asks for it. */}
+          {connect ? (
+            <ConnectPanel options={connectable} preselect={connect} />
+          ) : (
+            <SavedLoginsCard userId={user.id} />
+          )}
+          <TelegramLinkCard
+            linkedAt={telegram?.linkedAt.toISOString() ?? null}
+            botUsername={env.telegramBotUsername}
+          />
+          <WhatsappLinkCard
+            linkedAt={whatsapp?.linkedAt.toISOString() ?? null}
+            businessNumber={env.whatsappBusinessNumber}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}

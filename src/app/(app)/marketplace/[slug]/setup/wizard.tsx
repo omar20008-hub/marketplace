@@ -189,7 +189,7 @@ export function SetupWizard({
                           </div>
                         </div>
                         {requirement.providedBy === "PLATFORM_OR_OWN" ? (
-                          <Link href="/accounts" className="text-[13px]">
+                          <Link href="/tuning?tab=connectors" className="text-[13px]">
                             Use my account
                           </Link>
                         ) : null}
@@ -476,7 +476,7 @@ export function SetupWizard({
 
         <footer className="flex flex-wrap items-center gap-3 border-t border-selected px-6 py-4">
           <p className="min-w-0 flex-1 text-xs text-ink-3">
-            You can leave now — it stays in My agents as Partially ready.
+            You can leave now — it stays in My Agents as Partially ready.
           </p>
           <ButtonLink
             href={`/marketplace/${product.slug}`}

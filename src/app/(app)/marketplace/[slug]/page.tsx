@@ -218,7 +218,7 @@ export default async function ProductPage({
                             <Badge tone="ready">Ready</Badge>
                           ) : (
                             <Link
-                              href="/accounts"
+                              href="/tuning?tab=connectors"
                               className="text-[13px] font-medium"
                             >
                               Connect
@@ -313,7 +313,7 @@ export default async function ProductPage({
                 <FootNote>{product.restrictionNote}</FootNote>
               </>
             ) : installed ? (
-              <ButtonLink href="/tuning">Open in My agents</ButtonLink>
+              <ButtonLink href="/tuning">Open in My Agents</ButtonLink>
             ) : (
               <ButtonLink href={`/marketplace/${product.slug}/setup`}>
                 Add to workspace

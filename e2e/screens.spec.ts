@@ -35,15 +35,20 @@ test.describe("signed in as a user and admin", () => {
 
     await page.goto("/tuning");
     await expect(page.locator("h1")).toContainText("Tuning");
-    await expect(page.getByRole("link", { name: "My agents" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "My Agents" })).toBeVisible();
 
     await page.goto("/admin?view=results");
     await expect(page.locator("h1")).toContainText("Admin");
     await expect(page.getByRole("link", { name: "Results", exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "schedules", exact: true })).toBeVisible();
 
-    await page.goto("/accounts");
-    await expect(page.locator("h1")).toContainText("Connectors");
+    await page.goto("/tuning?tab=connectors");
+    await expect(page.locator("h1")).toContainText("Tuning");
+    await expect(page.getByRole("link", { name: "My Connectors" })).toBeVisible();
+
+    await page.goto("/tuning?tab=discover&kind=connector");
+    await expect(page.getByRole("link", { name: "Discover", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Connectors", exact: true })).toBeVisible();
 
     await page.goto("/admin");
     await expect(page.locator("h1")).toContainText("Admin");

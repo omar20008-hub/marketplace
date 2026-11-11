@@ -4,7 +4,7 @@ import clsx from "clsx";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { Brain, FileText, Layers, Link2, LogIn, LogOut, PanelLeft, PenSquare, Search, Shield, SquareCode, X } from "lucide-react";
+import { Brain, FileText, Layers, LogIn, LogOut, PanelLeft, PenSquare, Search, Shield, SquareCode, X } from "lucide-react";
 import { Avatar } from "@/components/ds";
 import { logout } from "@/server/auth-actions";
 
@@ -56,16 +56,15 @@ export function Sidebar({
       href: "/tuning",
       label: "Tuning",
       icon: <Layers {...iconProps} />,
-      // Agent pages still live under their old paths.
-      alsoActive: ["/marketplace", "/workspace"],
-      trailing: user ? <span className="text-xs text-ink-3">{counts.workspace}</span> : null,
-    },
-    {
-      href: "/accounts",
-      label: "Connectors",
-      icon: <Link2 {...iconProps} />,
-      trailing: counts.accountsNeedAttention ? (
-        <span className="size-[7px] rounded-full bg-warn" />
+      // Agent and connector pages still live under their old paths.
+      alsoActive: ["/marketplace", "/workspace", "/accounts", "/logins"],
+      trailing: user ? (
+        <span className="flex items-center gap-1.5">
+          {counts.accountsNeedAttention ? (
+            <span className="size-[7px] rounded-full bg-warn" />
+          ) : null}
+          <span className="text-xs text-ink-3">{counts.workspace}</span>
+        </span>
       ) : null,
     },
     ...(user ? [{ href: "/memory", label: "Memory", icon: <Brain {...iconProps} /> }] : []),
