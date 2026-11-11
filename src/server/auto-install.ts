@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { readinessFor } from "@/lib/readiness";
-import { isPlatformHeld } from "@/lib/credentials";
+import { isPlatformHeld, platformSideConnections } from "@/lib/credentials";
 import { platformCredential } from "@/lib/platform-secrets";
 import { installCopy } from "./install-copy";
 import { newKnowledgeKey } from "./knowledge/keys";
@@ -84,7 +84,9 @@ export async function installReadyProducts(userId: string): Promise<{ installed:
       requirements: product.requirements,
       accounts: [],
     });
-    const needsOwnConnection = product.requiredCredentials.some((type) => !isPlatformHeld(type));
+    const needsOwnConnection =
+      product.requiredCredentials.some((type) => !isPlatformHeld(type)) ||
+      platformSideConnections(product.templateId).length > 0;
     if (readiness.tone !== "ready" || needsOwnConnection) {
       skipped++;
       continue;

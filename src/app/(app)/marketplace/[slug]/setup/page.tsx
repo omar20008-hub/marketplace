@@ -3,11 +3,13 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { n8n } from "@/lib/n8n";
 import {
+  credentialLabel,
   fallbackCredentialSchema,
   hasFacebookSignIn,
   isPlatformOAuth,
   knownCredentialSchema,
   oauthStartUrl,
+  platformSideConnections,
 } from "@/lib/credentials";
 import { connectErrorText, GOOGLE_DRIVE_CREDENTIAL } from "@/lib/google-oauth";
 import { isPlatformHeld } from "@/lib/credentials";
@@ -48,8 +50,23 @@ export default async function SetupPage({
 
   // The generated connection form. Fields come from n8n's own credential schema
   // so the user never types JSON, and the platform never guesses field names.
+  // Connections the platform uses itself (Ads Campaign calls Meta from here) have no
+  // row of their own, so they are added to what the wizard shows.
+  const declared = new Set(product.requirements.map((r) => r.credentialType));
+  const sideRequirements = platformSideConnections(product.templateId)
+    .filter((type) => !declared.has(type))
+    .map((type, index) => ({
+      id: `side:${type}`,
+      kind: "CONNECTION" as const,
+      label: credentialLabel(type),
+      note: null,
+      credentialType: type,
+      providedBy: "USER" as const,
+      sortOrder: product.requirements.length + index,
+    }));
+
   const requirements: SetupRequirement[] = await Promise.all(
-    product.requirements.map(async (requirement) => {
+    [...product.requirements, ...sideRequirements].map(async (requirement) => {
       const account = requirement.credentialType
         ? byType.get(requirement.credentialType)
         : undefined;

@@ -140,3 +140,18 @@ export const PLATFORM_HELD_CREDENTIALS: ReadonlySet<string> = new Set(["googlePa
 export function isPlatformHeld(credentialType: string) {
   return PLATFORM_HELD_CREDENTIALS.has(credentialType);
 }
+
+/**
+ * Connections a product needs from the person but that never go to n8n: the
+ * platform itself calls the other service with the token it keeps (the Ads
+ * Campaign product calls Meta from src/server/ads). They are shown in the setup
+ * wizard like any connection, and the install waits for them, but they are not in
+ * the template's credential list and are never written into the runtime.
+ */
+const PLATFORM_SIDE_CONNECTIONS: Record<string, readonly string[]> = {
+  tpl_ads_campaign_v1: [FACEBOOK_CREDENTIAL],
+};
+
+export function platformSideConnections(templateId: string | null | undefined): string[] {
+  return templateId ? [...(PLATFORM_SIDE_CONNECTIONS[templateId] ?? [])] : [];
+}
