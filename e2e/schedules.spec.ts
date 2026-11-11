@@ -15,7 +15,7 @@ import { ACCOUNTS, failOnPageProblems, signIn } from "./helpers";
 const rows = (page: import("@playwright/test").Page) => page.locator("tbody tr");
 
 async function openSchedules(page: import("@playwright/test").Page) {
-  await page.goto("/results?view=schedules");
+  await page.goto("/admin?view=results&section=schedules");
   await expect(page.getByRole("button", { name: "New schedule" })).toBeVisible();
 }
 

@@ -104,7 +104,7 @@ export async function createSchedule(
     },
   });
 
-  revalidatePath("/results");
+  revalidatePath("/admin");
   revalidatePath("/tuning");
   return reply(previous);
 }
@@ -135,7 +135,7 @@ export async function setScheduleEnabled(formData: FormData) {
     data: { enabled, nextRunAt: enabled ? due : null },
   });
 
-  revalidatePath("/results");
+  revalidatePath("/admin");
 }
 
 export async function deleteSchedule(formData: FormData) {
@@ -146,7 +146,7 @@ export async function deleteSchedule(formData: FormData) {
   // throwing and telling the caller the row exists.
   await prisma.schedule.deleteMany({ where: { id, userId: user.id } });
 
-  revalidatePath("/results");
+  revalidatePath("/admin");
   revalidatePath("/tuning");
 }
 
@@ -182,5 +182,5 @@ export async function runScheduleNow(formData: FormData) {
     },
   });
 
-  revalidatePath("/results");
+  revalidatePath("/admin");
 }

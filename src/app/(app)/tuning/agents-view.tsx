@@ -262,12 +262,12 @@ export async function AgentsView({ filter }: { filter?: string }) {
                 )}
               />
               <RailLink
-                href="/results"
+                href="/admin?view=results"
                 label="Results"
                 value={`${artifactCount} files`}
               />
               <RailLink
-                href="/results?view=schedules"
+                href="/admin?view=results&section=schedules"
                 label="Schedules"
                 value={String(schedules)}
               />

@@ -60,11 +60,6 @@ export function Sidebar({
       alsoActive: ["/marketplace", "/workspace"],
       trailing: user ? <span className="text-xs text-ink-3">{counts.workspace}</span> : null,
     },
-    // Results is an admin screen, not a general one — a signed-in creator
-    // with no ADMIN role does not see it either, same as a guest.
-    ...(user?.isAdmin
-      ? [{ href: "/results", label: "Results", icon: <SquareCode {...iconProps} /> }]
-      : []),
     {
       href: "/accounts",
       label: "Connectors",
