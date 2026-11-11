@@ -33,7 +33,7 @@ python tests/live_cdp_check.py <chrome> [flags]            # manual: the upload 
 3. `/etc/browser-broker/`: `seccomp-chrome.json` (the reviewed profile) and `config.json` from `deploy/config.example.json`
    with the image ID (`docker image inspect --format '{{.Id}}' hermes-browser:phase1-145`) and the profile's sha256.
 4. Re-apply the firewall script (adds the OUTPUT guard for port 9222), then install `deploy/browser-broker.service`.
-5. The platform needs `GET /api/agent/whoami` and `GET /api/agent/files/{id}` first (see the design document).
+5. The platform must be deployed with `GET /api/agent/whoami` first (the file route, `GET /api/files/{id}/download`, already exists).
 
 ## Phase 1 limits, stated plainly
 

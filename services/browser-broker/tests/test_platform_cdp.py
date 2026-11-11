@@ -23,15 +23,16 @@ class Stub(BaseHTTPRequestHandler):
             return self._send(401, b"{}")
         if self.path == "/api/agent/whoami":
             return self._send(200, json.dumps({"userId": "u-1"}).encode())
-        if self.path == "/api/agent/files/big-file-0001":
+        if self.path == "/api/files/big-file-0001/download":
             return self._send(200, b"x" * 100)
-        if self.path == "/api/agent/files/redirect-0001":
+        if self.path == "/api/files/redirect-0001/download":
             self.send_response(302)
             self.send_header("Location", "http://127.0.0.1:1/steal")
             self.end_headers()
             return
-        if self.path == "/api/agent/files/file-0000001":
-            return self._send(200, b"cv bytes", {"X-File-Name": urllib.parse.quote("السيرة.pdf")})
+        if self.path == "/api/files/file-0000001/download":
+            return self._send(200, b"cv bytes", {
+                "Content-Disposition": "attachment; filename*=UTF-8''" + urllib.parse.quote("السيرة.pdf")})
         self._send(404, b"{}")
 
     def _send(self, code, body, extra=None):
@@ -41,6 +42,15 @@ class Stub(BaseHTTPRequestHandler):
             self.send_header(k, v)
         self.end_headers()
         self.wfile.write(body)
+
+
+class FilenameFrom(unittest.TestCase):
+    def test_reads_the_platform_header_and_falls_back(self):
+        from browser_broker.platform import filename_from
+        self.assertEqual(filename_from("attachment; filename*=UTF-8''%D8%B3.pdf"), "س.pdf")
+        self.assertEqual(filename_from("attachment; filename*=UTF-8''cv%20final.docx"), "cv final.docx")
+        self.assertEqual(filename_from(""), "file")
+        self.assertEqual(filename_from("attachment"), "file")
 
 
 class PlatformTests(unittest.IsolatedAsyncioTestCase):
@@ -74,7 +84,7 @@ class PlatformTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_a_redirect_is_never_followed_so_the_key_goes_nowhere_else(self):
         self.assertEqual(await self.kind(self.client.fetch_file(GOOD, "redirect-0001", 1000)), "unavailable")
-        self.assertEqual(Stub.seen, ["/api/agent/files/redirect-0001"])
+        self.assertEqual(Stub.seen, ["/api/files/redirect-0001/download"])
 
     async def test_identity_is_cached_under_a_hash(self):
         class Counter:

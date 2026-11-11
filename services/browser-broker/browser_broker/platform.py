@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -28,8 +29,9 @@ class PlatformClient:
     """
     Asks the platform who a key belongs to and for that person's files. The platform
     decides what belongs to whom; the broker never sees a path or a user name from a caller.
-    Requires on the platform side: GET /api/agent/whoami -> {"userId": "..."} and
-    GET /api/agent/files/{id} -> the bytes, with the header X-File-Name (URL-encoded UTF-8).
+    Uses two routes the platform already has or now has: GET /api/agent/whoami -> {"userId": "..."} and
+    GET /api/files/{id}/download -> the bytes (404 unless the key's own person owns the file), with the
+    name in Content-Disposition as filename*=UTF-8''<percent-encoded>.
     """
 
     def __init__(self, base_url: str, timeout: float = 20.0):
@@ -72,10 +74,18 @@ class PlatformClient:
         return user_id
 
     async def fetch_file(self, key: str, file_id: str, max_bytes: int) -> Tuple[str, bytes]:
-        path = "/api/agent/files/" + urllib.parse.quote(file_id, safe="")
+        path = "/api/files/" + urllib.parse.quote(file_id, safe="") + "/download"
         body, headers = await asyncio.to_thread(self._get, path, key, max_bytes)
-        name = urllib.parse.unquote(headers.get("x-file-name", "")) or "file"
-        return name, body
+        return filename_from(headers.get("content-disposition", "")), body
+
+
+_DISPOSITION_NAME = re.compile(r"filename\*\s*=\s*UTF-8''([^;]+)", re.IGNORECASE)
+
+
+def filename_from(content_disposition: str) -> str:
+    """The name in `attachment; filename*=UTF-8''...`, decoded; 'file' when there is none."""
+    match = _DISPOSITION_NAME.search(content_disposition or "")
+    return urllib.parse.unquote(match.group(1).strip()) if match else "file"
 
 
 class CachedIdentity:
