@@ -103,12 +103,12 @@ export default async function ProductPage({
   return (
     <div className="px-5 py-5 pb-14 lg:px-7">
       <nav className="flex items-center gap-1.5 text-[13px] text-ink-3">
-        <Link href="/marketplace" className="text-ink-2 hover:text-ink">
-          Marketplace
+        <Link href="/tuning?tab=discover" className="text-ink-2 hover:text-ink">
+          Tuning
         </Link>
         <span>/</span>
         <Link
-          href={`/marketplace?category=${encodeURIComponent(product.category)}`}
+          href={`/tuning?tab=discover&category=${encodeURIComponent(product.category)}`}
           className="text-ink-2 hover:text-ink"
         >
           {product.category}
@@ -313,7 +313,7 @@ export default async function ProductPage({
                 <FootNote>{product.restrictionNote}</FootNote>
               </>
             ) : installed ? (
-              <ButtonLink href="/workspace">Open in My workspace</ButtonLink>
+              <ButtonLink href="/tuning">Open in My agents</ButtonLink>
             ) : (
               <ButtonLink href={`/marketplace/${product.slug}/setup`}>
                 Add to workspace

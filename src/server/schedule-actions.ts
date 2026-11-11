@@ -105,7 +105,7 @@ export async function createSchedule(
   });
 
   revalidatePath("/results");
-  revalidatePath("/workspace");
+  revalidatePath("/tuning");
   return reply(previous);
 }
 
@@ -147,7 +147,7 @@ export async function deleteSchedule(formData: FormData) {
   await prisma.schedule.deleteMany({ where: { id, userId: user.id } });
 
   revalidatePath("/results");
-  revalidatePath("/workspace");
+  revalidatePath("/tuning");
 }
 
 /** "Run now" — the same firing the tick would do, without waiting for it. */

@@ -21,7 +21,7 @@ export function MarketplaceFilters({
     const next = new URLSearchParams(params.toString());
     if (value === null || next.get(key) === value) next.delete(key);
     else next.set(key, value);
-    router.push(`/marketplace?${next}`);
+    router.push(`/tuning?${next}`);
   };
 
   const readyOnly = params.get("ready") !== "0";

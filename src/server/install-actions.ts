@@ -194,7 +194,7 @@ export async function activate(
       update: { status: "PARTIAL", storageBackend, schedule: schedule || null },
     });
     await attachFolder(partial.id);
-    revalidatePath("/workspace");
+    revalidatePath("/tuning");
     redirect("/workspace");
   }
 
