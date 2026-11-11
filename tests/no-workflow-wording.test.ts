@@ -13,7 +13,6 @@ const root = join(__dirname, "..");
 const FILES = [
   "src/app/(app)/creator/upload/upload-form.tsx",
   "src/app/(app)/creator/page.tsx",
-  "src/app/(app)/tuning/filters.tsx",
   "src/app/(app)/tuning/page.tsx",
   "src/app/(app)/tuning/discover-view.tsx",
   "src/app/(app)/tuning/agents-view.tsx",
