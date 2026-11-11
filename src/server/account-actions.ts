@@ -72,7 +72,7 @@ export async function connectAccount(
       });
       await refreshInstallationStates(user.id);
       revalidatePath("/accounts");
-      revalidatePath("/workspace");
+      revalidatePath("/tuning");
       return { done: true };
     }
   }
@@ -107,7 +107,7 @@ export async function connectAccount(
   await refreshInstallationStates(user.id);
 
   revalidatePath("/accounts");
-  revalidatePath("/workspace");
+  revalidatePath("/tuning");
   return { done: true };
 }
 
@@ -155,5 +155,5 @@ export async function disconnectAccount(formData: FormData) {
 
   await refreshInstallationStates(user.id);
   revalidatePath("/accounts");
-  revalidatePath("/workspace");
+  revalidatePath("/tuning");
 }

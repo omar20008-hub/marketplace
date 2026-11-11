@@ -114,7 +114,7 @@ export function GuestLanding({ products }: { products: FeaturedProduct[] }) {
 
         <nav className="flex items-center gap-1 sm:gap-2">
           <Link
-            href="/marketplace"
+            href="/tuning?tab=discover"
             className="hidden h-9 items-center rounded-row px-3 text-sm text-ink-2 hover:text-ink sm:inline-flex"
           >
             Marketplace
@@ -151,7 +151,7 @@ export function GuestLanding({ products }: { products: FeaturedProduct[] }) {
                 Get started
                 <ArrowRight size={16} strokeWidth={1.8} />
               </ButtonLink>
-              <ButtonLink href="/marketplace" tone="secondary" size="md" className="h-11 px-6">
+              <ButtonLink href="/tuning?tab=discover" tone="secondary" size="md" className="h-11 px-6">
                 <Store size={16} strokeWidth={1.8} />
                 Browse the Marketplace
               </ButtonLink>
@@ -228,7 +228,7 @@ export function GuestLanding({ products }: { products: FeaturedProduct[] }) {
               {AREAS.map((area) => (
                 <Link
                   key={area.name}
-                  href="/marketplace"
+                  href="/tuning?tab=discover"
                   className="flex flex-col gap-1.5 rounded-card border border-line bg-canvas p-4 hover:border-ink-3"
                 >
                   <span className="text-[15px] font-medium text-ink">{area.name}</span>
@@ -317,7 +317,7 @@ export function GuestLanding({ products }: { products: FeaturedProduct[] }) {
                     Ready to run today
                   </h2>
                 </div>
-                <Link href="/marketplace" className="shrink-0 text-[13px]">
+                <Link href="/tuning?tab=discover" className="shrink-0 text-[13px]">
                   See all
                 </Link>
               </div>
@@ -425,7 +425,7 @@ export function GuestLanding({ products }: { products: FeaturedProduct[] }) {
       <footer className="flex flex-col gap-4 border-t border-line px-4 py-8 text-[13px] text-ink-3 md:flex-row md:items-center md:justify-between md:px-10">
         <span>© {new Date().getFullYear()} Builder</span>
         <nav className="flex flex-wrap items-center gap-x-5 gap-y-2">
-          <Link href="/marketplace" className="text-ink-3 hover:text-ink">
+          <Link href="/tuning?tab=discover" className="text-ink-3 hover:text-ink">
             Marketplace
           </Link>
           <Link href="/pricing" className="text-ink-3 hover:text-ink">

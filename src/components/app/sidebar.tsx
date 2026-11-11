@@ -4,7 +4,7 @@ import clsx from "clsx";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { Brain, FileText, FolderClosed, Layers, Link2, LogIn, LogOut, PanelLeft, PenSquare, Search, Shield, SquareCode, X } from "lucide-react";
+import { Brain, FileText, Layers, Link2, LogIn, LogOut, PanelLeft, PenSquare, Search, Shield, SquareCode, X } from "lucide-react";
 import { Avatar } from "@/components/ds";
 import { logout } from "@/server/auth-actions";
 
@@ -52,12 +52,13 @@ export function Sidebar({
 
   const nav = [
     { href: "/", label: "New task", icon: <PenSquare {...iconProps} />, exact: true },
-    { href: "/marketplace", label: "Marketplace", icon: <Layers {...iconProps} /> },
     {
-      href: "/workspace",
-      label: "My workspace",
-      icon: <FolderClosed {...iconProps} />,
-      trailing: <span className="text-xs text-ink-3">{counts.workspace}</span>,
+      href: "/tuning",
+      label: "Tuning",
+      icon: <Layers {...iconProps} />,
+      // Agent pages still live under their old paths.
+      alsoActive: ["/marketplace", "/workspace"],
+      trailing: user ? <span className="text-xs text-ink-3">{counts.workspace}</span> : null,
     },
     // Results is an admin screen, not a general one — a signed-in creator
     // with no ADMIN role does not see it either, same as a guest.
@@ -82,8 +83,10 @@ export function Sidebar({
       : []),
   ];
 
-  const isActive = (href: string, exact?: boolean) =>
-    exact ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
+  const isActive = (href: string, exact?: boolean, alsoActive: string[] = []) =>
+    exact
+      ? pathname === href
+      : [href, ...alsoActive].some((base) => pathname === base || pathname.startsWith(`${base}/`));
 
   /**
    * Search filters the list already on screen rather than asking the server.
@@ -166,7 +169,7 @@ export function Sidebar({
             onClick={() => setOpen(false)}
             className={clsx(
               "flex h-9 items-center gap-2.5 rounded-row px-2.5 text-sm text-ink",
-              isActive(item.href, item.exact) ? "bg-selected" : "hover:bg-selected/60",
+              isActive(item.href, item.exact, "alsoActive" in item ? item.alsoActive : undefined) ? "bg-selected" : "hover:bg-selected/60",
             )}
           >
             {item.icon}
@@ -210,7 +213,7 @@ export function Sidebar({
         {user ? (
           <>
             <Link
-              href="/workspace"
+              href="/tuning"
               className="flex min-w-0 flex-1 items-center gap-2.5 rounded-row px-2.5 py-2 text-ink hover:bg-selected/60"
             >
               <Avatar initials={user.initials} tint={user.avatarTint} ink={user.avatarInk} />

@@ -144,7 +144,7 @@ export async function approve(
   );
 
   revalidatePath("/admin");
-  revalidatePath("/marketplace");
+  revalidatePath("/tuning");
   return {};
 }
 
@@ -251,7 +251,7 @@ export async function hold(formData: FormData) {
 
   await record(admin.id, "security hold", product.title, reason);
   revalidatePath("/admin");
-  revalidatePath("/marketplace");
+  revalidatePath("/tuning");
 }
 
 export type CreateUserState = { error?: string; createdEmail?: string };
@@ -460,6 +460,6 @@ export async function removeFromMarketplace(formData: FormData) {
     `was ${product.status}; removed from the marketplace for everyone`,
   );
   revalidatePath("/admin");
-  revalidatePath("/marketplace");
+  revalidatePath("/tuning");
   redirect(`/admin?view=products&saved=${encodeURIComponent(product.slug)}&mode=shop`);
 }

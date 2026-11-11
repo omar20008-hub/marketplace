@@ -79,7 +79,7 @@ export default async function HomePage() {
             Builder <span className="font-normal text-ink-3">Auto</span>
             <ChevronDown size={16} strokeWidth={1.8} className="text-ink-3" />
           </div>
-          <ButtonLink href="/workspace" tone="upgrade" size="sm" className="h-[34px]">
+          <ButtonLink href="/tuning" tone="upgrade" size="sm" className="h-[34px]">
             <Sparkles size={15} strokeWidth={1.8} />
             Upgrade to Team
           </ButtonLink>
@@ -91,7 +91,7 @@ export default async function HomePage() {
           </h1>
           <p className="mt-2.5 max-w-[520px] text-center text-[15px] text-ink-2">
             Describe the task. We match it to an agent you already own,
-            or suggest one from the Marketplace.
+            or suggest one from Discover.
           </p>
 
           <Composer
@@ -114,7 +114,7 @@ export default async function HomePage() {
                 In your workspace · ready to run{" "}
                 <span className="font-normal text-ink-3">{ready.length}</span>
               </span>
-              <Link href="/workspace" className="text-[13px]">
+              <Link href="/tuning" className="text-[13px]">
                 See all
               </Link>
             </div>

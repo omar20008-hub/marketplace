@@ -476,7 +476,7 @@ export function SetupWizard({
 
         <footer className="flex flex-wrap items-center gap-3 border-t border-selected px-6 py-4">
           <p className="min-w-0 flex-1 text-xs text-ink-3">
-            You can leave now — it stays in My workspace as Partially ready.
+            You can leave now — it stays in My agents as Partially ready.
           </p>
           <ButtonLink
             href={`/marketplace/${product.slug}`}

@@ -21,8 +21,8 @@ test.describe("signed in as a user and admin", () => {
     await page.goto("/");
     await expect(page.locator("h1")).toContainText("What do you want to get done?");
 
-    await page.goto("/marketplace");
-    await expect(page).toHaveTitle(/Marketplace/);
+    await page.goto("/tuning?tab=discover");
+    await expect(page).toHaveTitle(/Tuning/);
     const cards = page.locator('a[href^="/marketplace/"]');
     expect(await cards.count()).toBeGreaterThan(0);
 
@@ -33,8 +33,9 @@ test.describe("signed in as a user and admin", () => {
     await page.goto(`${slug}/setup`);
     await expect(page.locator("h1")).toContainText("Activate");
 
-    await page.goto("/workspace");
-    await expect(page.locator("h1")).toContainText("My workspace");
+    await page.goto("/tuning");
+    await expect(page.locator("h1")).toContainText("Tuning");
+    await expect(page.getByRole("link", { name: "My agents" })).toBeVisible();
 
     await page.goto("/results");
     await expect(page.locator("h1")).toContainText("Results");
