@@ -6,7 +6,6 @@ import { Badge } from "@/components/ds";
 import { ProductGlyph } from "@/components/app/product-glyph";
 import { readinessFor, type Readiness } from "@/lib/readiness";
 import { invocationModeLabel } from "@/lib/invocation-mode";
-import { MarketplaceFilters } from "./filters";
 
 export type Search = {
   tab?: string;
@@ -18,15 +17,6 @@ export type Search = {
 };
 
 const SORTS = ["Featured", "Trending", "New", "Top rated"] as const;
-
-const INTEGRATION_LABELS: Record<string, string> = {
-  googleSheetsOAuth2Api: "Sheets",
-  googleDriveOAuth2Api: "Drive",
-  microsoftTeamsOAuth2Api: "Teams",
-  slackApi: "Slack",
-  hubspotApi: "HubSpot",
-  facebookGraphApi: "Facebook & Instagram",
-};
 
 function compactRuns(runs: number) {
   return runs >= 1000 ? `${(runs / 1000).toFixed(1)}k` : `${runs}`;
@@ -69,16 +59,6 @@ export async function DiscoverView({ params }: { params: Search }) {
 
   const installedIds = new Set(installations.map((i) => i.productId));
   const outOfRuns = user ? runsThisMonth >= user.plan.monthlyRuns : false;
-
-  // Counts come from the table, not from the mock copy. They can be small, but
-  // they can never be wrong.
-  const categoryCounts = all.reduce<Record<string, number>>((acc, product) => {
-    acc[product.category] = (acc[product.category] ?? 0) + 1;
-    return acc;
-  }, {});
-  const integrations = [
-    ...new Set(all.flatMap((product) => product.requiredCredentials)),
-  ].filter((type) => INTEGRATION_LABELS[type]);
 
   const query = params.q?.toLowerCase().trim() ?? "";
 
@@ -154,15 +134,7 @@ export async function DiscoverView({ params }: { params: Search }) {
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        <MarketplaceFilters
-          categoryCounts={categoryCounts}
-          integrations={integrations.map((type) => ({
-            value: type,
-            label: INTEGRATION_LABELS[type],
-          }))}
-        />
-
-        <div className="flex min-w-0 flex-1 flex-col gap-4 px-5 pt-3 pb-10 lg:pr-7 lg:pl-3">
+        <div className="flex min-w-0 flex-1 flex-col gap-4 px-5 pt-3 pb-10 lg:pr-7">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex gap-1 text-sm">
               {SORTS.map((option) => {
