@@ -91,6 +91,33 @@ Notion's hosted MCP server signs people in with OAuth, which the gateway does no
 support yet. A Notion MCP server that takes an integration token works today, if it
 is reachable at a public https address.
 
+## From the chat: the assistant uses them directly
+
+With `ORCHESTRATOR_DRIVER=platform`, the assistant itself can use the servers a person
+connected, so "add this contact to HubSpot" works without installing a product first,
+as long as a connected MCP server offers a tool for it. It reaches them in this process
+(the same code as the endpoint above, with the person's own tokens).
+
+- **Two tools, not hundreds.** The model is given `find_connector_tools` (search the
+  person's tools by what they want to do, with each tool's fields and whether it writes)
+  and `call_connector_tool`. They are offered only to a person who has connected a server
+  marked *My agents and workflows*; nobody else sees them or their prompt rules.
+- **Writes wait for the person.** A tool that changes something is not run when the model
+  asks. The assistant shows the tool and the exact values and waits for a plain "yes" in the
+  next message; the call then runs only if the tool and values are the same ones, and only
+  once. A change of values needs a new yes. This is enforced in code (the same gate as
+  installed products), not by the prompt, and it holds if the model misbehaves.
+- **What counts as a write.** Every tool, unless its server marks it `readOnlyHint: true`,
+  which is the protocol's own default. A server that marks nothing gets a confirmation for
+  everything.
+- **Results are data.** What a server answers is passed to the model as data, cut to 6000
+  characters; images and files are named, not carried.
+
+With `ORCHESTRATOR_DRIVER=n8n` (the default) the Orchestrator is the n8n workflow, whose
+tools are defined there, so none of this applies. It gets the same tools when the platform
+orchestrator takes over, or by giving the n8n workflow an MCP Client Tool node that calls
+`/api/mcp` with the person's agent key.
+
 ## Safety
 
 - **Addresses.** The platform makes requests to addresses people type, so it refuses

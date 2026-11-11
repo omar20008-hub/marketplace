@@ -10,6 +10,7 @@ import type { ChatModel } from "./model";
 import { recentTurns } from "./memory";
 import { runInstalledProduct } from "./runtimes/product";
 import { createWebSearch } from "./runtimes/web";
+import { createConnectorHandlers } from "./runtimes/connectors";
 import { formatHistory, searchConversation } from "../conversation-memory";
 
 /**
@@ -53,6 +54,9 @@ export async function answerOnPlatform({
         ? await recentTurns({ userId, threadId, beforeMessageId: currentMessageId })
         : [];
 
+    // The person's connected MCP servers, when they have any. Without one, the tools are not offered.
+    const connectors = user ? await createConnectorHandlers(userId) : undefined;
+
     const handlers: ToolHandlers = {
       runMarketplaceTool: async (installationId, args) =>
         user
@@ -62,6 +66,7 @@ export async function answerOnPlatform({
       ...(user
         ? { searchConversation: async (query: string) => formatHistory(await searchConversation(userId, query)) }
         : {}),
+      ...(connectors ? { connectors } : {}),
     };
 
     return await runOrchestratorTurn({

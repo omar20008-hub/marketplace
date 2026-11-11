@@ -115,32 +115,73 @@ async function markExpired(userId: string, connectorId: string) {
   await refreshInstallationStates(userId);
 }
 
-async function listAll(userId: string): Promise<RpcOutcome> {
+type Collected = { name: string; displayName: string; tool: McpTool };
+
+/** Every tool of the person's servers, each under the name the gateway gives it. One server being down leaves the rest. */
+async function collectTools(userId: string): Promise<Collected[]> {
   const servers = await connectedServers(userId);
   const settled = await Promise.allSettled(servers.map(toolsOf));
 
-  const tools: unknown[] = [];
+  const collected: Collected[] = [];
   settled.forEach((outcome, index) => {
     const { alias, displayName } = servers[index];
     if (outcome.status === "rejected") {
-      // One server being down must not take the others' tools with it.
       const code = outcome.reason instanceof McpError ? outcome.reason.code : "error";
       console.warn(`MCP gateway: could not list tools for "${alias}": ${code}`);
       return;
     }
     for (const tool of outcome.value) {
       const name = namespacedName(alias, tool.name);
-      if (!name) continue;
-      tools.push({
-        name,
-        ...(tool.title ? { title: tool.title } : {}),
-        description: `[${displayName}] ${tool.description ?? tool.name}`,
-        inputSchema: tool.inputSchema ?? { type: "object", properties: {} },
-        ...(tool.annotations ? { annotations: tool.annotations } : {}),
-      });
+      if (name) collected.push({ name, displayName, tool });
     }
   });
+  return collected;
+}
+
+async function listAll(userId: string): Promise<RpcOutcome> {
+  const tools = (await collectTools(userId)).map(({ name, displayName, tool }) => ({
+    name,
+    ...(tool.title ? { title: tool.title } : {}),
+    description: `[${displayName}] ${tool.description ?? tool.name}`,
+    inputSchema: tool.inputSchema ?? { type: "object", properties: {} },
+    ...(tool.annotations ? { annotations: tool.annotations } : {}),
+  }));
   return { result: { tools } };
+}
+
+/** What the Orchestrator is told about a tool. */
+export type UserTool = {
+  /** <server>__<tool>, as the gateway names it. */
+  name: string;
+  server: string;
+  description: string;
+  inputSchema: unknown;
+  /**
+   * True only when the server itself says the tool changes nothing (readOnlyHint). A tool
+   * that says nothing is treated as able to change things, which is the protocol's own default.
+   */
+  readOnly: boolean;
+};
+
+/** The same tools the endpoint lists, for code that runs in this process. */
+export async function listUserTools(userId: string): Promise<UserTool[]> {
+  return (await collectTools(userId)).map(({ name, displayName, tool }) => ({
+    name,
+    server: displayName,
+    description: tool.description ?? tool.title ?? tool.name,
+    inputSchema: tool.inputSchema ?? { type: "object", properties: {} },
+    readOnly: (tool.annotations as { readOnlyHint?: unknown } | undefined)?.readOnlyHint === true,
+  }));
+}
+
+/** The names of the servers offered to this person's agents, without asking any of them for its tools. */
+export async function connectedServerNames(userId: string): Promise<string[]> {
+  return (await connectedServers(userId)).map((server) => server.displayName);
+}
+
+/** Calls one of the person's tools by its gateway name. Never throws: a failure is an `error` outcome. */
+export async function callUserTool(userId: string, name: unknown, args: unknown): Promise<RpcOutcome> {
+  return callOne(userId, { name, arguments: args });
 }
 
 async function callOne(userId: string, params: unknown): Promise<RpcOutcome> {
