@@ -172,7 +172,7 @@ export async function AgentsView({ filter }: { filter?: string }) {
                       </p>
                     </div>
                     {readiness.missing.length > 0 ? (
-                      <ButtonLink href="/accounts" size="sm">
+                      <ButtonLink href="/tuning?tab=connectors" size="sm">
                         Reconnect
                       </ButtonLink>
                     ) : (
@@ -191,7 +191,7 @@ export async function AgentsView({ filter }: { filter?: string }) {
           ) : null}
 
           {visible.length > 0 ? (
-            <ProductList title="My agents" rows={visible} />
+            <ProductList title="My Agents" rows={visible} />
           ) : null}
 
           {visible.length === 0 ? (
@@ -255,7 +255,7 @@ export async function AgentsView({ filter }: { filter?: string }) {
             <SectionLabel>Also here</SectionLabel>
             <div className="mt-2 flex flex-col">
               <RailLink
-                href="/accounts"
+                href="/tuning?tab=connectors"
                 label="Connectors"
                 value={String(
                   accounts.filter((a) => a.status !== "PENDING").length,
@@ -271,7 +271,7 @@ export async function AgentsView({ filter }: { filter?: string }) {
                 label="Schedules"
                 value={String(schedules)}
               />
-              <RailLink href="/accounts" label="Settings" value="" />
+              <RailLink href="/tuning?tab=connectors" label="Settings" value="" />
             </div>
           </div>
         </aside>

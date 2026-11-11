@@ -74,7 +74,7 @@ export const CATALOG: CatalogEntry[] = [
     description: "Talk to the platform through its bot",
     initials: "TG",
     slug: "telegram",
-    href: "/accounts",
+    href: "/tuning?tab=connectors",
   },
   { name: "Gmail", by: "Google", description: "Read and draft email", initials: "GM", slug: "gmail" },
   { name: "Google Calendar", by: "Google", description: "Manage events and meetings", initials: "GC", slug: "googlecalendar" },

@@ -25,7 +25,7 @@ export async function startTelegramLink(): Promise<TelegramCodeState> {
 export async function removeTelegramLink(): Promise<void> {
   const user = await requireUser();
   await unlinkChannel(user.id, TELEGRAM);
-  revalidatePath("/accounts");
+  revalidatePath("/tuning");
 }
 
 /** The WhatsApp card. Same proof as Telegram: a code the person sends from WhatsApp. */
@@ -51,5 +51,5 @@ export async function whatsappLinked(): Promise<boolean> {
 export async function removeWhatsappLink(): Promise<void> {
   const user = await requireUser();
   await unlinkChannel(user.id, WHATSAPP);
-  revalidatePath("/accounts");
+  revalidatePath("/tuning");
 }

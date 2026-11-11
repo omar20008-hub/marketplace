@@ -79,7 +79,7 @@ export default async function FilesPage({
           href="/tuning"
           className="mb-3 inline-flex items-center gap-1 text-[13px] text-ink-2 hover:text-ink"
         >
-          <ChevronLeft size={14} /> My agents
+          <ChevronLeft size={14} /> My Agents
         </Link>
         <PageTitle
           title={`Files · ${installation.product.title}`}

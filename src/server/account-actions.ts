@@ -71,7 +71,7 @@ export async function connectAccount(
         },
       });
       await refreshInstallationStates(user.id);
-      revalidatePath("/accounts");
+      revalidatePath("/tuning");
       revalidatePath("/tuning");
       return { done: true };
     }
@@ -106,7 +106,7 @@ export async function connectAccount(
   // An expired connection can block an installation; clearing it may unblock one.
   await refreshInstallationStates(user.id);
 
-  revalidatePath("/accounts");
+  revalidatePath("/tuning");
   revalidatePath("/tuning");
   return { done: true };
 }
@@ -154,6 +154,6 @@ export async function disconnectAccount(formData: FormData) {
   });
 
   await refreshInstallationStates(user.id);
-  revalidatePath("/accounts");
+  revalidatePath("/tuning");
   revalidatePath("/tuning");
 }

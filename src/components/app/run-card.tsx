@@ -95,7 +95,7 @@ export function RunCard({ run }: { run: RunCardData }) {
               </Button>
             </>
           ) : (
-            <ButtonLink href="/accounts" size="sm">
+            <ButtonLink href="/tuning?tab=connectors" size="sm">
               Reconnect
             </ButtonLink>
           )}

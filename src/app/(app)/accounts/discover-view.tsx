@@ -1,41 +1,12 @@
 import Link from "next/link";
-import clsx from "clsx";
 import { Plus } from "lucide-react";
 import { Badge, Card, Meta, SectionLabel } from "@/components/ds";
 import { CATALOG, type CatalogEntry } from "@/lib/connectors/catalog";
 import { BrandMark } from "./brand-mark";
 
-/** The two views of the Connectors tab. "My connections" is the default and has no query value. */
-export function ConnectorsTabs({ active }: { active: "yours" | "discover" }) {
-  const tabs = [
-    { key: "yours", label: "My connections", href: "/accounts" },
-    { key: "discover", label: "Discover", href: "/accounts?tab=discover" },
-  ] as const;
-  return (
-    <nav
-      aria-label="Connectors views"
-      className="inline-flex rounded-full border border-line bg-fill p-0.5"
-    >
-      {tabs.map((tab) => (
-        <Link
-          key={tab.key}
-          href={tab.href}
-          aria-current={tab.key === active ? "page" : undefined}
-          className={clsx(
-            "rounded-full px-3.5 py-1 text-[13px]",
-            tab.key === active ? "bg-canvas font-medium shadow-sm" : "text-ink-2 hover:text-ink",
-          )}
-        >
-          {tab.label}
-        </Link>
-      ))}
-    </nav>
-  );
-}
-
 /**
  * Every tool the platform lists. Connectable ones link into the Connect panel on
- * My connections; the rest are listed as coming soon. Search is a plain GET form, so it
+ * My Connectors; the rest are listed as coming soon. Search is a plain GET form, so it
  * works without script and survives a reload.
  */
 export function DiscoverView({
@@ -63,8 +34,9 @@ export function DiscoverView({
       <div className="flex flex-wrap items-center gap-3">
         <SectionLabel>All connectors</SectionLabel>
         <Meta>{entries.length}</Meta>
-        <form action="/accounts" method="get" className="ml-auto w-full sm:w-72">
+        <form action="/tuning" method="get" className="ml-auto w-full sm:w-72">
           <input type="hidden" name="tab" value="discover" />
+          <input type="hidden" name="kind" value="connector" />
           <input
             type="search"
             name="q"
@@ -109,7 +81,7 @@ function stateOf(
 function DiscoverCard({ entry, state }: { entry: CatalogEntry; state: CardState }) {
   const href =
     entry.href ??
-    (entry.credentialType ? `/accounts?connect=${entry.credentialType}` : undefined);
+    (entry.credentialType ? `/tuning?tab=connectors&connect=${entry.credentialType}` : undefined);
 
   return (
     <Card className="flex items-start gap-3 p-4">
