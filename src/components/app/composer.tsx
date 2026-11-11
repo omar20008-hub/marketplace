@@ -142,7 +142,7 @@ export function Composer({
                   box has nowhere to put, so it hands over to the screen that
                   collects them rather than half-collecting them here. */}
               <Link
-                href="/results?view=schedules"
+                href="/admin?view=results&section=schedules"
                 className="flex h-[34px] items-center gap-1.5 rounded-full border border-line px-3 text-[13px] whitespace-nowrap text-ink-2 hover:bg-fill"
               >
                 <CalendarClock size={15} strokeWidth={1.8} />

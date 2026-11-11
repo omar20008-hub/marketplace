@@ -23,6 +23,7 @@ import { DecisionPanel } from "./decision-panel";
 import { PlatformKeys } from "./platform-keys";
 import { ProductsAdmin } from "./products-admin";
 import { HealthAdmin } from "./health-admin";
+import { RESULT_SECTIONS, ResultsView, type ResultsSection } from "./results-view";
 
 export const metadata = { title: "Admin · Builder" };
 
@@ -35,6 +36,7 @@ const TABS = [
   { key: "health", label: "Health" },
   { key: "plans", label: "Plans" },
   { key: "audit", label: "Audit" },
+  { key: "results", label: "Results" },
   { key: "users", label: "Users" },
   { key: "keys", label: "Platform keys" },
 ] as const;
@@ -43,7 +45,7 @@ function AdminTabs({ active, openCount }: { active: string; openCount?: number }
   return (
     <nav className="mt-4 flex gap-1 overflow-x-auto text-sm">
       {TABS.map((tab) => {
-        const linkable = ["submissions", "users", "keys", "products", "health"].includes(tab.key);
+        const linkable = ["submissions", "users", "keys", "products", "health", "results"].includes(tab.key);
         const isActive = tab.key === active;
         const className = isActive
           ? "flex items-center gap-1.5 rounded-full bg-fill px-3.5 py-[7px] font-medium whitespace-nowrap text-ink"
@@ -90,6 +92,9 @@ export default async function AdminPage({
     installs?: string;
     runs?: string;
     submissions?: string;
+    section?: string;
+    run?: string;
+    status?: string;
   }>;
 }) {
   const {
@@ -103,8 +108,24 @@ export default async function AdminPage({
     installs,
     runs,
     submissions,
+    section,
+    run,
+    status,
   } = await searchParams;
   const admin = await requireRole("ADMIN");
+
+  if (view === "results") {
+    const resultsSection = RESULT_SECTIONS.find((item) => item === section) as
+      | ResultsSection
+      | undefined;
+    return (
+      <div className="px-5 py-5 lg:px-7">
+        <PageTitle title="Admin" />
+        <AdminTabs active="results" />
+        <ResultsView user={admin} section={resultsSection} run={run} status={status} />
+      </div>
+    );
+  }
 
   if (view === "health") {
     return (
