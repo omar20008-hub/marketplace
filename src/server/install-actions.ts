@@ -14,7 +14,12 @@ import { editorIsGranted, findProviderByCredentialType } from "@/lib/connectors/
 import { newKnowledgeKey } from "./knowledge/keys";
 import { createKnowledgeSource } from "./knowledge/sources";
 import { stopWatch } from "./knowledge/watch";
-import { credentialLabel as labelFor, isPlatformHeld, isPlatformOAuth } from "@/lib/credentials";
+import {
+  credentialLabel as labelFor,
+  isPlatformHeld,
+  isPlatformOAuth,
+  platformSideConnections,
+} from "@/lib/credentials";
 import { platformCredential } from "@/lib/platform-secrets";
 import { removeCopy } from "./template-deploy";
 import { installCopy } from "./install-copy";
@@ -156,12 +161,16 @@ export async function activate(
   // product, whatever a stored requirement row says, so they are never asked of the person.
   // The template's own list counts too: a platform key that no requirement row names
   // still has to reach n8n, or the install is refused as missing it.
+  // Connections the platform itself uses (Ads Campaign calls Meta) are waited for
+  // like any other but are never written into n8n.
+  const sideConnections = platformSideConnections(product.templateId);
   const needed = [
     ...new Set([
       ...product.requirements
         .filter((r) => r.credentialType && (r.providedBy === "USER" || isPlatformHeld(r.credentialType)))
         .map((r) => r.credentialType!),
       ...product.requiredCredentials.filter(isPlatformHeld),
+      ...sideConnections,
     ]),
   ];
 
@@ -216,7 +225,12 @@ export async function activate(
   const credentialsJson = JSON.stringify(
     Object.fromEntries(
       needed
-        .filter((type) => !isPlatformOAuth(type) && !findProviderByCredentialType(type))
+        .filter(
+          (type) =>
+            !isPlatformOAuth(type) &&
+            !findProviderByCredentialType(type) &&
+            !(sideConnections.includes(type) && !product.requiredCredentials.includes(type)),
+        )
         .map((type) => [
           type,
           isPlatformHeld(type)
