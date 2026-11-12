@@ -112,6 +112,10 @@ class Config(unittest.TestCase):
         cfg = self.good(seccomp_profile=f.name, seccomp_sha256=hashlib.sha256(b"{}").hexdigest())
         config.check_seccomp(cfg)
 
+    def test_the_hmac_key_lives_in_the_state_directory_not_in_etc(self):
+        # The unit makes /etc read-only to the service (ProtectSystem=full); a key there cannot be created.
+        self.assertTrue(self.good().hmac_key_file.startswith("/var/lib/browser-broker/"))
+
     def test_hmac_key_is_created_private_and_stable(self):
         path = os.path.join(tempfile.mkdtemp(), "hmac.key")
         first = config.load_or_create_key(path)

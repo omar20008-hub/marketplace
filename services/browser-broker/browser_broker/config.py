@@ -29,7 +29,7 @@ class Config:
     socket_group: str = "hmt-001"
     state_dir: str = "/var/lib/browser-broker"
     seccomp_profile: str = "/etc/browser-broker/seccomp-chrome.json"
-    hmac_key_file: str = "/etc/browser-broker/hmac.key"
+    hmac_key_file: str = "/var/lib/browser-broker/hmac.key"   # state dir: writable by the service, /etc is read-only to it
     network: str = "browser-net"
     dns: Tuple[str, ...] = ("1.1.1.1", "8.8.8.8")
     memory: str = "700m"
