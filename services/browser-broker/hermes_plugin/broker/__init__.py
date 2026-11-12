@@ -39,7 +39,9 @@ except Exception:  # pragma: no cover - only if Hermes moves it
     def get_secret(name, default=None):
         return os.environ.get(name, default)
 
-logger = logging.getLogger(__name__)
+# Under "tools." on purpose: Hermes writes only some logger namespaces (hermes_cli, tools, agent, aiohttp) to
+# agent.log, and the module's own name is not one of them, so its warnings would never be seen.
+logger = logging.getLogger("tools.browser_broker")
 
 DEFAULT_SOCKET = "/run/browser-broker/broker.sock"
 # Reasons the broker can give a person, as the last part of the dead address (letters and hyphens only).
@@ -149,6 +151,7 @@ class BrokerBrowserProvider(BrowserProvider):
         with _lock:
             _KEY_OF_SESSION[session_id] = key
             _LATEST[_who(key)] = session_id
+        logger.info("browser broker session %s opened for task %s", session_id[:12], task_id)
         return {"session_name": "broker-" + session_id[:12], "bb_session_id": session_id, "cdp_url": url,
                 "features": {"isolated": True}}
 

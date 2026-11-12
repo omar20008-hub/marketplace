@@ -177,6 +177,22 @@ class Provider(Case):
             self.assertEqual(info["bb_session_id"], "")
             self.assertIn("/devtools/browser/", info["cdp_url"])      # Hermes passes such a URL through untouched
 
+    def test_what_happens_is_logged_where_hermes_writes_its_log(self):
+        capture = Capture()
+        hermes_side = logging.getLogger("tools")                 # a namespace Hermes' log file collects
+        hermes_side.addHandler(capture)
+        hermes_side.setLevel(logging.DEBUG)
+        try:
+            self.provider.create_session("task-9")
+            self.broker.fail = (503, {"error": "busy"})
+            self.provider.create_session("task-9")
+        finally:
+            hermes_side.removeHandler(capture)
+        text = "\n".join(capture.lines)
+        self.assertIn("opened for task task-9", text)
+        self.assertIn("gave no browser (busy)", text)
+        self.assertNotIn(KEY, text)
+
     def test_no_broker_and_no_key_are_dead_addresses_too(self):
         os.environ["BROWSER_BROKER_SOCKET"] = os.path.join(self.dir, "missing.sock")
         self.assertTrue(self.provider.create_session("t")["cdp_url"].endswith("/broker-unavailable"))
