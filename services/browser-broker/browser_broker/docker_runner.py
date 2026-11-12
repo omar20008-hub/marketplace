@@ -48,8 +48,7 @@ def build_run_args(cfg: Config, session_id: str, deadline: float, uploads_dir: s
         # The only host folder the browser ever sees: this session's uploads, read-only.
         "-v", uploads_dir + ":/uploads:ro",
         cfg.image,
-        "--remote-debugging-address=0.0.0.0",
-        "--remote-debugging-port=%d" % cfg.cdp_port,
+        # DevTools is set up by the image's entrypoint (loopback 9223, relayed to 9222): nothing about it is passed here.
         "about:blank",
     ]
     return args

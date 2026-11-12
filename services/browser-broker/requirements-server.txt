@@ -1,0 +1,3 @@
+# What the server installed (AlmaLinux 9, Python 3.9, x86_64): the exact wheel, with its hash.
+#   pip install --no-index --find-links <dir with the wheel> --require-hashes -r requirements-server.txt
+websockets==15.0.1 --hash=sha256:ac017dd64572e5c3bd01939121e4d16cf30e5d7e110a119399cf3133b63ad054

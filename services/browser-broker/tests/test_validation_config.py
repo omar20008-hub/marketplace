@@ -69,6 +69,7 @@ class RunArgs(unittest.TestCase):
         self.assertTrue(args[args.index("-v") + 1].endswith(":/uploads:ro"))
         self.assertIn(cfg.image, args)              # by image ID
         self.assertEqual(args[-1], "about:blank")
+        self.assertNotIn("--remote-debugging", joined)   # the image's entrypoint owns DevTools
 
     def test_memory_parsing(self):
         self.assertAlmostEqual(parse_mem_mb("198.6MiB / 700MiB"), 198.6)
