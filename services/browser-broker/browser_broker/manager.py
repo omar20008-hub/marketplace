@@ -13,7 +13,8 @@ from typing import Any, Callable, Dict, List, Optional
 from . import events
 from .cdp import CdpError
 from .config import Config
-from .docker_runner import DockerError, container_name
+from .docker_runner import DockerError
+from .relay import Relay
 from .validation import sanitize_filename
 
 ACTIVE = ("queued", "starting", "ready")
@@ -43,6 +44,8 @@ class Session:
         self.closed_at = 0.0
         self.mem_peak = 0.0
         self.holds_slot = False
+        self.relay = None
+        self.cdp_url = ""
         self.lock = asyncio.Lock()
 
     def record(self) -> Dict[str, Any]:
@@ -62,6 +65,7 @@ class Manager:
         hmac_key: bytes,
         clock: Callable[[], float] = time.time,
         sleep: Callable[[float], Any] = asyncio.sleep,
+        relay_cls=Relay,
     ):
         self.cfg = cfg
         self.docker = docker
@@ -69,6 +73,7 @@ class Manager:
         self.key = hmac_key
         self.clock = clock
         self.sleep = sleep
+        self.relay_cls = relay_cls
         self.sessions: Dict[str, Session] = {}
         self.sessions_dir = os.path.join(cfg.state_dir, "sessions")
         self.state_path = os.path.join(cfg.state_dir, "sessions.json")
@@ -160,6 +165,10 @@ class Manager:
             await self.docker.start(session.id, now + self.cfg.cap_s, uploads)
             session.ip = await self.docker.ip(session.id)
             await self._wait_ready(session)
+            path = await self.cdp.browser_ws_path(session.ip)
+            session.relay = self.relay_cls(session.ip, self.cfg.cdp_port, path, lambda: self._active(session))
+            port = await session.relay.start()
+            session.cdp_url = "ws://127.0.0.1:%d%s" % (port, path)
         except BaseException as error:
             await self._finish(session, "start_failed")
             if isinstance(error, asyncio.CancelledError):
@@ -180,6 +189,10 @@ class Manager:
             if self.clock() >= deadline:
                 raise asyncio.TimeoutError()
             await self.sleep(0.5)
+
+    def _active(self, s: Session) -> None:
+        """Traffic through the relay is real use: it keeps the idle limit from closing a browser the assistant is driving."""
+        s.last_activity = self.clock()
 
     # ------------------------------------------------------------------ use
     def owned(self, session_id: str, user_id: str) -> Session:
@@ -243,6 +256,13 @@ class Manager:
         if s.state in ("closing", "closed"):
             return
         s.state = "closing"
+        if s.relay is not None:
+            try:
+                await s.relay.stop()
+            except Exception as error:
+                events.event("relay_stop_failed", session=s.id, error=type(error).__name__)
+            s.relay = None
+        s.cdp_url = ""
         try:
             await self.docker.remove(s.id)
         except DockerError as error:

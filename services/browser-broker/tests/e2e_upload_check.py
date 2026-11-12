@@ -12,6 +12,7 @@ import asyncio
 import http.client
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -110,6 +111,26 @@ async def main():
     try:
         status, again = api("POST", "/v1/sessions")
         check("a second session for the same person is refused", status == 429 and again.get("error") == "user_busy", status)
+
+        cdp = made.get("cdpUrl", "")
+        match = re.match(r"^ws://127\.0\.0\.1:(\d+)(/devtools/browser/[A-Za-z0-9-]+)$", cdp)
+        check("the create reply carries a loopback DevTools address (its path is the secret)", bool(match))
+        if match:
+            rport, rpath = match.group(1), match.group(2)
+            async with websockets.connect(cdp, ping_interval=None) as rws:
+                version = await WsTransport(rws).call("Browser.getVersion")
+            check("a CDP client works through the relay", "Chrome" in version.get("product", ""), version.get("product"))
+            hosts = "http://127.0.0.1:%s" % rport
+            as_user = lambda cmd: subprocess.run(["su", "-s", "/bin/bash", "hmt-001", "-c", cmd], capture_output=True, text=True).stdout.strip()
+            check("as the assistant's user: /json/version on the relay is refused (404)",
+                  as_user("curl -s -m 5 -o /dev/null -w '%%{http_code}' %s/json/version" % hosts) == "404")
+            check("as the assistant's user: a wrong path is refused (404)",
+                  as_user("curl -s -m 5 -o /dev/null -w '%%{http_code}' %s/devtools/browser/wrong" % hosts) == "404")
+            up = as_user("curl -s -m 3 -o /dev/null -w '%%{http_code}' --http1.1 -H 'Upgrade: websocket' -H 'Connection: Upgrade' "
+                         "-H 'Sec-WebSocket-Key: dGVzdA==' -H 'Sec-WebSocket-Version: 13' %s%s" % (hosts, rpath))
+            check("as the assistant's user: the secret path upgrades (101)", up == "101", up)
+            direct = as_user("curl -s -m 4 -o /dev/null -w '%%{http_code}' http://%s:9222/json/version" % container_ip(sid))
+            check("as the assistant's user: the container itself is out of reach (firewall)", direct in ("000", ""), direct)
 
         ip = container_ip(sid)
         targets = _http_json(ip, 9222, "/json/list", 5)
