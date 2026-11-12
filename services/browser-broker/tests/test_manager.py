@@ -5,7 +5,7 @@ import os
 import unittest
 
 from browser_broker.manager import BrokerError, Manager
-from tests.fakes import Clock, FakeCdp, FakeDocker, FakePlatform, KEY_A, make_config
+from tests.fakes import Clock, FakeCdp, FakeDocker, FakePlatform, FakeRelay, KEY_A, make_config
 
 
 class Capture(logging.Handler):
@@ -24,6 +24,8 @@ class ManagerCase(unittest.IsolatedAsyncioTestCase):
         self.cdp = FakeCdp()
         self.platform = FakePlatform()
         self.capture = Capture()
+        FakeRelay.instances = []
+        FakeRelay.fail_next = False
         logging.getLogger("browser-broker").addHandler(self.capture)
         logging.getLogger("browser-broker").setLevel(logging.INFO)
 
@@ -33,7 +35,7 @@ class ManagerCase(unittest.IsolatedAsyncioTestCase):
     def make(self, **over):
         cfg = make_config(**over)
         self.cfg = cfg
-        self.m = Manager(cfg, self.docker, self.cdp, b"k" * 32, clock=self.clock, sleep=self.clock.sleep)
+        self.m = Manager(cfg, self.docker, self.cdp, b"k" * 32, clock=self.clock, sleep=self.clock.sleep, relay_cls=FakeRelay)
         return self.m
 
     async def code(self, coro):
@@ -100,6 +102,41 @@ class Lifecycle(ManagerCase):
         except BrokerError as error:
             return error.code
         return None
+
+
+class Relaying(ManagerCase):
+    async def test_the_session_gets_a_loopback_address_whose_path_is_the_browsers_own(self):
+        m = self.make()
+        s = await m.create("user-a")
+        self.assertEqual(s.cdp_url, "ws://127.0.0.1:45678/devtools/browser/aaaa-bbbb-cccc")
+        relay = FakeRelay.instances[0]
+        self.assertEqual((relay.host, relay.path), ("172.30.0.2", "/devtools/browser/aaaa-bbbb-cccc"))
+
+    async def test_closing_stops_the_relay_and_forgets_the_address(self):
+        m = self.make()
+        s = await m.create("user-a")
+        await m.close(s.id, "user-a")
+        self.assertTrue(FakeRelay.instances[0].stopped)
+        self.assertEqual(s.cdp_url, "")
+
+    async def test_a_relay_that_cannot_start_fails_the_session_cleanly(self):
+        m = self.make()
+        FakeRelay.fail_next = True
+        self.assertEqual(await self.code(m.create("user-a")), "start_failed")
+        self.assertEqual(len(self.docker.removed), 1)
+        self.assertEqual((await m.create("user-a")).state, "ready")          # the slot came back
+
+    async def test_traffic_through_the_relay_keeps_the_session_from_going_idle(self):
+        m = self.make()
+        s = await m.create("user-a")
+        for _ in range(2):                                  # 400 s of traffic: beyond the 300 s idle limit
+            self.clock.t += 200
+            FakeRelay.instances[0].on_activity()
+            await m.tick()
+        self.assertEqual(s.state, "ready")
+        self.clock.t += 301                                 # then silence (701 s in all, inside the 900 s cap)
+        await m.tick()
+        self.assertEqual(s.reason, "idle_timeout")
 
 
 class QueueAndQuota(ManagerCase):

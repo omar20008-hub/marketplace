@@ -8,7 +8,7 @@ import unittest
 from browser_broker.manager import Manager
 from browser_broker.platform import CachedIdentity
 from browser_broker.server import Api, serve
-from tests.fakes import Clock, FakeCdp, FakeDocker, FakePlatform, KEY_A, KEY_B, make_config
+from tests.fakes import Clock, FakeCdp, FakeDocker, FakePlatform, FakeRelay, KEY_A, KEY_B, make_config
 
 
 class ServerCase(unittest.IsolatedAsyncioTestCase):
@@ -16,7 +16,7 @@ class ServerCase(unittest.IsolatedAsyncioTestCase):
         self.clock = Clock()
         self.docker, self.cdp, self.platform = FakeDocker(), FakeCdp(), FakePlatform()
         cfg = make_config()
-        self.m = Manager(cfg, self.docker, self.cdp, b"k" * 32, clock=self.clock, sleep=self.clock.sleep)
+        self.m = Manager(cfg, self.docker, self.cdp, b"k" * 32, clock=self.clock, sleep=self.clock.sleep, relay_cls=FakeRelay)
         api = Api(self.m, self.platform, CachedIdentity(self.platform, clock=self.clock))
         self.path = os.path.join(tempfile.mkdtemp(prefix="bb-sock-"), "broker.sock")
         group = grp.getgrgid(os.getgid()).gr_name
@@ -59,6 +59,8 @@ class Api_(ServerCase):
         status, made = await self.call("POST", "/v1/sessions")
         self.assertEqual(status, 201)
         sid = made["id"]
+        self.assertRegex(made["cdpUrl"], r"^ws://127\.0\.0\.1:\d+/devtools/browser/")
+        self.assertNotIn("cdpUrl", (await self.call("GET", "/v1/sessions/" + sid))[1])     # the secret is given once
         self.assertEqual((await self.call("GET", "/v1/sessions/" + sid))[1]["state"], "ready")
         self.assertEqual((await self.call("GET", "/v1/sessions/" + sid, key=KEY_B))[0], 404)   # not theirs
         self.assertEqual((await self.call("POST", "/v1/sessions"))[1], {"error": "user_busy"})

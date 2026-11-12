@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import http.client
 import json
+import re
 import urllib.parse
 from typing import List
 
@@ -80,6 +81,14 @@ class CdpClient:
             return True
         except CdpError:
             return False
+
+    async def browser_ws_path(self, ip: str) -> str:
+        """The browser's own WebSocket path, /devtools/browser/<uuid>: the secret the relay guards."""
+        data = await asyncio.to_thread(_http_json, ip, self.port, "/json/version", 5.0)
+        path = urllib.parse.urlparse(str(data.get("webSocketDebuggerUrl", ""))).path
+        if not re.match(r"^/devtools/browser/[A-Za-z0-9-]{8,64}$", path):
+            raise CdpError("unavailable", "unexpected DevTools path")
+        return path
 
     async def set_file_input(self, ip: str, selector: str, paths: List[str], timeout: float = 30.0) -> None:
         import websockets  # imported here: the rest of the broker, and its tests, do not need it

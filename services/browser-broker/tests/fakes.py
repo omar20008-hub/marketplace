@@ -77,6 +77,9 @@ class FakeCdp:
     async def ready(self, ip):
         return self.is_ready
 
+    async def browser_ws_path(self, ip):
+        return "/devtools/browser/aaaa-bbbb-cccc"
+
     async def set_file_input(self, ip, selector, paths, timeout=30.0):
         if self.error:
             raise CdpError(self.error)
@@ -107,3 +110,25 @@ class FakePlatform:
         if len(item[1]) > max_bytes:
             raise PlatformError("too_large")
         return item
+
+
+class FakeRelay:
+    instances = []
+
+    def __init__(self, host, port, path, on_activity):
+        self.host, self.port, self.path, self.on_activity = host, port, path, on_activity
+        self.stopped = False
+        self.fail = False
+        FakeRelay.instances.append(self)
+
+    async def start(self):
+        if FakeRelay.fail_next:
+            FakeRelay.fail_next = False
+            raise OSError("no port")
+        return 45678
+
+    async def stop(self):
+        self.stopped = True
+
+
+FakeRelay.fail_next = False

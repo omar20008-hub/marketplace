@@ -1,0 +1,10 @@
+name: browser-broker
+version: 0.1.0
+description: "Runs the assistant's browser in an isolated per-task container through the platform's browser broker, and uploads the person's saved files into pages. Never falls back to a browser on this machine: when the broker cannot give a browser, browser tools fail with a clear reason."
+author: marketplace
+kind: backend
+provides_browser_providers:
+  - broker
+provides_tools:
+  - browser_upload
+  - browser_waiting
