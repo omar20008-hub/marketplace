@@ -1,7 +1,7 @@
 """
 Deterministic check on the server, with Hermes' own Python and no language model in the loop.
 
-  sudo -u hmt-001 -H <hermes python> hermes_fallback_check.py [profile-dir]
+  sudo -u hmt-001 -H <Hermes' managed python3> -I hermes_fallback_check.py [profile-dir]
 
 It runs Hermes' real session-creation code for a profile (its real config.yaml: browser.cloud_provider) with the
 LOCAL browser creator replaced by one that records the call and fails. So:
@@ -16,9 +16,15 @@ import sys
 
 PROFILE = sys.argv[1] if len(sys.argv) > 1 else "/home/hmt-001/.hermes/profiles/testuser1"
 HERMES = os.environ.get("HERMES_AGENT_DIR", "/home/hmt-001/.hermes/hermes-agent")
+os.environ.pop("PYTHONHOME", None)               # what Hermes' own launcher does first
+os.environ.pop("PYTHONPATH", None)
 os.environ["HERMES_HOME"] = PROFILE
 sys.path.insert(0, HERMES)
 os.chdir(HERMES)
+try:
+    import hermes_bootstrap  # noqa: F401  (the launcher imports it before anything else of Hermes')
+except Exception as exc:  # noqa: BLE001
+    print("hermes_bootstrap: " + type(exc).__name__ + ": " + str(exc)[:120])
 
 with open(os.path.join(PROFILE, ".env"), "r", encoding="utf-8") as handle:
     for line in handle:
