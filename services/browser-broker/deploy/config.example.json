@@ -1,0 +1,5 @@
+{
+  "image": "sha256:REPLACE-with-the-64-hex-image-id-of-hermes-browser",
+  "seccomp_sha256": "REPLACE-with-the-64-hex-sha256-of-/etc/browser-broker/seccomp-chrome.json",
+  "platform_url": "https://REPLACE-the-platform-address"
+}

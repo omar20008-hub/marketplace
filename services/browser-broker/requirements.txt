@@ -1,0 +1,3 @@
+# The only third-party dependency (Chrome DevTools protocol over WebSocket). Exact version.
+# Before production, add the file hashes and install with --require-hashes (see README, "Install").
+websockets==15.0.1
