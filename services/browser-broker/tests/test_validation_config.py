@@ -86,6 +86,7 @@ class Config(unittest.TestCase):
     def test_defaults_match_the_design(self):
         cfg = self.good()
         self.assertEqual((cfg.max_concurrent, cfg.queue_max, cfg.idle_s, cfg.waiting_s, cfg.cap_s), (1, 5, 300, 900, 1800))
+        self.assertEqual(cfg.grace_s, 600)
         self.assertEqual(cfg.closed_keep_s, 7 * 24 * 3600)
 
     def test_refusals(self):

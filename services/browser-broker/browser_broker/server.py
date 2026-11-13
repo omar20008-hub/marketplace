@@ -14,7 +14,7 @@ from .platform import CachedIdentity, PlatformError
 from .validation import FILE_ID, SESSION_ID, bearer, selector_ok
 
 MAX_BODY = 16 * 1024
-ROUTE = re.compile(r"^/v1/sessions/([a-f0-9]{32})(?:/(upload|waiting|touch|close))?$")
+ROUTE = re.compile(r"^/v1/sessions/([a-f0-9]{32})(?:/(upload|waiting|touch|close|release))?$")
 
 PLATFORM_STATUS = {"unauthorized": (401, "unauthorized"), "not_found": (404, "not_found"),
                    "too_large": (413, "file_too_large"), "unavailable": (502, "platform_unavailable")}
@@ -70,6 +70,8 @@ class Api:
             if not isinstance(data.get("waiting"), bool):
                 raise BrokerError("bad_request", 400)
             return 200, self.m.view(self.m.set_waiting(sid, user, data["waiting"]))
+        if action == "release":
+            return 200, self.m.view(self.m.release(sid, user))
         if action == "close":
             await self.m.close(sid, user)
             return 200, {"closed": True}

@@ -38,6 +38,7 @@ class Session:
         self.last_activity = now
         self.last_sample = 0.0
         self.waiting = False
+        self.release_deadline = 0.0          # when a released (not explicitly waiting) session is closed; 0 = not released
         self.uploads = 0
         self.ip = ""
         self.reason = ""
@@ -214,12 +215,26 @@ class Manager:
         s.last_activity = self.clock()
         return s
 
+    def release(self, session_id: str, user_id: str) -> Session:
+        """Hermes has finished with this browser. Keep it for a grace period in case the person answers; the next task resumes it."""
+        s = self.owned(session_id, user_id)
+        if s.state != "ready":
+            raise BrokerError("not_ready", 409)
+        now = self.clock()
+        remaining = max(0.0, s.started + self.cfg.cap_s - now)
+        s.waiting = True
+        s.release_deadline = now + min(float(self.cfg.grace_s), remaining)
+        s.last_activity = now
+        events.event("released", session=s.id, uid=s.uid)
+        return s
+
     def resume(self, user_id: str) -> Session:
         """The person's own session that has been waiting for them, handed back as active. The page is as they left it."""
         uid = self.uid_hash(user_id)
         for s in self.sessions.values():
             if s.uid == uid and s.state == "ready" and s.waiting:
                 s.waiting = False
+                s.release_deadline = 0.0
                 s.last_activity = self.clock()
                 events.event("resumed", session=s.id, uid=uid)
                 return s
@@ -228,6 +243,7 @@ class Manager:
     def set_waiting(self, session_id: str, user_id: str, waiting: bool) -> Session:
         s = self.touch(session_id, user_id)
         s.waiting = bool(waiting)
+        s.release_deadline = 0.0             # an explicit answer from the assistant replaces the grace period
         return s
 
     async def upload(self, session_id: str, user_id: str, key: str, file_id: str, selector: str, platform) -> None:
@@ -307,7 +323,7 @@ class Manager:
                 continue
             if now - s.started > self.cfg.cap_s:
                 await self._finish(s, "cap")
-            elif s.waiting and now - s.last_activity > self.cfg.waiting_s:
+            elif s.waiting and now > (s.release_deadline or s.last_activity + self.cfg.waiting_s):
                 await self._finish(s, "waiting_timeout")
             elif not s.waiting and now - s.last_activity > self.cfg.idle_s:
                 await self._finish(s, "idle_timeout")

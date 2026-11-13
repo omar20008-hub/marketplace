@@ -104,6 +104,11 @@ class _BrokerHandler(BaseHTTPRequestHandler):
         if self.path == "/v1/sessions":
             return self._reply(201, {"id": "a" * 32, "state": "ready",
                                      "cdpUrl": "ws://127.0.0.1:45678/devtools/browser/0a1b2c3d-1111-2222"})
+        if self.path.endswith("/release"):
+            self.server.waiting = True
+            return self._reply(200, {"id": "a" * 32, "state": "ready", "waiting": True})
+        if self.path.endswith("/waiting"):
+            self.server.waiting = bool(body.get("waiting"))
         if self.path.endswith("/upload") or self.path.endswith("/waiting"):
             return self._reply(200, {"uploaded": True})
         if self.path.endswith("/close"):
@@ -150,6 +155,7 @@ class Case(unittest.TestCase):
         os.environ["BROWSER_BROKER_SOCKET"] = self.sock
         plugin._KEY_OF_SESSION.clear()
         plugin._LATEST.clear()
+        plugin._DONE.clear()
         self.capture = Capture()
         logging.getLogger().addHandler(self.capture)
         logging.getLogger().setLevel(logging.DEBUG)
@@ -217,7 +223,10 @@ class Provider(Case):
     def test_close_uses_the_remembered_key_even_outside_a_profile_scope(self):
         self.provider.create_session("t")
         SECRETS["raise"] = True                                        # an atexit call has no profile scope
-        self.assertTrue(self.provider.close_session("a" * 32))
+        self.assertTrue(self.provider.close_session("a" * 32))         # kept for the grace period, with the remembered key
+        self.assertEqual(self.broker.calls[-1][0], "/v1/sessions/%s/release" % ("a" * 32))
+        self.assertEqual(self.broker.calls[-1][1], "Bearer " + KEY)
+        self.provider.emergency_cleanup("a" * 32)                      # and closed for real at exit, with the same key
         self.assertEqual(self.broker.calls[-1][0], "/v1/sessions/%s/close" % ("a" * 32))
         self.assertEqual(self.broker.calls[-1][1], "Bearer " + KEY)
 
@@ -245,12 +254,36 @@ class Waiting(Case):
         self.assertEqual(sent, ["/v1/sessions/%s" % ("a" * 32)])           # it only looked; no close was sent
         self.assertIn("a" * 32, plugin._KEY_OF_SESSION)                    # still remembered, so it can be closed later
 
-    def test_a_session_that_is_not_waiting_is_closed_as_before(self):
+    def test_a_browser_nobody_declared_waiting_is_still_kept_for_a_grace_period(self):
         self.provider.create_session("t1")
-        self.broker.waiting = False
+        self.broker.waiting = False                              # the assistant never called browser_waiting
+        self.assertTrue(self.provider.close_session("a" * 32))
+        paths = [path for path, _, _ in self.broker.calls]
+        self.assertEqual(paths[-1], "/v1/sessions/%s/release" % ("a" * 32))      # released, not closed
+        self.assertNotIn("/v1/sessions/%s/close" % ("a" * 32), paths)
+        info = self.provider.create_session("t2")                # the next task gets it back
+        self.assertEqual([p for p, _, _ in self.broker.calls][-1], "/v1/sessions/resume")
+        self.assertEqual(info["bb_session_id"], "a" * 32)
+
+    def test_when_the_assistant_says_it_is_finished_the_browser_is_closed_at_once(self):
+        self.provider.create_session("t1")
+        self.assertTrue(json.loads(plugin._handle_browser_waiting({"waiting": False}))["ok"])
         self.assertTrue(self.provider.close_session("a" * 32))
         self.assertEqual(self.broker.calls[-1][0], "/v1/sessions/%s/close" % ("a" * 32))
         self.assertNotIn("a" * 32, plugin._KEY_OF_SESSION)
+
+    def test_waiting_true_after_finished_keeps_it_again(self):
+        self.provider.create_session("t1")
+        plugin._handle_browser_waiting({"waiting": False})
+        plugin._handle_browser_waiting({"waiting": True})
+        self.provider.close_session("a" * 32)
+        self.assertNotEqual(self.broker.calls[-1][0], "/v1/sessions/%s/close" % ("a" * 32))
+
+    def test_emergency_cleanup_always_closes_even_a_waiting_browser(self):
+        self.provider.create_session("t1")
+        self.broker.waiting = True
+        self.provider.emergency_cleanup("a" * 32)
+        self.assertEqual(self.broker.calls[-1][0], "/v1/sessions/%s/close" % ("a" * 32))
 
     def test_the_next_task_gets_the_waiting_session_back_instead_of_a_new_browser(self):
         self.provider.create_session("t1")

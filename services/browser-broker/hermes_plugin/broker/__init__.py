@@ -53,6 +53,7 @@ _REASONS = {
 _lock = threading.Lock()
 _KEY_OF_SESSION: Dict[str, str] = {}      # broker session id -> agent key (memory only; closes may run outside a profile scope)
 _LATEST: Dict[str, str] = {}              # sha256(agent key) -> its open session id (the broker allows one per person)
+_DONE: set = set()                        # sessions the assistant said it is finished with: closed at once, not kept
 
 
 def _socket_path() -> str:
@@ -168,26 +169,37 @@ class BrokerBrowserProvider(BrowserProvider):
             return True                               # a dead session holds nothing
         with _lock:
             key = _KEY_OF_SESSION.get(session_id)
+            done = session_id in _DONE
         key = key or _agent_key()
         if not key:
             return False
-        try:
-            if broker_call("GET", "/v1/sessions/%s" % session_id, key, timeout=15.0).get("waiting") is True:
-                # Hermes closes its browser when it finishes a reply; one that is waiting for the person is kept, so
-                # the page is still there when they answer. The broker closes it itself if they never do.
-                logger.info("browser broker session %s kept open: waiting for the person", session_id[:12])
+        if not done:
+            # Hermes closes its browser every time it finishes a reply, and a person's answer can come minutes later.
+            # So a browser is kept for a grace period (the broker closes it itself if nobody comes back), unless the
+            # assistant said it is finished (browser_waiting(false)).
+            try:
+                view = broker_call("GET", "/v1/sessions/%s" % session_id, key, timeout=15.0)
+                if view.get("waiting") is not True:
+                    broker_call("POST", "/v1/sessions/%s/release" % session_id, key, timeout=15.0)
+                logger.info("browser broker session %s kept open for the person", session_id[:12])
                 return True
-        except BrokerError as error:
-            if error.code == "not_found":
-                with _lock:
-                    _KEY_OF_SESSION.pop(session_id, None)
-                return True
-        except Exception:
-            pass
+            except BrokerError as error:
+                if error.code == "not_found":
+                    self._forget(session_id, key)
+                    return True
+            except Exception:
+                pass                                   # could not keep it: close it
+        return self._close_now(session_id, key)
+
+    def _forget(self, session_id: str, key: str) -> None:
         with _lock:
             _KEY_OF_SESSION.pop(session_id, None)
+            _DONE.discard(session_id)
             if _LATEST.get(_who(key)) == session_id:
                 del _LATEST[_who(key)]
+
+    def _close_now(self, session_id: str, key: str) -> bool:
+        self._forget(session_id, key)
         try:
             broker_call("POST", "/v1/sessions/%s/close" % session_id, key, timeout=30.0)
             return True
@@ -197,8 +209,15 @@ class BrokerBrowserProvider(BrowserProvider):
             return False
 
     def emergency_cleanup(self, session_id: str) -> None:
+        """Process exit or a signal: nobody will come back, so close for real."""
         try:
-            self.close_session(session_id)
+            if not session_id:
+                return
+            with _lock:
+                key = _KEY_OF_SESSION.get(session_id)
+            key = key or _agent_key()
+            if key:
+                self._close_now(session_id, key)
         except Exception:
             pass
 
@@ -278,6 +297,11 @@ def _handle_browser_waiting(args: dict, **kwargs) -> str:
         broker_call("POST", "/v1/sessions/%s/waiting" % session_id, key, {"waiting": waiting}, timeout=30.0)
     except BrokerError as error:
         return _result({"ok": False, "error": error.code})
+    with _lock:
+        if waiting:
+            _DONE.discard(session_id)
+        else:
+            _DONE.add(session_id)                      # "I am finished": the browser closes when this reply ends
     return _result({"ok": True})
 
 
@@ -301,8 +325,9 @@ WAITING_SCHEMA = {
     "name": "browser_waiting",
     "description": (
         "Tell the browser service this session is waiting for the person (for example for their confirmation before an "
-        "irreversible step). Set waiting=true before asking, and waiting=false when you continue. Prevents the session "
-        "from being closed while you wait, within a limit."),
+        "irreversible step): waiting=true keeps the browser for up to 15 minutes. waiting=false means you are finished "
+        "with the browser: it is closed when this reply ends. If you do nothing, the browser is kept for about 10 minutes "
+        "after your reply anyway, in case the person answers."),
     "parameters": {
         "type": "object",
         "properties": {"waiting": {"type": "boolean", "description": "true while waiting for the person, false when done"}},

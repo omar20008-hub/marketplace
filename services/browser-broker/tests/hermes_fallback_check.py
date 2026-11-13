@@ -10,6 +10,7 @@ LOCAL browser creator replaced by one that records the call and fails. So:
   * provider not resolved at all (plugin not loaded, wrong name) -> Hermes would use the local browser: reported as FAIL.
 The person's key is read from the profile's own .env and never printed.
 """
+import json
 import os
 import re
 import sys
@@ -76,20 +77,21 @@ else:
     check("the session is either live through the broker or dead on purpose (never local)", dead or live,
           "dead (%s)" % url.rsplit("broker-", 1)[-1] if dead else ("live" if live else "neither"))
     if live and provider is not None and info.get("bb_session_id"):
-        # Persistence: Hermes closes its browser when it finishes a reply. One that is waiting for the person must stay,
-        # and the next task must get that same browser back.
+        # Persistence: Hermes closes its browser every time it finishes a reply, whatever the assistant did. The browser
+        # must be kept for a grace period (no tool call needed from the model) and handed back to the next task.
         plugin = sys.modules[type(provider).__module__]
         sid, key = str(info["bb_session_id"]), os.environ["PLATFORM_AGENT_KEY"]
-        plugin.broker_call("POST", "/v1/sessions/%s/waiting" % sid, key, {"waiting": True}, timeout=30)
-        kept = provider.close_session(sid)
+        kept = provider.close_session(sid)                    # what Hermes does at the end of a reply
         view = plugin.broker_call("GET", "/v1/sessions/%s" % sid, key, timeout=15)
-        check("a session waiting for the person is NOT closed when Hermes finishes its reply",
+        check("the browser is NOT closed when Hermes finishes a reply (kept for a grace period)",
               kept is True and view.get("state") == "ready" and view.get("waiting") is True, view.get("state"))
         again = provider.create_session("persistence-check-2")
         check("the next task gets the same browser back (same session, same address)",
               again.get("bb_session_id") == sid and again.get("cdp_url") == info.get("cdp_url"),
               "same" if again.get("bb_session_id") == sid else "different")
-        check("then, no longer waiting, it closes normally", provider.close_session(sid) is True)
+        done = json.loads(plugin._handle_browser_waiting({"waiting": False}))      # the assistant: "I am finished"
+        check("when the assistant says it is finished, the browser is closed at once",
+              done.get("ok") is True and provider.close_session(sid) is True)
         try:
             plugin.broker_call("GET", "/v1/sessions/%s" % sid, key, timeout=15)
             gone = False

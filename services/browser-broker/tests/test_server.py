@@ -81,6 +81,14 @@ class Api_(ServerCase):
         self.assertEqual((status, body["id"], body["waiting"]), (200, made["id"], False))
         self.assertEqual(body["cdpUrl"], made["cdpUrl"])                                                          # the same browser
 
+    async def test_release_keeps_the_browser_and_resume_gives_it_back(self):
+        made = (await self.call("POST", "/v1/sessions"))[1]
+        self.assertEqual((await self.call("POST", "/v1/sessions/%s/release" % made["id"], key=KEY_B))[0], 404)   # not theirs
+        status, body = await self.call("POST", "/v1/sessions/%s/release" % made["id"])
+        self.assertEqual((status, body["waiting"]), (200, True))
+        status, back = await self.call("POST", "/v1/sessions/resume")
+        self.assertEqual((status, back["id"], back["cdpUrl"]), (200, made["id"], made["cdpUrl"]))
+
     async def test_upload_validation_and_errors_map_to_clear_codes(self):
         sid = (await self.call("POST", "/v1/sessions"))[1]["id"]
         url = "/v1/sessions/%s/upload" % sid

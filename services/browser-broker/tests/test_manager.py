@@ -141,6 +141,61 @@ class Resuming(ManagerCase):
         return None
 
 
+class Release(ManagerCase):
+    async def test_a_released_browser_is_kept_for_the_grace_period_then_closed(self):
+        m = self.make()
+        s = await m.create("user-a")
+        m.release(s.id, "user-a")
+        self.assertTrue(s.waiting)
+        self.clock.t += 599                                  # inside the 600 s grace: far beyond the 300 s idle limit
+        await m.tick()
+        self.assertEqual(s.state, "ready")
+        self.clock.t += 2
+        await m.tick()
+        self.assertEqual((s.state, s.reason), ("closed", "waiting_timeout"))
+
+    async def test_a_released_browser_is_handed_back_to_the_next_task_and_is_then_active_again(self):
+        m = self.make()
+        s = await m.create("user-a")
+        m.release(s.id, "user-a")
+        self.clock.t += 120
+        back = m.resume("user-a")
+        self.assertIs(back, s)
+        self.assertEqual((back.waiting, back.release_deadline), (False, 0.0))
+        self.clock.t += 301                                  # now it is an ordinary session again: the idle limit applies
+        await m.tick()
+        self.assertEqual(s.reason, "idle_timeout")
+
+    async def test_the_grace_never_outlives_the_absolute_cap(self):
+        m = self.make()
+        s = await m.create("user-a")
+        for _ in range(7):
+            self.clock.t += 240
+            m.touch(s.id, "user-a")
+        self.clock.t += 100                                  # 1780 s in: 20 s of cap left
+        m.release(s.id, "user-a")
+        self.assertLessEqual(s.release_deadline - self.clock(), 20.5)
+
+    async def test_an_explicit_waiting_answer_replaces_the_grace_period(self):
+        m = self.make()
+        s = await m.create("user-a")
+        m.release(s.id, "user-a")
+        m.set_waiting(s.id, "user-a", True)
+        self.assertEqual(s.release_deadline, 0.0)            # the longer explicit limit (900 s) applies now
+
+    async def test_only_the_owner_can_release(self):
+        m = self.make()
+        s = await m.create("user-a")
+        self.assertEqual(self._sync_code(lambda: m.release(s.id, "user-b")), "not_found")
+
+    def _sync_code(self, fn):
+        try:
+            fn()
+        except BrokerError as error:
+            return error.code
+        return None
+
+
 class Relaying(ManagerCase):
     async def test_the_session_gets_a_loopback_address_whose_path_is_the_browsers_own(self):
         m = self.make()
