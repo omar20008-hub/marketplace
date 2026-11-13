@@ -50,6 +50,10 @@ class Api:
             s = await self.m.create(user)
             # The address is a secret (its path is the key): given here, once, to the person's own assistant.
             return 201, dict(self.m.view(s), cdpUrl=s.cdp_url)
+        if path == "/v1/sessions/resume" and method == "POST":
+            key, user = await self._who(headers)
+            s = self.m.resume(user)
+            return 200, dict(self.m.view(s), cdpUrl=s.cdp_url)
         match = ROUTE.match(path)
         if not match:
             return 404, {"error": "not_found"}

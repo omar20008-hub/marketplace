@@ -85,7 +85,7 @@ class Config(unittest.TestCase):
 
     def test_defaults_match_the_design(self):
         cfg = self.good()
-        self.assertEqual((cfg.max_concurrent, cfg.queue_max, cfg.idle_s, cfg.waiting_s, cfg.cap_s), (1, 5, 300, 180, 900))
+        self.assertEqual((cfg.max_concurrent, cfg.queue_max, cfg.idle_s, cfg.waiting_s, cfg.cap_s), (1, 5, 300, 900, 1800))
         self.assertEqual(cfg.closed_keep_s, 7 * 24 * 3600)
 
     def test_refusals(self):
@@ -93,7 +93,7 @@ class Config(unittest.TestCase):
             {"image": "hermes-browser:phase1-145"},          # a tag can move
             {"seccomp_sha256": "zz"},
             {"platform_url": "http://platform.example"},     # plain http off loopback
-            {"idle_s": 1000},
+            {"idle_s": 2000},                                  # longer than the absolute cap (1800)
             {"dns": ["not-an-ip"]},
             {"memory": "lots"},
             {"nonsense": 1},

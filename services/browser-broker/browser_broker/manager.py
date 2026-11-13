@@ -214,6 +214,17 @@ class Manager:
         s.last_activity = self.clock()
         return s
 
+    def resume(self, user_id: str) -> Session:
+        """The person's own session that has been waiting for them, handed back as active. The page is as they left it."""
+        uid = self.uid_hash(user_id)
+        for s in self.sessions.values():
+            if s.uid == uid and s.state == "ready" and s.waiting:
+                s.waiting = False
+                s.last_activity = self.clock()
+                events.event("resumed", session=s.id, uid=uid)
+                return s
+        raise BrokerError("no_waiting_session", 404)
+
     def set_waiting(self, session_id: str, user_id: str, waiting: bool) -> Session:
         s = self.touch(session_id, user_id)
         s.waiting = bool(waiting)

@@ -142,7 +142,15 @@ class BrokerBrowserProvider(BrowserProvider):
         if not key:
             return _dead_session("no-key")
         try:
-            made = broker_call("POST", "/v1/sessions", key)
+            try:
+                # A session kept open while it waited for the person (a missing answer, a confirmation): the page is
+                # as they left it. Otherwise a fresh browser is made.
+                made = broker_call("POST", "/v1/sessions/resume", key, timeout=30.0)
+                logger.info("browser broker session %s resumed for task %s", str(made.get("id", ""))[:12], task_id)
+            except BrokerError as error:
+                if error.code != "no_waiting_session":
+                    raise
+                made = broker_call("POST", "/v1/sessions", key)
             session_id, url = str(made["id"]), str(made["cdpUrl"])
         except BrokerError as error:
             return _dead_session(_REASONS.get(error.code, "unavailable"))
@@ -159,11 +167,25 @@ class BrokerBrowserProvider(BrowserProvider):
         if not session_id:
             return True                               # a dead session holds nothing
         with _lock:
-            key = _KEY_OF_SESSION.pop(session_id, None)
+            key = _KEY_OF_SESSION.get(session_id)
         key = key or _agent_key()
         if not key:
             return False
+        try:
+            if broker_call("GET", "/v1/sessions/%s" % session_id, key, timeout=15.0).get("waiting") is True:
+                # Hermes closes its browser when it finishes a reply; one that is waiting for the person is kept, so
+                # the page is still there when they answer. The broker closes it itself if they never do.
+                logger.info("browser broker session %s kept open: waiting for the person", session_id[:12])
+                return True
+        except BrokerError as error:
+            if error.code == "not_found":
+                with _lock:
+                    _KEY_OF_SESSION.pop(session_id, None)
+                return True
+        except Exception:
+            pass
         with _lock:
+            _KEY_OF_SESSION.pop(session_id, None)
             if _LATEST.get(_who(key)) == session_id:
                 del _LATEST[_who(key)]
         try:

@@ -64,6 +64,7 @@ class FakeBroker(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
     def __init__(self, path):
         self.calls = []
         self.fail = None                 # (status, code) to answer every call with
+        self.waiting = False             # is the one fake session waiting for the person?
         super().__init__(path, _BrokerHandler)
 
 
@@ -81,11 +82,23 @@ class _BrokerHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def do_GET(self):
+        self.server.calls.append((self.path, self.headers.get("Authorization", ""), None))
+        if self.server.fail:
+            return self._reply(*self.server.fail)
+        self._reply(200, {"id": "a" * 32, "state": "ready", "waiting": self.server.waiting})
+
     def do_POST(self):
         length = int(self.headers.get("Content-Length") or 0)
         body = json.loads(self.rfile.read(length) or b"{}")
         auth = self.headers.get("Authorization", "")
         self.server.calls.append((self.path, auth, body))
+        if self.path == "/v1/sessions/resume":
+            if self.server.waiting:
+                self.server.waiting = False
+                return self._reply(200, {"id": "a" * 32, "state": "ready", "waiting": False,
+                                         "cdpUrl": "ws://127.0.0.1:45678/devtools/browser/0a1b2c3d-1111-2222"})
+            return self._reply(404, {"error": "no_waiting_session"})
         if self.server.fail:
             return self._reply(*self.server.fail)
         if self.path == "/v1/sessions":
@@ -220,6 +233,45 @@ class Provider(Case):
         self.provider.create_session("t")
         self.broker.fail = (404, {"error": "not_found"})
         self.assertTrue(self.provider.close_session("a" * 32))
+
+
+class Waiting(Case):
+    def test_a_session_waiting_for_the_person_is_not_closed_when_hermes_finishes_its_reply(self):
+        self.provider.create_session("t1")
+        self.broker.waiting = True
+        before = len(self.broker.calls)
+        self.assertTrue(self.provider.close_session("a" * 32))
+        sent = [path for path, _, _ in self.broker.calls[before:]]
+        self.assertEqual(sent, ["/v1/sessions/%s" % ("a" * 32)])           # it only looked; no close was sent
+        self.assertIn("a" * 32, plugin._KEY_OF_SESSION)                    # still remembered, so it can be closed later
+
+    def test_a_session_that_is_not_waiting_is_closed_as_before(self):
+        self.provider.create_session("t1")
+        self.broker.waiting = False
+        self.assertTrue(self.provider.close_session("a" * 32))
+        self.assertEqual(self.broker.calls[-1][0], "/v1/sessions/%s/close" % ("a" * 32))
+        self.assertNotIn("a" * 32, plugin._KEY_OF_SESSION)
+
+    def test_the_next_task_gets_the_waiting_session_back_instead_of_a_new_browser(self):
+        self.provider.create_session("t1")
+        self.broker.waiting = True
+        self.provider.close_session("a" * 32)                              # kept
+        info = self.provider.create_session("t2")
+        paths = [path for path, _, _ in self.broker.calls]
+        self.assertEqual(paths[-1], "/v1/sessions/resume")                 # resumed, no second POST /v1/sessions
+        self.assertEqual(paths.count("/v1/sessions"), 1)
+        self.assertEqual(info["bb_session_id"], "a" * 32)
+        self.assertEqual(info["cdp_url"], "ws://127.0.0.1:45678/devtools/browser/0a1b2c3d-1111-2222")
+
+    def test_with_nothing_waiting_a_new_browser_is_made(self):
+        info = self.provider.create_session("t1")
+        paths = [path for path, _, _ in self.broker.calls]
+        self.assertEqual(paths[:2], ["/v1/sessions/resume", "/v1/sessions"])
+        self.assertEqual(info["bb_session_id"], "a" * 32)
+
+    def test_a_broker_that_is_down_still_gives_a_dead_address_not_a_local_browser(self):
+        os.environ["BROWSER_BROKER_SOCKET"] = os.path.join(self.dir, "missing.sock")
+        self.assertTrue(self.provider.create_session("t1")["cdp_url"].endswith("/broker-unavailable"))
 
 
 class Tools(Case):

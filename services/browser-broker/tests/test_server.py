@@ -71,6 +71,16 @@ class Api_(ServerCase):
         self.assertEqual((await self.call("POST", "/v1/sessions/%s/close" % sid))[0], 200)
         self.assertEqual((await self.call("GET", "/v1/sessions/" + sid))[0], 404)
 
+    async def test_resume_gives_a_waiting_session_back_with_its_address_to_its_owner_only(self):
+        made = (await self.call("POST", "/v1/sessions"))[1]
+        self.assertEqual((await self.call("POST", "/v1/sessions/resume"))[1], {"error": "no_waiting_session"})   # not waiting
+        await self.call("POST", "/v1/sessions/%s/waiting" % made["id"], {"waiting": True})
+        self.assertEqual((await self.call("POST", "/v1/sessions/resume", key=KEY_B))[0], 404)                     # not theirs
+        self.assertEqual((await self.call("POST", "/v1/sessions/resume", key=None))[0], 401)
+        status, body = await self.call("POST", "/v1/sessions/resume")
+        self.assertEqual((status, body["id"], body["waiting"]), (200, made["id"], False))
+        self.assertEqual(body["cdpUrl"], made["cdpUrl"])                                                          # the same browser
+
     async def test_upload_validation_and_errors_map_to_clear_codes(self):
         sid = (await self.call("POST", "/v1/sessions"))[1]["id"]
         url = "/v1/sessions/%s/upload" % sid

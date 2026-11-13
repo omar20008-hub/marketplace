@@ -40,8 +40,8 @@ class Config:
     queue_max: int = 5
     queue_wait_s: int = 60
     idle_s: int = 300               # no activity
-    waiting_s: int = 180            # waiting for the person (to confirm an irreversible action)
-    cap_s: int = 900                # absolute ceiling
+    waiting_s: int = 900            # waiting for the person (a missing answer, or a confirmation before an irreversible step)
+    cap_s: int = 1800               # absolute ceiling (a long application form plus the time to answer)
     start_timeout_s: int = 20
     per_user_active: int = 1
     per_user_daily: int = 20
