@@ -412,8 +412,45 @@ WAITING_SCHEMA = {
 }
 
 
+STALE_REF_HINT = (
+    "HINT FROM THE BROWSER SERVICE: that element reference no longer exists (the browser was reconnected between "
+    "tasks, so references from earlier snapshots are gone). Call browser_snapshot now and use a reference from THAT "
+    "snapshot; never reuse one from an earlier turn. For the FINAL Submit / Apply / Send button, use "
+    "browser_submit(text=\"<the button's words>\"): it needs no reference, and report only what it returns."
+)
+
+_REF_TOOLS = ("browser_click", "browser_type", "browser_press", "browser_hover", "browser_scroll", "browser_select")
+
+
+def _transform_tool_result(tool_name=None, result=None, error_message=None, **kwargs):
+    """Hermes' transform_tool_result hook: runs after a tool finished and before its result reaches the model. A click
+    on a stale reference ("Unknown ref: e1") made the assistant conclude that "the site does not respond to the
+    tools" and stop; the model follows what a tool result says far more reliably than a rule in its persona. This
+    adds the way out to that one failure. Anything else is passed through untouched; this never raises."""
+    try:
+        if tool_name not in _REF_TOOLS:
+            return None
+        text = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False, default=str)
+        if "unknown ref" not in (text + " " + str(error_message or "")).lower():
+            return None
+        try:
+            data = json.loads(text)
+        except ValueError:
+            data = None
+        if isinstance(data, dict):
+            data["hint"] = STALE_REF_HINT
+            return json.dumps(data, ensure_ascii=False)
+        return text + "\n\n" + STALE_REF_HINT
+    except Exception:
+        return None
+
+
 def register(ctx) -> None:
     ctx.register_browser_provider(BrokerBrowserProvider())
+    try:
+        ctx.register_hook("transform_tool_result", _transform_tool_result)
+    except Exception:
+        logger.warning("the transform_tool_result hook is not available; stale-reference hints are off")
     for name, schema, handler, emoji in (
         ("browser_upload", UPLOAD_SCHEMA, _handle_browser_upload, "📎"),
         ("browser_waiting", WAITING_SCHEMA, _handle_browser_waiting, "⏳"),

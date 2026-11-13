@@ -60,6 +60,23 @@ name = type(provider).__name__ if provider is not None else None
 print("HERMES_HOME=%s" % os.environ["HERMES_HOME"])
 check("the configured provider resolves to the broker provider", name == "BrokerBrowserProvider", name)
 
+# The stale-reference hint: Hermes' own hook dispatcher must reach the plugin's transform_tool_result hook.
+try:
+    from hermes_cli.lifecycle import has_hook, invoke_hook
+    registered = has_hook("transform_tool_result")
+    check("Hermes has a transform_tool_result hook registered", registered)
+    if registered:
+        outs = invoke_hook("transform_tool_result", tool_name="browser_click", args={"ref": "e1"},
+                           result='{"success": false, "error": "Unknown ref: e1"}', duration_ms=1,
+                           status="error", error_type=None, error_message="Unknown ref: e1")
+        hinted = [o for o in outs if isinstance(o, str) and "browser_snapshot" in o and "browser_submit" in o]
+        check("a stale-reference click result gets the way out added", bool(hinted), "%d reply(ies)" % len(hinted))
+        quiet = invoke_hook("transform_tool_result", tool_name="browser_click", args={}, result='{"success": true}',
+                            duration_ms=1, status="ok", error_type=None, error_message=None)
+        check("a normal click result is left alone", not [o for o in quiet if isinstance(o, str)])
+except Exception as exc:  # noqa: BLE001
+    check("the hook can be exercised", False, type(exc).__name__ + ": " + str(exc)[:120])
+
 info = None
 error = ""
 try:

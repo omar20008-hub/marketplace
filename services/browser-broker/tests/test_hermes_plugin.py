@@ -431,6 +431,44 @@ class Tools(Case):
         self.assertFalse(any(KEY in line for line in self.capture.lines))
 
 
+class StaleRefHint(unittest.TestCase):
+    ERR = json.dumps({"success": False, "error": "Unknown ref: e1"})
+
+    def hook(self, **kw):
+        return plugin._transform_tool_result(**kw)
+
+    def test_a_stale_reference_gets_the_way_out_added_to_the_result(self):
+        out = self.hook(tool_name="browser_click", args={"ref": "e1"}, result=self.ERR, error_message="Unknown ref: e1")
+        data = json.loads(out)
+        self.assertEqual((data["success"], data["error"]), (False, "Unknown ref: e1"))      # the original is kept
+        self.assertIn("browser_snapshot", data["hint"])
+        self.assertIn("browser_submit", data["hint"])
+
+    def test_it_also_covers_typing_and_a_result_that_is_not_json(self):
+        self.assertIn("browser_snapshot", self.hook(tool_name="browser_type", result="Error: Unknown ref: e7"))
+        self.assertTrue(self.hook(tool_name="browser_type", result="Error: Unknown ref: e7").startswith("Error: Unknown ref: e7"))
+
+    def test_everything_else_passes_through_untouched(self):
+        self.assertIsNone(self.hook(tool_name="browser_click", result=json.dumps({"success": True})))
+        self.assertIsNone(self.hook(tool_name="browser_click", result=json.dumps({"success": False, "error": "timeout"})))
+        self.assertIsNone(self.hook(tool_name="terminal", result=self.ERR))          # not a browser tool
+        self.assertIsNone(self.hook(tool_name="browser_snapshot", result=self.ERR))  # takes no reference
+
+    def test_it_never_raises_whatever_it_is_given(self):
+        class Odd:
+            def __str__(self):
+                raise RuntimeError("boom")
+        self.assertIsNone(self.hook(tool_name="browser_click", result=Odd()))
+        self.assertIsNone(self.hook())
+
+    def test_registration_survives_a_hermes_without_the_hook(self):
+        class Ctx:
+            def register_browser_provider(self, p): pass
+            def register_tool(self, **kw): pass
+            def register_hook(self, *a): raise RuntimeError("no such hook")
+        plugin.register(Ctx())                                                        # must not raise
+
+
 class Registration(unittest.TestCase):
     def test_registers_the_provider_and_both_tools_in_the_browser_toolset(self):
         seen = {"providers": [], "tools": {}}
@@ -442,8 +480,12 @@ class Registration(unittest.TestCase):
             def register_tool(self, **kw):
                 seen["tools"][kw["name"]] = kw
 
+            def register_hook(self, name, fn):
+                seen.setdefault("hooks", {})[name] = fn
+
         plugin.register(Ctx())
         self.assertEqual(seen["providers"], ["broker"])
+        self.assertEqual(seen["hooks"], {"transform_tool_result": plugin._transform_tool_result})
         self.assertEqual(set(seen["tools"]), {"browser_upload", "browser_waiting", "browser_submit"})
         for kw in seen["tools"].values():
             self.assertEqual(kw["toolset"], "browser")
