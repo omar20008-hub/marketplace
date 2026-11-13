@@ -14,7 +14,7 @@ from .platform import CachedIdentity, PlatformError
 from .validation import FILE_ID, SESSION_ID, bearer, selector_ok
 
 MAX_BODY = 16 * 1024
-ROUTE = re.compile(r"^/v1/sessions/([a-f0-9]{32})(?:/(upload|waiting|touch|close))?$")
+ROUTE = re.compile(r"^/v1/sessions/([a-f0-9]{32})(?:/(upload|waiting|touch|close|release|submit|proof))?$")
 
 PLATFORM_STATUS = {"unauthorized": (401, "unauthorized"), "not_found": (404, "not_found"),
                    "too_large": (413, "file_too_large"), "unavailable": (502, "platform_unavailable")}
@@ -50,6 +50,10 @@ class Api:
             s = await self.m.create(user)
             # The address is a secret (its path is the key): given here, once, to the person's own assistant.
             return 201, dict(self.m.view(s), cdpUrl=s.cdp_url)
+        if path == "/v1/sessions/resume" and method == "POST":
+            key, user = await self._who(headers)
+            s = self.m.resume(user)
+            return 200, dict(self.m.view(s), cdpUrl=s.cdp_url)
         match = ROUTE.match(path)
         if not match:
             return 404, {"error": "not_found"}
@@ -66,6 +70,20 @@ class Api:
             if not isinstance(data.get("waiting"), bool):
                 raise BrokerError("bad_request", 400)
             return 200, self.m.view(self.m.set_waiting(sid, user, data["waiting"]))
+        if action == "submit":
+            selector, text = data.get("selector"), data.get("text")
+            if not (selector or text) or (selector and not selector_ok(selector)) or (
+                text and not (isinstance(text, str) and 0 < len(text) <= 200 and all(c.isprintable() for c in text))
+            ):
+                raise BrokerError("bad_request", 400)
+            return 200, await self.m.submit(sid, user, key, selector or None, text or None, self.platform)
+        if action == "proof":
+            caption = data.get("caption", "")
+            if not isinstance(caption, str) or len(caption) > 120:
+                raise BrokerError("bad_request", 400)
+            return 200, {"attachment": await self.m.proof(sid, user, key, caption, self.platform)}
+        if action == "release":
+            return 200, self.m.view(self.m.release(sid, user))
         if action == "close":
             await self.m.close(sid, user)
             return 200, {"closed": True}

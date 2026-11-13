@@ -104,6 +104,98 @@ class Lifecycle(ManagerCase):
         return None
 
 
+class Resuming(ManagerCase):
+    async def test_a_waiting_session_is_handed_back_to_its_owner_as_it_was_left(self):
+        m = self.make()
+        s = await m.create("user-a")
+        m.set_waiting(s.id, "user-a", True)
+        self.clock.t += 600
+        back = m.resume("user-a")
+        self.assertIs(back, s)
+        self.assertEqual((back.waiting, back.state, back.cdp_url.startswith("ws://127.0.0.1:")), (False, "ready", True))
+        self.assertEqual(self.docker.removed, [])                       # nothing was closed or recreated
+
+    async def test_only_the_owner_and_only_a_waiting_session_can_be_resumed(self):
+        m = self.make()
+        s = await m.create("user-a")
+        self.assertEqual(self._sync_code(lambda: m.resume("user-a")), "no_waiting_session")      # not waiting
+        m.set_waiting(s.id, "user-a", True)
+        self.assertEqual(self._sync_code(lambda: m.resume("user-b")), "no_waiting_session")      # someone else
+        m.resume("user-a")
+        self.assertEqual(self._sync_code(lambda: m.resume("user-a")), "no_waiting_session")      # already resumed
+
+    async def test_a_session_that_waited_too_long_is_gone_and_cannot_be_resumed(self):
+        m = self.make()
+        s = await m.create("user-a")
+        m.set_waiting(s.id, "user-a", True)
+        self.clock.t += 901
+        await m.tick()
+        self.assertEqual(self._sync_code(lambda: m.resume("user-a")), "no_waiting_session")
+        self.assertEqual(s.reason, "waiting_timeout")
+
+    def _sync_code(self, fn):
+        try:
+            fn()
+        except BrokerError as error:
+            return error.code
+        return None
+
+
+class Release(ManagerCase):
+    async def test_a_released_browser_is_kept_for_the_grace_period_then_closed(self):
+        m = self.make()
+        s = await m.create("user-a")
+        m.release(s.id, "user-a")
+        self.assertTrue(s.waiting)
+        self.clock.t += 599                                  # inside the 600 s grace: far beyond the 300 s idle limit
+        await m.tick()
+        self.assertEqual(s.state, "ready")
+        self.clock.t += 2
+        await m.tick()
+        self.assertEqual((s.state, s.reason), ("closed", "waiting_timeout"))
+
+    async def test_a_released_browser_is_handed_back_to_the_next_task_and_is_then_active_again(self):
+        m = self.make()
+        s = await m.create("user-a")
+        m.release(s.id, "user-a")
+        self.clock.t += 120
+        back = m.resume("user-a")
+        self.assertIs(back, s)
+        self.assertEqual((back.waiting, back.release_deadline), (False, 0.0))
+        self.clock.t += 301                                  # now it is an ordinary session again: the idle limit applies
+        await m.tick()
+        self.assertEqual(s.reason, "idle_timeout")
+
+    async def test_the_grace_never_outlives_the_absolute_cap(self):
+        m = self.make()
+        s = await m.create("user-a")
+        for _ in range(7):
+            self.clock.t += 240
+            m.touch(s.id, "user-a")
+        self.clock.t += 100                                  # 1780 s in: 20 s of cap left
+        m.release(s.id, "user-a")
+        self.assertLessEqual(s.release_deadline - self.clock(), 20.5)
+
+    async def test_an_explicit_waiting_answer_replaces_the_grace_period(self):
+        m = self.make()
+        s = await m.create("user-a")
+        m.release(s.id, "user-a")
+        m.set_waiting(s.id, "user-a", True)
+        self.assertEqual(s.release_deadline, 0.0)            # the longer explicit limit (900 s) applies now
+
+    async def test_only_the_owner_can_release(self):
+        m = self.make()
+        s = await m.create("user-a")
+        self.assertEqual(self._sync_code(lambda: m.release(s.id, "user-b")), "not_found")
+
+    def _sync_code(self, fn):
+        try:
+            fn()
+        except BrokerError as error:
+            return error.code
+        return None
+
+
 class Relaying(ManagerCase):
     async def test_the_session_gets_a_loopback_address_whose_path_is_the_browsers_own(self):
         m = self.make()
@@ -190,11 +282,11 @@ class Deadlines(ManagerCase):
         self.assertEqual((s.state, s.reason), ("closed", "idle_timeout"))
         self.assertEqual(self.docker.removed, ["bb-" + s.id])
 
-    async def test_waiting_for_the_person_has_its_own_shorter_limit(self):
+    async def test_waiting_for_the_person_has_its_own_longer_limit(self):
         m = self.make()
         s = await m.create("user-a")
         m.set_waiting(s.id, "user-a", True)
-        self.clock.t += 179
+        self.clock.t += 899                     # beyond the 300 s idle limit: a person needs time to answer
         await m.tick()
         self.assertEqual(s.state, "ready")
         self.clock.t += 2
@@ -204,12 +296,12 @@ class Deadlines(ManagerCase):
     async def test_the_absolute_cap_closes_even_an_active_session(self):
         m = self.make()
         s = await m.create("user-a")
-        for _ in range(3):                      # 720 s of steady activity: still inside the 900 s cap
+        for _ in range(7):                      # 1680 s of steady activity: still inside the 1800 s cap
             self.clock.t += 240
             m.touch(s.id, "user-a")
             await m.tick()
         self.assertEqual(s.state, "ready")
-        self.clock.t += 200                     # 920 s: past the cap although the session is active
+        self.clock.t += 200                     # 1880 s: past the cap although the session is active
         m.touch(s.id, "user-a")
         await m.tick()
         self.assertEqual((s.state, s.reason), ("closed", "cap"))

@@ -38,6 +38,7 @@ class Session:
         self.last_activity = now
         self.last_sample = 0.0
         self.waiting = False
+        self.release_deadline = 0.0          # when a released (not explicitly waiting) session is closed; 0 = not released
         self.uploads = 0
         self.ip = ""
         self.reason = ""
@@ -214,9 +215,35 @@ class Manager:
         s.last_activity = self.clock()
         return s
 
+    def release(self, session_id: str, user_id: str) -> Session:
+        """Hermes has finished with this browser. Keep it for a grace period in case the person answers; the next task resumes it."""
+        s = self.owned(session_id, user_id)
+        if s.state != "ready":
+            raise BrokerError("not_ready", 409)
+        now = self.clock()
+        remaining = max(0.0, s.started + self.cfg.cap_s - now)
+        s.waiting = True
+        s.release_deadline = now + min(float(self.cfg.grace_s), remaining)
+        s.last_activity = now
+        events.event("released", session=s.id, uid=s.uid)
+        return s
+
+    def resume(self, user_id: str) -> Session:
+        """The person's own session that has been waiting for them, handed back as active. The page is as they left it."""
+        uid = self.uid_hash(user_id)
+        for s in self.sessions.values():
+            if s.uid == uid and s.state == "ready" and s.waiting:
+                s.waiting = False
+                s.release_deadline = 0.0
+                s.last_activity = self.clock()
+                events.event("resumed", session=s.id, uid=uid)
+                return s
+        raise BrokerError("no_waiting_session", 404)
+
     def set_waiting(self, session_id: str, user_id: str, waiting: bool) -> Session:
         s = self.touch(session_id, user_id)
         s.waiting = bool(waiting)
+        s.release_deadline = 0.0             # an explicit answer from the assistant replaces the grace period
         return s
 
     async def upload(self, session_id: str, user_id: str, key: str, file_id: str, selector: str, platform) -> None:
@@ -246,6 +273,38 @@ class Manager:
             s.uploads = number
             s.last_activity = self.clock()
             events.event("upload", session=s.id, uid=s.uid, file_id=file_id, size=len(data))
+
+    async def _proof(self, s: Session, key: str, platform, caption: str) -> bool:
+        """A picture of the page, to the person's outbox. Never raises: a missing picture must not undo an action."""
+        try:
+            await platform.upload_proof(key, await self.cdp.screenshot(s.ip), caption)
+            return True
+        except Exception as error:  # noqa: BLE001
+            events.event("proof_failed", session=s.id, error=type(error).__name__)
+            return False
+
+    async def submit(self, session_id: str, user_id: str, key: str, selector: Optional[str], text: Optional[str], platform) -> Dict[str, Any]:
+        """Clicks the button, waits for the page that follows, and reads it. The page's picture goes to the person too."""
+        s = self.owned(session_id, user_id)
+        if s.state != "ready":
+            raise BrokerError("not_ready", 409)
+        async with s.lock:
+            if s.state != "ready":
+                raise BrokerError("not_ready", 409)
+            result = await self.cdp.submit(s.ip, selector, text)
+            s.last_activity = self.clock()
+            result["attachment"] = await self._proof(s, key, platform, str(result.get("title", "")))
+            events.event("submitted", session=s.id, uid=s.uid)
+            return result
+
+    async def proof(self, session_id: str, user_id: str, key: str, caption: str, platform) -> bool:
+        s = self.owned(session_id, user_id)
+        if s.state != "ready":
+            raise BrokerError("not_ready", 409)
+        async with s.lock:
+            ok = await self._proof(s, key, platform, caption)
+            s.last_activity = self.clock()
+            return ok
 
     # ------------------------------------------------------------------ close
     async def close(self, session_id: str, user_id: str) -> None:
@@ -296,7 +355,7 @@ class Manager:
                 continue
             if now - s.started > self.cfg.cap_s:
                 await self._finish(s, "cap")
-            elif s.waiting and now - s.last_activity > self.cfg.waiting_s:
+            elif s.waiting and now > (s.release_deadline or s.last_activity + self.cfg.waiting_s):
                 await self._finish(s, "waiting_timeout")
             elif not s.waiting and now - s.last_activity > self.cfg.idle_s:
                 await self._finish(s, "idle_timeout")

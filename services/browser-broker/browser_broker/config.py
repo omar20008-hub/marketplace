@@ -40,8 +40,9 @@ class Config:
     queue_max: int = 5
     queue_wait_s: int = 60
     idle_s: int = 300               # no activity
-    waiting_s: int = 180            # waiting for the person (to confirm an irreversible action)
-    cap_s: int = 900                # absolute ceiling
+    waiting_s: int = 900            # waiting for the person (a missing answer, or a confirmation before an irreversible step)
+    cap_s: int = 1800               # absolute ceiling (a long application form plus the time to answer)
+    grace_s: int = 600              # how long a browser Hermes has finished with is kept, in case the person answers
     start_timeout_s: int = 20
     per_user_active: int = 1
     per_user_daily: int = 20
@@ -53,7 +54,7 @@ class Config:
 
 
 _INT_FIELDS = {
-    "pids_limit", "max_concurrent", "queue_max", "queue_wait_s", "idle_s", "waiting_s", "cap_s",
+    "pids_limit", "max_concurrent", "queue_max", "queue_wait_s", "idle_s", "waiting_s", "cap_s", "grace_s",
     "start_timeout_s", "per_user_active", "per_user_daily", "closed_keep_s", "max_upload_bytes",
     "max_uploads_per_session", "request_timeout_s", "cdp_port",
 }
@@ -78,8 +79,8 @@ def validate(cfg: Config) -> Config:
     for name in _INT_FIELDS:
         if not isinstance(getattr(cfg, name), int) or getattr(cfg, name) <= 0:
             raise ConfigError("%s must be a positive integer" % name)
-    if cfg.waiting_s > cfg.cap_s or cfg.idle_s > cfg.cap_s:
-        raise ConfigError("idle_s and waiting_s cannot exceed cap_s")
+    if cfg.waiting_s > cfg.cap_s or cfg.idle_s > cfg.cap_s or cfg.grace_s > cfg.cap_s:
+        raise ConfigError("idle_s, waiting_s and grace_s cannot exceed cap_s")
     if not re.match(r"^\d+[mg]$", cfg.memory) or not re.match(r"^\d+(\.\d+)?$", cfg.cpus):
         raise ConfigError("memory like 700m and cpus like 1 are required")
     return cfg

@@ -8,3 +8,4 @@ provides_browser_providers:
 provides_tools:
   - browser_upload
   - browser_waiting
+  - browser_submit

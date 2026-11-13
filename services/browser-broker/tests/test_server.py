@@ -71,6 +71,40 @@ class Api_(ServerCase):
         self.assertEqual((await self.call("POST", "/v1/sessions/%s/close" % sid))[0], 200)
         self.assertEqual((await self.call("GET", "/v1/sessions/" + sid))[0], 404)
 
+    async def test_resume_gives_a_waiting_session_back_with_its_address_to_its_owner_only(self):
+        made = (await self.call("POST", "/v1/sessions"))[1]
+        self.assertEqual((await self.call("POST", "/v1/sessions/resume"))[1], {"error": "no_waiting_session"})   # not waiting
+        await self.call("POST", "/v1/sessions/%s/waiting" % made["id"], {"waiting": True})
+        self.assertEqual((await self.call("POST", "/v1/sessions/resume", key=KEY_B))[0], 404)                     # not theirs
+        self.assertEqual((await self.call("POST", "/v1/sessions/resume", key=None))[0], 401)
+        status, body = await self.call("POST", "/v1/sessions/resume")
+        self.assertEqual((status, body["id"], body["waiting"]), (200, made["id"], False))
+        self.assertEqual(body["cdpUrl"], made["cdpUrl"])                                                          # the same browser
+
+    async def test_release_keeps_the_browser_and_resume_gives_it_back(self):
+        made = (await self.call("POST", "/v1/sessions"))[1]
+        self.assertEqual((await self.call("POST", "/v1/sessions/%s/release" % made["id"], key=KEY_B))[0], 404)   # not theirs
+        status, body = await self.call("POST", "/v1/sessions/%s/release" % made["id"])
+        self.assertEqual((status, body["waiting"]), (200, True))
+        status, back = await self.call("POST", "/v1/sessions/resume")
+        self.assertEqual((status, back["id"], back["cdpUrl"]), (200, made["id"], made["cdpUrl"]))
+
+    async def test_submit_and_proof_are_validated_and_reach_the_manager(self):
+        sid = (await self.call("POST", "/v1/sessions"))[1]["id"]
+        url = "/v1/sessions/%s/submit" % sid
+        self.assertEqual((await self.call("POST", url, {}))[0], 400)                                 # nothing to click
+        self.assertEqual((await self.call("POST", url, {"text": "x" * 300}))[0], 400)
+        self.assertEqual((await self.call("POST", url, {"selector": "a" * 300}))[0], 400)
+        self.assertEqual((await self.call("POST", url, {"text": "Go\x00"}))[0], 400)
+        status, body = await self.call("POST", url, {"text": "Submit order"})
+        self.assertEqual((status, body["title"], body["attachment"]), (200, "Thank you", True))
+        self.assertEqual((await self.call("POST", url, {"text": "Go"}, key=KEY_B))[0], 404)          # not theirs
+        status, body = await self.call("POST", "/v1/sessions/%s/proof" % sid, {"caption": "final page"})
+        self.assertEqual((status, body), (200, {"attachment": True}))
+        self.assertEqual((await self.call("POST", "/v1/sessions/%s/proof" % sid, {"caption": "x" * 200}))[0], 400)
+        self.cdp.error = "not_found"
+        self.assertEqual((await self.call("POST", url, {"text": "Nope"}))[1], {"error": "selector_not_found"})
+
     async def test_upload_validation_and_errors_map_to_clear_codes(self):
         sid = (await self.call("POST", "/v1/sessions"))[1]["id"]
         url = "/v1/sessions/%s/upload" % sid

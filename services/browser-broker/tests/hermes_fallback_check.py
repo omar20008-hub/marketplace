@@ -10,6 +10,7 @@ LOCAL browser creator replaced by one that records the call and fails. So:
   * provider not resolved at all (plugin not loaded, wrong name) -> Hermes would use the local browser: reported as FAIL.
 The person's key is read from the profile's own .env and never printed.
 """
+import json
 import os
 import re
 import sys
@@ -76,7 +77,27 @@ else:
     check("the session is either live through the broker or dead on purpose (never local)", dead or live,
           "dead (%s)" % url.rsplit("broker-", 1)[-1] if dead else ("live" if live else "neither"))
     if live and provider is not None and info.get("bb_session_id"):
-        check("the live session closes", provider.close_session(str(info["bb_session_id"])) is True)
+        # Persistence: Hermes closes its browser every time it finishes a reply, whatever the assistant did. The browser
+        # must be kept for a grace period (no tool call needed from the model) and handed back to the next task.
+        plugin = sys.modules[type(provider).__module__]
+        sid, key = str(info["bb_session_id"]), os.environ["PLATFORM_AGENT_KEY"]
+        kept = provider.close_session(sid)                    # what Hermes does at the end of a reply
+        view = plugin.broker_call("GET", "/v1/sessions/%s" % sid, key, timeout=15)
+        check("the browser is NOT closed when Hermes finishes a reply (kept for a grace period)",
+              kept is True and view.get("state") == "ready" and view.get("waiting") is True, view.get("state"))
+        again = provider.create_session("persistence-check-2")
+        check("the next task gets the same browser back (same session, same address)",
+              again.get("bb_session_id") == sid and again.get("cdp_url") == info.get("cdp_url"),
+              "same" if again.get("bb_session_id") == sid else "different")
+        done = json.loads(plugin._handle_browser_waiting({"waiting": False}))      # the assistant: "I am finished"
+        check("when the assistant says it is finished, the browser is closed at once",
+              done.get("ok") is True and provider.close_session(sid) is True)
+        try:
+            plugin.broker_call("GET", "/v1/sessions/%s" % sid, key, timeout=15)
+            gone = False
+        except Exception as exc:  # noqa: BLE001
+            gone = getattr(exc, "code", "") == "not_found"
+        check("and the broker no longer has it", gone)
 
 print("RESULT: %d of %d" % (sum(RESULTS), len(RESULTS)))
 sys.exit(0 if all(RESULTS) else 1)

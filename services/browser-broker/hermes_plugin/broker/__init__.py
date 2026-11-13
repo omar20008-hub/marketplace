@@ -27,6 +27,7 @@ import logging
 import os
 import socket
 import threading
+import time
 import urllib.error
 import urllib.request
 from typing import Any, Dict, Optional
@@ -53,6 +54,9 @@ _REASONS = {
 _lock = threading.Lock()
 _KEY_OF_SESSION: Dict[str, str] = {}      # broker session id -> agent key (memory only; closes may run outside a profile scope)
 _LATEST: Dict[str, str] = {}              # sha256(agent key) -> its open session id (the broker allows one per person)
+_DONE: set = set()                        # sessions the assistant said it is finished with: closed at once, not kept
+_LAST_PROOF: Dict[str, float] = {}        # session id -> when a picture of its page last went to the person
+PROOF_EVERY_S = 30                        # one picture is enough for actions this close together
 
 
 def _socket_path() -> str:
@@ -72,6 +76,10 @@ def _platform_url() -> str:
         return (get_secret("PLATFORM_URL") or "").rstrip("/")
     except Exception:
         return ""
+
+
+def _proof_enabled() -> bool:
+    return os.environ.get("BROKER_PROOF", "1").strip().lower() not in ("0", "false", "no", "off")
 
 
 def _who(key: str) -> str:
@@ -142,7 +150,15 @@ class BrokerBrowserProvider(BrowserProvider):
         if not key:
             return _dead_session("no-key")
         try:
-            made = broker_call("POST", "/v1/sessions", key)
+            try:
+                # A session kept open while it waited for the person (a missing answer, a confirmation): the page is
+                # as they left it. Otherwise a fresh browser is made.
+                made = broker_call("POST", "/v1/sessions/resume", key, timeout=30.0)
+                logger.info("browser broker session %s resumed for task %s", str(made.get("id", ""))[:12], task_id)
+            except BrokerError as error:
+                if error.code != "no_waiting_session":
+                    raise
+                made = broker_call("POST", "/v1/sessions", key)
             session_id, url = str(made["id"]), str(made["cdpUrl"])
         except BrokerError as error:
             return _dead_session(_REASONS.get(error.code, "unavailable"))
@@ -159,13 +175,56 @@ class BrokerBrowserProvider(BrowserProvider):
         if not session_id:
             return True                               # a dead session holds nothing
         with _lock:
-            key = _KEY_OF_SESSION.pop(session_id, None)
+            key = _KEY_OF_SESSION.get(session_id)
+            done = session_id in _DONE
         key = key or _agent_key()
         if not key:
             return False
+        self._send_proof(session_id, key)
+        if not done:
+            # Hermes closes its browser every time it finishes a reply, and a person's answer can come minutes later.
+            # So a browser is kept for a grace period (the broker closes it itself if nobody comes back), unless the
+            # assistant said it is finished (browser_waiting(false)).
+            try:
+                view = broker_call("GET", "/v1/sessions/%s" % session_id, key, timeout=15.0)
+                if view.get("waiting") is not True:
+                    broker_call("POST", "/v1/sessions/%s/release" % session_id, key, timeout=15.0)
+                logger.info("browser broker session %s kept open for the person", session_id[:12])
+                return True
+            except BrokerError as error:
+                if error.code == "not_found":
+                    self._forget(session_id, key)
+                    return True
+            except Exception:
+                pass                                   # could not keep it: close it
+        return self._close_now(session_id, key)
+
+    def _send_proof(self, session_id: str, key: str) -> None:
+        """A picture of the page the browser ends on goes to the person with the reply: evidence that does not rest on
+        what the assistant says it did. Best effort, and skipped when one was just sent (browser_submit sends its own)."""
+        if not _proof_enabled():
+            return
         with _lock:
+            recent = time.time() - _LAST_PROOF.get(session_id, 0.0) < PROOF_EVERY_S
+        if recent:
+            return
+        try:
+            broker_call("POST", "/v1/sessions/%s/proof" % session_id, key, {"caption": "Page snapshot"}, timeout=40.0)
+            with _lock:
+                _LAST_PROOF[session_id] = time.time()
+        except Exception:
+            pass
+
+    def _forget(self, session_id: str, key: str) -> None:
+        with _lock:
+            _KEY_OF_SESSION.pop(session_id, None)
+            _DONE.discard(session_id)
+            _LAST_PROOF.pop(session_id, None)
             if _LATEST.get(_who(key)) == session_id:
                 del _LATEST[_who(key)]
+
+    def _close_now(self, session_id: str, key: str) -> bool:
+        self._forget(session_id, key)
         try:
             broker_call("POST", "/v1/sessions/%s/close" % session_id, key, timeout=30.0)
             return True
@@ -175,8 +234,15 @@ class BrokerBrowserProvider(BrowserProvider):
             return False
 
     def emergency_cleanup(self, session_id: str) -> None:
+        """Process exit or a signal: nobody will come back, so close for real."""
         try:
-            self.close_session(session_id)
+            if not session_id:
+                return
+            with _lock:
+                key = _KEY_OF_SESSION.get(session_id)
+            key = key or _agent_key()
+            if key:
+                self._close_now(session_id, key)
         except Exception:
             pass
 
@@ -244,6 +310,39 @@ def _handle_browser_upload(args: dict, **kwargs) -> str:
     return _result({"ok": True, "message": "The file was put into the page's file input. Submit the form yourself when the person has confirmed."})
 
 
+def _handle_browser_submit(args: dict, **kwargs) -> str:
+    text = str((args or {}).get("text", "")).strip()
+    selector = str((args or {}).get("selector", "")).strip()
+    if not (text or selector):
+        return _result({"ok": False, "error": "bad_request", "hint": "Give the button's words (text) or its CSS selector."})
+    key = _agent_key()
+    session_id = _current_session(key) if key else None
+    if not (key and session_id):
+        return _result({"ok": False, "error": "no_session", "hint": "No isolated browser is open."})
+    body = {k: v for k, v in (("text", text), ("selector", selector)) if v}
+    try:
+        found = broker_call("POST", "/v1/sessions/%s/submit" % session_id, key, body, timeout=90.0)
+    except BrokerError as error:
+        return _result({"ok": False, "error": error.code, "hint": _UPLOAD_HINTS.get(error.code, "The click failed.")})
+    sent = bool(found.get("attachment"))
+    if sent:
+        with _lock:
+            _LAST_PROOF[session_id] = time.time()
+    invalid = found.get("invalid") or []
+    if found.get("changed") and found.get("url") != found.get("urlBefore"):
+        hint = ("The page changed. Report exactly what it shows (page_text), in the user's language. "
+                "Say it was submitted only if the text is a confirmation.")
+    elif invalid:
+        hint = "The browser refused to send the form: these fields are empty or invalid: %s. Fix them, then submit again." % ", ".join(map(str, invalid))
+    else:
+        hint = "The page did not change. The form may not have been sent. Do not say it was submitted; look at the page and tell the user."
+    return _result({
+        "ok": True, "clicked": found.get("clicked", ""), "page_changed": bool(found.get("changed")),
+        "url": found.get("url", ""), "title": found.get("title", ""), "page_text": found.get("text", ""),
+        "invalid_fields": invalid, "picture_sent_to_user": sent, "hint": hint,
+    })
+
+
 def _handle_browser_waiting(args: dict, **kwargs) -> str:
     waiting = (args or {}).get("waiting")
     if not isinstance(waiting, bool):
@@ -256,6 +355,11 @@ def _handle_browser_waiting(args: dict, **kwargs) -> str:
         broker_call("POST", "/v1/sessions/%s/waiting" % session_id, key, {"waiting": waiting}, timeout=30.0)
     except BrokerError as error:
         return _result({"ok": False, "error": error.code})
+    with _lock:
+        if waiting:
+            _DONE.discard(session_id)
+        else:
+            _DONE.add(session_id)                      # "I am finished": the browser closes when this reply ends
     return _result({"ok": True})
 
 
@@ -275,12 +379,31 @@ UPLOAD_SCHEMA = {
     },
 }
 
+SUBMIT_SCHEMA = {
+    "name": "browser_submit",
+    "description": (
+        "Press the final Submit / Apply / Send button of a form in the isolated browser, wait for the page that follows, "
+        "and get back what that page shows. Use it for the FINAL submit instead of a plain click, and only after the "
+        "person confirmed in their latest message. Give the button's visible words (text) or its CSS selector. It "
+        "returns the page's address, title and text, whether the page changed, and any field the browser refused. "
+        "A picture of the page is sent to the person automatically. Never say the form was submitted unless the "
+        "returned page text is a confirmation."),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "text": {"type": "string", "description": "The visible words of the button, for example Submit application"},
+            "selector": {"type": "string", "description": "CSS selector of the button, if the words are not enough"},
+        },
+    },
+}
+
 WAITING_SCHEMA = {
     "name": "browser_waiting",
     "description": (
         "Tell the browser service this session is waiting for the person (for example for their confirmation before an "
-        "irreversible step). Set waiting=true before asking, and waiting=false when you continue. Prevents the session "
-        "from being closed while you wait, within a limit."),
+        "irreversible step): waiting=true keeps the browser for up to 15 minutes. waiting=false means you are finished "
+        "with the browser: it is closed when this reply ends. If you do nothing, the browser is kept for about 10 minutes "
+        "after your reply anyway, in case the person answers."),
     "parameters": {
         "type": "object",
         "properties": {"waiting": {"type": "boolean", "description": "true while waiting for the person, false when done"}},
@@ -294,6 +417,7 @@ def register(ctx) -> None:
     for name, schema, handler, emoji in (
         ("browser_upload", UPLOAD_SCHEMA, _handle_browser_upload, "📎"),
         ("browser_waiting", WAITING_SCHEMA, _handle_browser_waiting, "⏳"),
+        ("browser_submit", SUBMIT_SCHEMA, _handle_browser_submit, "✅"),
     ):
         ctx.register_tool(name=name, toolset="browser", schema=schema, handler=handler,
                           description=schema["description"], emoji=emoji)

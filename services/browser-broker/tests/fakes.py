@@ -77,6 +77,19 @@ class FakeCdp:
     async def ready(self, ip):
         return self.is_ready
 
+    async def submit(self, ip, selector, text, timeout=45.0):
+        if self.error:
+            raise CdpError(self.error)
+        self.submits = getattr(self, "submits", [])
+        self.submits.append((ip, selector, text))
+        return {"url": "https://example.test/done", "urlBefore": "https://example.test/form", "title": "Thank you",
+                "text": "Thank you for applying", "truncated": False, "invalid": [], "changed": True, "clicked": "Submit order"}
+
+    async def screenshot(self, ip, timeout=30.0):
+        if getattr(self, "shot_error", False):
+            raise CdpError("cdp_failed")
+        return b"\xff\xd8\xff\xe0fake-jpeg"
+
     async def browser_ws_path(self, ip):
         return "/devtools/browser/aaaa-bbbb-cccc"
 
@@ -93,6 +106,12 @@ class FakePlatform:
                       ("user-b", "file-bbbb-1"): ("b.docx", b"docx b")}
         self.whoami_calls = 0
         self.fetch_error = None
+
+    async def upload_proof(self, key, jpeg, caption):
+        if getattr(self, "proof_error", False):
+            raise PlatformError("unavailable")
+        self.proofs = getattr(self, "proofs", [])
+        self.proofs.append((self.users.get(key), jpeg, caption))
 
     async def whoami(self, key):
         self.whoami_calls += 1
