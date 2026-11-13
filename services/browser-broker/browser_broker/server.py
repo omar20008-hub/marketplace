@@ -14,7 +14,7 @@ from .platform import CachedIdentity, PlatformError
 from .validation import FILE_ID, SESSION_ID, bearer, selector_ok
 
 MAX_BODY = 16 * 1024
-ROUTE = re.compile(r"^/v1/sessions/([a-f0-9]{32})(?:/(upload|waiting|touch|close|release))?$")
+ROUTE = re.compile(r"^/v1/sessions/([a-f0-9]{32})(?:/(upload|waiting|touch|close|release|submit|proof))?$")
 
 PLATFORM_STATUS = {"unauthorized": (401, "unauthorized"), "not_found": (404, "not_found"),
                    "too_large": (413, "file_too_large"), "unavailable": (502, "platform_unavailable")}
@@ -70,6 +70,18 @@ class Api:
             if not isinstance(data.get("waiting"), bool):
                 raise BrokerError("bad_request", 400)
             return 200, self.m.view(self.m.set_waiting(sid, user, data["waiting"]))
+        if action == "submit":
+            selector, text = data.get("selector"), data.get("text")
+            if not (selector or text) or (selector and not selector_ok(selector)) or (
+                text and not (isinstance(text, str) and 0 < len(text) <= 200 and all(c.isprintable() for c in text))
+            ):
+                raise BrokerError("bad_request", 400)
+            return 200, await self.m.submit(sid, user, key, selector or None, text or None, self.platform)
+        if action == "proof":
+            caption = data.get("caption", "")
+            if not isinstance(caption, str) or len(caption) > 120:
+                raise BrokerError("bad_request", 400)
+            return 200, {"attachment": await self.m.proof(sid, user, key, caption, self.platform)}
         if action == "release":
             return 200, self.m.view(self.m.release(sid, user))
         if action == "close":

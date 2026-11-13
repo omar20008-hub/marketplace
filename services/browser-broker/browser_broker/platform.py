@@ -61,6 +61,26 @@ class PlatformClient:
         except (urllib.error.URLError, OSError):
             raise PlatformError("unavailable")
 
+    def _post_bytes(self, path: str, key: str, data: bytes, content_type: str, caption: str) -> None:
+        request = urllib.request.Request(
+            self.base + path, data=data, method="POST",
+            headers={"Authorization": "Bearer " + key, "Content-Type": content_type,
+                     "X-Caption": urllib.parse.quote(caption[:120], safe="")},
+        )
+        try:
+            with self._opener.open(request, timeout=self.timeout) as response:
+                response.read(4096)
+        except urllib.error.HTTPError as error:
+            if error.code in (401, 403):
+                raise PlatformError("unauthorized")
+            raise PlatformError("unavailable")
+        except (urllib.error.URLError, OSError):
+            raise PlatformError("unavailable")
+
+    async def upload_proof(self, key: str, jpeg: bytes, caption: str) -> None:
+        """What the browser saw, to the person's outbox on the platform, to be sent to them with the reply."""
+        await asyncio.to_thread(self._post_bytes, "/api/agent/proof", key, jpeg, "image/jpeg", caption)
+
     async def whoami(self, key: str) -> str:
         import json
 

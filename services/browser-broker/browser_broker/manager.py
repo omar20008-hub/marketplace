@@ -274,6 +274,38 @@ class Manager:
             s.last_activity = self.clock()
             events.event("upload", session=s.id, uid=s.uid, file_id=file_id, size=len(data))
 
+    async def _proof(self, s: Session, key: str, platform, caption: str) -> bool:
+        """A picture of the page, to the person's outbox. Never raises: a missing picture must not undo an action."""
+        try:
+            await platform.upload_proof(key, await self.cdp.screenshot(s.ip), caption)
+            return True
+        except Exception as error:  # noqa: BLE001
+            events.event("proof_failed", session=s.id, error=type(error).__name__)
+            return False
+
+    async def submit(self, session_id: str, user_id: str, key: str, selector: Optional[str], text: Optional[str], platform) -> Dict[str, Any]:
+        """Clicks the button, waits for the page that follows, and reads it. The page's picture goes to the person too."""
+        s = self.owned(session_id, user_id)
+        if s.state != "ready":
+            raise BrokerError("not_ready", 409)
+        async with s.lock:
+            if s.state != "ready":
+                raise BrokerError("not_ready", 409)
+            result = await self.cdp.submit(s.ip, selector, text)
+            s.last_activity = self.clock()
+            result["attachment"] = await self._proof(s, key, platform, str(result.get("title", "")))
+            events.event("submitted", session=s.id, uid=s.uid)
+            return result
+
+    async def proof(self, session_id: str, user_id: str, key: str, caption: str, platform) -> bool:
+        s = self.owned(session_id, user_id)
+        if s.state != "ready":
+            raise BrokerError("not_ready", 409)
+        async with s.lock:
+            ok = await self._proof(s, key, platform, caption)
+            s.last_activity = self.clock()
+            return ok
+
     # ------------------------------------------------------------------ close
     async def close(self, session_id: str, user_id: str) -> None:
         s = self.owned(session_id, user_id)

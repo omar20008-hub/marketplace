@@ -1,5 +1,6 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import { prisma } from "@/lib/db";
+import { env } from "@/lib/env";
 import { sniffImage, sniffMedia, type MediaKind } from "@/lib/image-sniff";
 
 /**
@@ -58,6 +59,7 @@ async function store(
   bytes: Uint8Array,
   now: Date,
   accept: "image" | "any",
+  opts: { token?: string; keepMs?: number } = {},
 ): Promise<SaveResult> {
   if (bytes.length === 0) return { ok: false, error: "The file is empty." };
   if (bytes.length > MAX_VIDEO_BYTES) return { ok: false, error: "The file is larger than 50 MB." };
@@ -83,7 +85,7 @@ async function store(
 
   // A name is only a label. Strip anything path-like and bound it.
   const name = (fileName.split(/[\\/]/).pop() ?? "image").replace(/[^\p{L}\p{N} ._()-]/gu, "_").slice(0, 80) || "image";
-  const token = randomBytes(32).toString("base64url");
+  const token = opts.token ?? randomBytes(32).toString("base64url");
   await prisma.mediaUpload.create({
     data: {
       userId,
@@ -92,10 +94,69 @@ async function store(
       mimeType: kind.mime,
       sizeBytes: bytes.length,
       data: Buffer.from(bytes),
-      expiresAt: new Date(now.getTime() + KEEP_MS),
+      expiresAt: new Date(now.getTime() + (opts.keepMs ?? KEEP_MS)),
     },
   });
   return { ok: true, token, kind, name, sizeBytes: bytes.length };
+}
+
+/**
+ * What the browser saw. The assistant's browser takes a picture of the page it ends on, and the picture is sent
+ * to the person with the reply, as evidence that does not depend on what the assistant says it did. It is kept
+ * as a picture behind an unguessable link, like any other, but only three days (it may show a form with their
+ * details), and it waits in an outbox until the channel that carried the question picks it up.
+ *
+ * The link has to be rebuilt later, when only a hash is stored, so the token is not random here: it is an HMAC
+ * of the person's id and a nonce kept in the name. Whoever lacks AUTH_SECRET cannot compute it.
+ */
+const PROOF_KEEP_MS = 3 * 24 * 60 * 60 * 1000;
+const PROOF_WINDOW_MS = 15 * 60 * 1000;
+const PROOF_PREFIX = "proof-";
+const PROOF_SENT = "sent-";
+const MAX_PROOFS_PER_TAKE = 3;
+
+function proofToken(userId: string, nonce: string): string {
+  return createHmac("sha256", env.authSecret).update(`media-proof:${userId}:${nonce}`).digest("base64url");
+}
+
+export async function saveProof(userId: string, bytes: Uint8Array, caption: string, now = new Date()): Promise<SaveResult> {
+  const nonce = randomBytes(8).toString("hex");
+  const label = caption.replace(/\s+/g, " ").trim().slice(0, 50);
+  return store(userId, `${PROOF_PREFIX}${nonce}-${label}`, bytes, now, "image", {
+    token: proofToken(userId, nonce),
+    keepMs: PROOF_KEEP_MS,
+  });
+}
+
+export type Proof = { token: string; kind: MediaKind; caption: string };
+
+/** The pictures waiting for this person, newest three, each handed out once. */
+export async function takeProofs(userId: string, now = new Date()): Promise<Proof[]> {
+  const rows = await prisma.mediaUpload.findMany({
+    where: {
+      userId,
+      name: { startsWith: PROOF_PREFIX },
+      createdAt: { gte: new Date(now.getTime() - PROOF_WINDOW_MS) },
+      expiresAt: { gt: now },
+    },
+    orderBy: { createdAt: "desc" },
+    take: MAX_PROOFS_PER_TAKE,
+    select: { id: true, name: true, mimeType: true },
+  });
+  const out: Proof[] = [];
+  for (const row of rows.reverse()) {
+    const nonce = row.name.slice(PROOF_PREFIX.length, PROOF_PREFIX.length + 16);
+    if (!/^[0-9a-f]{16}$/.test(nonce)) continue;
+    // Claimed by renaming: two callers cannot both get the same picture.
+    const claimed = await prisma.mediaUpload.updateMany({
+      where: { id: row.id, name: { startsWith: PROOF_PREFIX } },
+      data: { name: PROOF_SENT + row.name.slice(PROOF_PREFIX.length) },
+    });
+    if (claimed.count !== 1) continue;
+    const kind: MediaKind = row.mimeType === "image/png" ? { mime: "image/png", ext: "png" } : { mime: "image/jpeg", ext: "jpg" };
+    out.push({ token: proofToken(userId, nonce), kind, caption: row.name.slice(PROOF_PREFIX.length + 17) });
+  }
+  return out;
 }
 
 /** The path a stored image is served from. The extension is for the fetching network's benefit. */

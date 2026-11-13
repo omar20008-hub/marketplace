@@ -65,6 +65,7 @@ class FakeBroker(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
         self.calls = []
         self.fail = None                 # (status, code) to answer every call with
         self.waiting = False             # is the one fake session waiting for the person?
+        self.page_changed = True         # did the last submit lead to a new page?
         super().__init__(path, _BrokerHandler)
 
 
@@ -104,6 +105,12 @@ class _BrokerHandler(BaseHTTPRequestHandler):
         if self.path == "/v1/sessions":
             return self._reply(201, {"id": "a" * 32, "state": "ready",
                                      "cdpUrl": "ws://127.0.0.1:45678/devtools/browser/0a1b2c3d-1111-2222"})
+        if self.path.endswith("/submit"):
+            return self._reply(200, {"clicked": "Submit order", "changed": self.server.page_changed, "url": "https://shop.test/done",
+                                     "urlBefore": "https://shop.test/form", "title": "Thanks", "text": "Thank you for your order",
+                                     "invalid": [] if self.server.page_changed else ["custname"], "attachment": True})
+        if self.path.endswith("/proof"):
+            return self._reply(200, {"attachment": True})
         if self.path.endswith("/release"):
             self.server.waiting = True
             return self._reply(200, {"id": "a" * 32, "state": "ready", "waiting": True})
@@ -156,6 +163,8 @@ class Case(unittest.TestCase):
         plugin._KEY_OF_SESSION.clear()
         plugin._LATEST.clear()
         plugin._DONE.clear()
+        plugin._LAST_PROOF.clear()
+        os.environ.pop("BROKER_PROOF", None)
         self.capture = Capture()
         logging.getLogger().addHandler(self.capture)
         logging.getLogger().setLevel(logging.DEBUG)
@@ -250,8 +259,8 @@ class Waiting(Case):
         self.broker.waiting = True
         before = len(self.broker.calls)
         self.assertTrue(self.provider.close_session("a" * 32))
-        sent = [path for path, _, _ in self.broker.calls[before:]]
-        self.assertEqual(sent, ["/v1/sessions/%s" % ("a" * 32)])           # it only looked; no close was sent
+        sent = [path for path, _, _ in self.broker.calls[before:] if not path.endswith("/proof")]
+        self.assertEqual(sent, ["/v1/sessions/%s" % ("a" * 32)])           # it only looked (and sent a picture); no close
         self.assertIn("a" * 32, plugin._KEY_OF_SESSION)                    # still remembered, so it can be closed later
 
     def test_a_browser_nobody_declared_waiting_is_still_kept_for_a_grace_period(self):
@@ -305,6 +314,73 @@ class Waiting(Case):
     def test_a_broker_that_is_down_still_gives_a_dead_address_not_a_local_browser(self):
         os.environ["BROWSER_BROKER_SOCKET"] = os.path.join(self.dir, "missing.sock")
         self.assertTrue(self.provider.create_session("t1")["cdp_url"].endswith("/broker-unavailable"))
+
+
+class Proof(Case):
+    def sent(self):
+        return [p for p, _, _ in self.broker.calls if p.endswith("/proof")]
+
+    def test_a_picture_of_the_page_is_sent_when_the_reply_that_used_the_browser_ends(self):
+        self.provider.create_session("t1")
+        self.provider.close_session("a" * 32)
+        self.assertEqual(self.sent(), ["/v1/sessions/%s/proof" % ("a" * 32)])
+        calls = [p for p, _, _ in self.broker.calls]
+        self.assertLess(calls.index("/v1/sessions/%s/proof" % ("a" * 32)), calls.index("/v1/sessions/%s/release" % ("a" * 32)))
+
+    def test_not_twice_in_a_row_and_never_at_exit(self):
+        self.provider.create_session("t1")
+        self.provider.close_session("a" * 32)
+        self.provider.close_session("a" * 32)                          # a picture was just sent
+        self.assertEqual(len(self.sent()), 1)
+        self.provider.emergency_cleanup("a" * 32)                      # nobody is waiting for a picture at exit
+        self.assertEqual(len(self.sent()), 1)
+
+    def test_it_can_be_switched_off(self):
+        os.environ["BROKER_PROOF"] = "0"
+        self.provider.create_session("t1")
+        self.provider.close_session("a" * 32)
+        self.assertEqual(self.sent(), [])
+
+    def test_a_picture_that_fails_never_stops_the_session_from_being_kept(self):
+        self.provider.create_session("t1")
+        self.broker.fail = (500, {"error": "internal_error"})
+        self.assertTrue(self.provider.close_session("a" * 32) in (True, False))      # no exception
+
+
+class Submit(Case):
+    def go(self, **args):
+        return json.loads(plugin._handle_browser_submit(args, task_id="t"))
+
+    def test_the_result_of_the_click_comes_back_as_what_the_page_shows(self):
+        self.provider.create_session("t1")
+        out = self.go(text="Submit order")
+        self.assertEqual((out["ok"], out["page_changed"], out["title"], out["page_text"], out["picture_sent_to_user"]),
+                         (True, True, "Thanks", "Thank you for your order", True))
+        path, auth, body = self.broker.calls[-1]
+        self.assertEqual((path, body, auth), ("/v1/sessions/%s/submit" % ("a" * 32), {"text": "Submit order"}, "Bearer " + KEY))
+        self.assertIn("Report exactly what it shows", out["hint"])
+
+    def test_a_form_the_browser_refused_is_not_reported_as_sent(self):
+        self.provider.create_session("t1")
+        self.broker.page_changed = False
+        out = self.go(selector="#go")
+        self.assertEqual((out["ok"], out["page_changed"], out["invalid_fields"]), (True, False, ["custname"]))
+        self.assertIn("refused to send", out["hint"])
+
+    def test_it_needs_a_browser_and_some_words_and_it_does_not_double_up_the_picture(self):
+        self.assertEqual(self.go(text="Go")["error"], "no_session")
+        self.provider.create_session("t1")
+        self.assertEqual(self.go()["error"], "bad_request")
+        self.go(text="Submit order")
+        before = len([p for p, _, _ in self.broker.calls if p.endswith("/proof")])
+        self.provider.close_session("a" * 32)                          # its own picture was just sent
+        self.assertEqual(len([p for p, _, _ in self.broker.calls if p.endswith("/proof")]), before)
+
+    def test_broker_errors_come_back_as_clear_reasons(self):
+        self.provider.create_session("t1")
+        self.broker.fail = (400, {"error": "selector_not_found"})
+        out = self.go(text="Nope")
+        self.assertEqual((out["ok"], out["error"]), (False, "selector_not_found"))
 
 
 class Tools(Case):
@@ -368,7 +444,7 @@ class Registration(unittest.TestCase):
 
         plugin.register(Ctx())
         self.assertEqual(seen["providers"], ["broker"])
-        self.assertEqual(set(seen["tools"]), {"browser_upload", "browser_waiting"})
+        self.assertEqual(set(seen["tools"]), {"browser_upload", "browser_waiting", "browser_submit"})
         for kw in seen["tools"].values():
             self.assertEqual(kw["toolset"], "browser")
             self.assertTrue(callable(kw["handler"]))
@@ -379,7 +455,7 @@ class Registration(unittest.TestCase):
     def test_the_manifest_lists_what_the_code_registers(self):
         with open(os.path.join(os.path.dirname(PLUGIN), "plugin.yaml")) as handle:
             text = handle.read()
-        for name in ("browser_upload", "browser_waiting", "broker", "kind: backend"):
+        for name in ("browser_upload", "browser_waiting", "browser_submit", "broker", "kind: backend"):
             self.assertIn(name, text)
 
 
