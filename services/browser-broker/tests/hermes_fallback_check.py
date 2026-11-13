@@ -76,7 +76,26 @@ else:
     check("the session is either live through the broker or dead on purpose (never local)", dead or live,
           "dead (%s)" % url.rsplit("broker-", 1)[-1] if dead else ("live" if live else "neither"))
     if live and provider is not None and info.get("bb_session_id"):
-        check("the live session closes", provider.close_session(str(info["bb_session_id"])) is True)
+        # Persistence: Hermes closes its browser when it finishes a reply. One that is waiting for the person must stay,
+        # and the next task must get that same browser back.
+        plugin = sys.modules[type(provider).__module__]
+        sid, key = str(info["bb_session_id"]), os.environ["PLATFORM_AGENT_KEY"]
+        plugin.broker_call("POST", "/v1/sessions/%s/waiting" % sid, key, {"waiting": True}, timeout=30)
+        kept = provider.close_session(sid)
+        view = plugin.broker_call("GET", "/v1/sessions/%s" % sid, key, timeout=15)
+        check("a session waiting for the person is NOT closed when Hermes finishes its reply",
+              kept is True and view.get("state") == "ready" and view.get("waiting") is True, view.get("state"))
+        again = provider.create_session("persistence-check-2")
+        check("the next task gets the same browser back (same session, same address)",
+              again.get("bb_session_id") == sid and again.get("cdp_url") == info.get("cdp_url"),
+              "same" if again.get("bb_session_id") == sid else "different")
+        check("then, no longer waiting, it closes normally", provider.close_session(sid) is True)
+        try:
+            plugin.broker_call("GET", "/v1/sessions/%s" % sid, key, timeout=15)
+            gone = False
+        except Exception as exc:  # noqa: BLE001
+            gone = getattr(exc, "code", "") == "not_found"
+        check("and the broker no longer has it", gone)
 
 print("RESULT: %d of %d" % (sum(RESULTS), len(RESULTS)))
 sys.exit(0 if all(RESULTS) else 1)
